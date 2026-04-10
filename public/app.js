@@ -202,7 +202,7 @@ document.getElementById("contract-form").addEventListener("submit", async (event
         descrizione: draft.descrizione,
       });
       contracts = await baserowClient.listContracts();
-      setFormFeedback("success", "Contratto salvato su Baserow.");
+      setFormFeedback("success", "Contratto salvato nel database.");
     } catch (err) {
       console.error(err);
       submitBtn.disabled = false;
@@ -623,7 +623,7 @@ async function handleLogin(event) {
     contracts = await baserowClient.listContracts();
     document.getElementById("agent-name").textContent = agent.nome;
     document.getElementById("contract-form").elements.agente.value = agent.nome;
-    setConnectionStatus("online", "Baserow connesso");
+    setConnectionStatus("online", "Database connesso");
     renderAll();
     setAuthLocked(false);
     event.currentTarget.reset();
@@ -728,12 +728,12 @@ async function initApp() {
         contracts = await baserowClient.listContracts();
         document.getElementById("agent-name").textContent = agent.nome;
         document.getElementById("contract-form").elements.agente.value = agent.nome;
-        setConnectionStatus("online", "Baserow connesso");
+        setConnectionStatus("online", "Database connesso");
         setAuthLocked(false);
       } catch (err) {
         console.error(err);
         contracts = demoFallbackEnabled ? loadContracts() : [];
-        setConnectionStatus("error", demoFallbackEnabled ? "Errore Baserow" : "Connessione non disponibile");
+        setConnectionStatus("error", demoFallbackEnabled ? "Errore Database" : "Connessione non disponibile");
         setAuthLocked(!demoFallbackEnabled);
       }
     } else if (demoFallbackEnabled) {
