@@ -188,55 +188,55 @@ MVP admin:
 
 ### Tabella `Agenti`
 
-| Campo | Tipo | Note |
-| --- | --- | --- |
-| `id` | Autonumber | ID interno Baserow |
-| `nome` | Testo | Nome agente |
-| `email` | Email | Unica per agente |
-| `cb_unitaria` | Numero decimale | Valore CB base per contratto |
-| `target_mensile` | Numero intero | Contratti validati |
-| `target_trimestrale` | Numero intero | Contratti validati |
-| `target_annuale` | Numero intero | Contratti validati |
-| `ruolo` | Single select | `agente`, `admin` |
-| `attivo` | Boolean | Per nascondere agenti disattivati |
-| `password_hash` | Long text | Hash bcrypt della password |
-| `created_at` | Created on | Audit |
-| `updated_at` | Last modified | Audit |
+| Campo                | Tipo            | Note                              |
+| -------------------- | --------------- | --------------------------------- |
+| `id`                 | Autonumber      | ID interno Baserow                |
+| `nome`               | Testo           | Nome agente                       |
+| `email`              | Email           | Unica per agente                  |
+| `cb_unitaria`        | Numero decimale | Valore CB base per contratto      |
+| `target_mensile`     | Numero intero   | Contratti validati                |
+| `target_trimestrale` | Numero intero   | Contratti validati                |
+| `target_annuale`     | Numero intero   | Contratti validati                |
+| `ruolo`              | Single select   | `agente`, `admin`                 |
+| `attivo`             | Boolean         | Per nascondere agenti disattivati |
+| `password_hash`      | Long text       | Hash bcrypt della password        |
+| `created_at`         | Created on      | Audit                             |
+| `updated_at`         | Last modified   | Audit                             |
 
 ### Tabella `Contratti`
 
-| Campo | Tipo | Note |
-| --- | --- | --- |
-| `id` | Autonumber | ID interno Baserow |
-| `agente` | Link to table | Relazione verso `Agenti` |
-| `data_inserimento` | Date | Default oggi |
-| `id_contratto` | Testo | ID interno o esterno del contratto |
-| `ragione_sociale` | Testo | Cliente o azienda |
-| `cellulare` | Testo | Meglio testo, non numero |
-| `tipo_cliente` | Single select | `Business`, `Privato`, `Condominio` |
-| `categoria_cliente` | Single select | `prospect`, `cb`, `ex cb` |
-| `fornitore` | Testo | Nome fornitore |
-| `nome_offerta` | Testo | Nome offerta venduta |
-| `tipo_operazione` | Multiple select | `switch`, `switch + voltura`, `cambio listino`, `subentro` |
-| `tipo_fornitura` | Single select | `luce`, `gas`, `dual` |
-| `pod` | Testo | Obbligatorio se luce o dual |
-| `pdr` | Testo | Obbligatorio se gas o dual |
-| `metodo_pagamento` | Single select | `bollettino`, `rid` |
-| `iban` | Testo | Obbligatorio se RID |
-| `file_contratto` | File | Allegati multipli: PDF, Word, Excel, PowerPoint, OpenDocument, JPG, PNG, WebP, HEIC/HEIF |
-| `piva` | Testo | Opzionale |
-| `email` | Email | Opzionale |
-| `indirizzo` | Long text | Indirizzo principale |
-| `indirizzo_fatturazione` | Long text | Opzionale |
-| `indirizzo_fornitura` | Long text | Opzionale |
-| `descrizione` | Long text | Note |
-| `stato_contratto` | Single select | `Caricato`, `OK`, `K.O.`, `Switch - Out` |
-| `cb_maturata` | Formula/Numero | `0` se `K.O.` o `Switch - Out`, altrimenti valore CB |
-| `mese_riferimento` | Formula | `YYYY-MM` da `data_inserimento` |
-| `trimestre_riferimento` | Formula | `YYYY-Qn` |
-| `anno_riferimento` | Formula | `YYYY` |
-| `created_at` | Created on | Audit |
-| `updated_at` | Last modified | Audit |
+| Campo                    | Tipo            | Note                                                                                     |
+| ------------------------ | --------------- | ---------------------------------------------------------------------------------------- |
+| `id`                     | Autonumber      | ID interno Baserow                                                                       |
+| `agente`                 | Link to table   | Relazione verso `Agenti`                                                                 |
+| `data_inserimento`       | Date            | Default oggi                                                                             |
+| `id_contratto`           | Testo           | ID interno o esterno del contratto                                                       |
+| `ragione_sociale`        | Testo           | Cliente o azienda                                                                        |
+| `cellulare`              | Testo           | Meglio testo, non numero                                                                 |
+| `tipo_cliente`           | Single select   | `Business`, `Privato`, `Condominio`                                                      |
+| `categoria_cliente`      | Single select   | `prospect`, `cb`, `ex cb`                                                                |
+| `fornitore`              | Testo           | Nome fornitore                                                                           |
+| `nome_offerta`           | Testo           | Nome offerta venduta                                                                     |
+| `tipo_operazione`        | Multiple select | `switch`, `switch + voltura`, `cambio listino`, `subentro`                               |
+| `tipo_fornitura`         | Single select   | `luce`, `gas`, `dual`                                                                    |
+| `pod`                    | Testo           | Obbligatorio se luce o dual                                                              |
+| `pdr`                    | Testo           | Obbligatorio se gas o dual                                                               |
+| `metodo_pagamento`       | Single select   | `bollettino`, `rid`                                                                      |
+| `iban`                   | Testo           | Obbligatorio se RID                                                                      |
+| `file_contratto`         | File            | Allegati multipli: PDF, Word, Excel, PowerPoint, OpenDocument, JPG, PNG, WebP, HEIC/HEIF |
+| `piva`                   | Testo           | Opzionale                                                                                |
+| `email`                  | Email           | Opzionale                                                                                |
+| `indirizzo`              | Long text       | Indirizzo principale                                                                     |
+| `indirizzo_fatturazione` | Long text       | Opzionale                                                                                |
+| `indirizzo_fornitura`    | Long text       | Opzionale                                                                                |
+| `descrizione`            | Long text       | Note                                                                                     |
+| `stato_contratto`        | Single select   | `Caricato`, `OK`, `K.O.`, `Switch - Out`                                                 |
+| `cb_maturata`            | Formula/Numero  | `0` se `K.O.` o `Switch - Out`, altrimenti valore CB                                     |
+| `mese_riferimento`       | Formula         | `YYYY-MM` da `data_inserimento`                                                          |
+| `trimestre_riferimento`  | Formula         | `YYYY-Qn`                                                                                |
+| `anno_riferimento`       | Formula         | `YYYY`                                                                                   |
+| `created_at`             | Created on      | Audit                                                                                    |
+| `updated_at`             | Last modified   | Audit                                                                                    |
 
 ### Formule consigliate
 

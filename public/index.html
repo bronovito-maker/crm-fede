@@ -7,7 +7,8 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <title>CRM Energia</title>
+    <title>Volt CRM</title>
+    <link rel="icon" type="image/svg+xml" href="volt-logo.svg" />
     <link rel="preconnect" href="https://images.unsplash.com" />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -16,13 +17,10 @@
     <section class="login-screen" id="login-screen" aria-labelledby="login-title">
       <form class="login-card" id="login-form">
         <div class="brand login-brand">
-          <img
-            src="https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?auto=format&fit=crop&w=160&q=80"
-            alt="Pannelli energetici"
-          />
+          <img src="volt-logo.svg" alt="Logo Volt CRM" />
           <div>
-            <strong>Energia CRM</strong>
-            <span>Area agente</span>
+            <strong>Volt CRM</strong>
+            <span>Area commerciale</span>
           </div>
         </div>
         <div>
@@ -32,11 +30,23 @@
         </div>
         <label>
           Email
-          <input name="email" type="email" placeholder="agente@email.it" autocomplete="email" required />
+          <input
+            name="email"
+            type="email"
+            placeholder="agente@email.it"
+            autocomplete="email"
+            required
+          />
         </label>
         <label>
           Password
-          <input name="password" type="password" placeholder="Password" autocomplete="current-password" required />
+          <input
+            name="password"
+            type="password"
+            placeholder="Password"
+            autocomplete="current-password"
+            required
+          />
         </label>
         <p id="login-feedback" role="status"></p>
         <button class="primary-button" type="submit">Accedi</button>
@@ -46,13 +56,10 @@
     <div class="app-shell">
       <aside class="sidebar" aria-label="Navigazione principale">
         <div class="brand">
-          <img
-            src="https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?auto=format&fit=crop&w=160&q=80"
-            alt="Pannelli energetici"
-          />
+          <img src="volt-logo.svg" alt="Logo Volt CRM" />
           <div>
-            <strong>Energia CRM</strong>
-            <span>Area agente</span>
+            <strong>Volt CRM</strong>
+            <span>Area commerciale</span>
           </div>
         </div>
 
@@ -85,8 +92,15 @@
             <h1 id="page-title">Dashboard</h1>
           </div>
           <div class="topbar-actions">
-            <button class="primary-button quick-action" type="button" data-go-page="new-contract">Nuovo contratto</button>
-            <div class="connection-pill status-loading" id="connection-status" role="status" aria-live="polite">
+            <button class="primary-button quick-action" type="button" data-go-page="new-contract">
+              Nuovo contratto
+            </button>
+            <div
+              class="connection-pill status-loading"
+              id="connection-status"
+              role="status"
+              aria-live="polite"
+            >
               <span class="status-dot"></span>
               <span>Database...</span>
             </div>
@@ -94,7 +108,9 @@
               <span class="agent-dot"></span>
               <span id="agent-name">Marco Bianchi</span>
             </div>
-            <button class="secondary-button logout-button" type="button" id="logout-button">Esci</button>
+            <button class="secondary-button logout-button" type="button" id="logout-button">
+              Esci
+            </button>
           </div>
         </header>
 
@@ -116,7 +132,11 @@
                 <span>mese corrente</span>
               </div>
               <div class="donut-layout">
-                <div class="donut-chart" id="donut-chart" aria-label="Distribuzione stati contratti"></div>
+                <div
+                  class="donut-chart"
+                  id="donut-chart"
+                  aria-label="Distribuzione stati contratti"
+                ></div>
                 <div class="legend" id="status-legend"></div>
               </div>
             </article>
@@ -162,16 +182,46 @@
               <span>Tempo obiettivo: meno di 1 minuto</span>
             </div>
             <div id="new-contract-summary" class="form-banner" hidden>
-              <span>Ingresso in fornitura previsto il: <strong id="predicted-start-date">--</strong></span>
+              <span
+                >Ingresso in fornitura previsto il:
+                <strong id="predicted-start-date">--</strong></span
+              >
+              <div class="form-summary-metrics" aria-label="Riepilogo contratto">
+                <span class="summary-pill">
+                  <small>Pratiche</small>
+                  <strong id="summary-practices">1</strong>
+                </span>
+                <span class="summary-pill">
+                  <small>Contratti conteggiati</small>
+                  <strong id="summary-units">1</strong>
+                </span>
+                <span class="summary-pill">
+                  <small>CB prevista</small>
+                  <strong id="summary-commission">€ 0,00</strong>
+                </span>
+              </div>
             </div>
             <div class="form-grid">
               <label>
                 Ragione sociale - Nome cliente
-                <input name="ragioneSociale" type="text" placeholder="Es. Rossi SRL" autocomplete="organization" required />
+                <input
+                  name="ragioneSociale"
+                  type="text"
+                  placeholder="Es. Rossi SRL"
+                  autocomplete="organization"
+                  required
+                />
               </label>
               <label>
                 Cellulare
-                <input name="cellulare" type="tel" inputmode="tel" placeholder="+39 333 1234567" autocomplete="tel" required />
+                <input
+                  name="cellulare"
+                  type="tel"
+                  inputmode="tel"
+                  placeholder="+39 333 1234567"
+                  autocomplete="tel"
+                  required
+                />
               </label>
               <label>
                 Tipo cliente
@@ -188,7 +238,12 @@
               </label>
               <label>
                 Email
-                <input name="email" type="email" placeholder="cliente@email.it" autocomplete="email" />
+                <input
+                  name="email"
+                  type="email"
+                  placeholder="cliente@email.it"
+                  autocomplete="email"
+                />
               </label>
               <label>
                 ID CONTRATTO
@@ -210,15 +265,31 @@
               </label>
               <label>
                 Nome offerta
-                <input name="nomeOfferta" type="text" placeholder="Es. Flex Business Luce" required />
+                <input
+                  name="nomeOfferta"
+                  type="text"
+                  placeholder="Es. Flex Business Luce"
+                  required
+                />
               </label>
               <fieldset class="field-group full-span">
                 <legend>Tipo operazione</legend>
                 <div class="checkbox-grid">
-                  <label><input name="tipoOperazione" type="checkbox" value="switch" /> Switch</label>
-                  <label><input name="tipoOperazione" type="checkbox" value="switch + voltura" /> Switch + voltura</label>
-                  <label><input name="tipoOperazione" type="checkbox" value="cambio listino" /> Cambio listino</label>
-                  <label><input name="tipoOperazione" type="checkbox" value="subentro" /> Subentro</label>
+                  <label
+                    ><input name="tipoOperazione" type="checkbox" value="switch" /> Switch</label
+                  >
+                  <label
+                    ><input name="tipoOperazione" type="checkbox" value="switch + voltura" /> Switch
+                    + voltura</label
+                  >
+                  <label
+                    ><input name="tipoOperazione" type="checkbox" value="cambio listino" /> Cambio
+                    listino</label
+                  >
+                  <label
+                    ><input name="tipoOperazione" type="checkbox" value="subentro" />
+                    Subentro</label
+                  >
                 </div>
               </fieldset>
               <label>
@@ -252,7 +323,12 @@
               </label>
               <label>
                 Indirizzo
-                <input name="indirizzo" type="text" placeholder="Via Roma 12, Milano" autocomplete="street-address" />
+                <input
+                  name="indirizzo"
+                  type="text"
+                  placeholder="Via Roma 12, Milano"
+                  autocomplete="street-address"
+                />
               </label>
               <label>
                 Agente assegnato
@@ -260,11 +336,19 @@
               </label>
               <label>
                 Indirizzo fatturazione
-                <input name="indirizzoFatturazione" type="text" placeholder="Se diverso da indirizzo" />
+                <input
+                  name="indirizzoFatturazione"
+                  type="text"
+                  placeholder="Se diverso da indirizzo"
+                />
               </label>
               <label>
                 Indirizzo fornitura
-                <input name="indirizzoFornitura" type="text" placeholder="POD/PDR o indirizzo fornitura" />
+                <input
+                  name="indirizzoFornitura"
+                  type="text"
+                  placeholder="POD/PDR o indirizzo fornitura"
+                />
               </label>
               <label class="full-span">
                 <span class="field-with-counter">
@@ -278,7 +362,10 @@
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.jpg,.jpeg,.png,.webp,.heic,.heif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/jpeg,image/png,image/webp,image/heic,image/heif"
                   multiple
                 />
-                <small id="contract-files-help">Puoi aggiungere file in piu passaggi: l'elenco resta cumulativo fino al salvataggio.</small>
+                <small id="contract-files-help"
+                  >Puoi aggiungere file in piu passaggi: l'elenco resta cumulativo fino al
+                  salvataggio.</small
+                >
               </label>
               <div class="file-selection full-span" id="contract-files-selection" hidden>
                 <div class="file-selection-head">
@@ -289,7 +376,11 @@
               </div>
               <label class="full-span">
                 Descrizione / note
-                <textarea name="descrizione" rows="4" placeholder="Note utili per validazione"></textarea>
+                <textarea
+                  name="descrizione"
+                  rows="4"
+                  placeholder="Note utili per validazione"
+                ></textarea>
               </label>
             </div>
             <div class="form-actions">
@@ -316,7 +407,9 @@
 
           <div class="table-wrap">
             <table>
-              <caption class="sr-only">Contratti dell'agente</caption>
+              <caption class="sr-only">
+                Contratti dell'agente
+              </caption>
               <thead>
                 <tr>
                   <th>Cliente</th>
@@ -334,7 +427,9 @@
           <div class="empty-state" id="contracts-empty" hidden>
             <strong>Nessun contratto trovato</strong>
             <p>Controlla i filtri oppure inserisci subito un nuovo contratto.</p>
-            <button class="secondary-button" type="button" data-go-page="new-contract">Nuovo contratto</button>
+            <button class="secondary-button" type="button" data-go-page="new-contract">
+              Nuovo contratto
+            </button>
           </div>
         </section>
 
@@ -347,7 +442,9 @@
             </div>
             <div class="table-wrap flat">
               <table>
-                <caption class="sr-only">Contratti collegati alla CB del mese</caption>
+                <caption class="sr-only">
+                  Contratti collegati alla CB del mese
+                </caption>
                 <thead>
                   <tr>
                     <th>Cliente</th>
@@ -362,7 +459,9 @@
             <div class="empty-state compact" id="cb-empty" hidden>
               <strong>Nessuna CB nel mese corrente</strong>
               <p>I contratti validati e in attesa appariranno qui.</p>
-              <button class="secondary-button" type="button" data-go-page="new-contract">Nuovo contratto</button>
+              <button class="secondary-button" type="button" data-go-page="new-contract">
+                Nuovo contratto
+              </button>
             </div>
           </article>
         </section>
@@ -426,7 +525,11 @@
                 </label>
                 <label>
                   Password
-                  <input name="password" type="password" placeholder="Solo se nuova o da cambiare" />
+                  <input
+                    name="password"
+                    type="password"
+                    placeholder="Solo se nuova o da cambiare"
+                  />
                 </label>
                 <label>
                   CB unitaria
@@ -458,7 +561,9 @@
                 <p id="admin-agent-feedback" role="status"></p>
                 <div class="admin-actions">
                   <button class="primary-button" type="submit">Salva agente</button>
-                  <button class="secondary-button" type="button" id="admin-agent-reset">Nuovo agente</button>
+                  <button class="secondary-button" type="button" id="admin-agent-reset">
+                    Nuovo agente
+                  </button>
                 </div>
               </form>
             </article>
@@ -476,13 +581,25 @@
     </div>
 
     <div class="modal-backdrop" id="contract-modal" hidden>
-      <section class="contract-detail" role="dialog" aria-modal="true" aria-labelledby="contract-detail-title">
+      <section
+        class="contract-detail"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="contract-detail-title"
+      >
         <div class="modal-head">
           <div>
             <p class="eyebrow">Dettaglio contratto</p>
             <h2 id="contract-detail-title">Contratto</h2>
           </div>
-          <button class="icon-button" type="button" id="close-contract-modal" aria-label="Chiudi dettaglio">×</button>
+          <button
+            class="icon-button"
+            type="button"
+            id="close-contract-modal"
+            aria-label="Chiudi dettaglio"
+          >
+            ×
+          </button>
         </div>
         <div class="detail-grid" id="contract-detail-content"></div>
       </section>

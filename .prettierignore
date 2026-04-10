@@ -1,0 +1,4 @@
+node_modules
+coverage
+sessions.db
+package-lock.json

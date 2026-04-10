@@ -1,69 +1,72 @@
-require("dotenv").config();
+require('dotenv').config();
 
-const crypto = require("crypto");
-const express = require("express");
-const bcrypt = require("bcryptjs");
-const multer = require("multer");
-const path = require("path");
-const helmet = require("helmet");
-const rateLimit = require("express-rate-limit");
-const morgan = require("morgan");
-const Database = require("better-sqlite3");
+const crypto = require('crypto');
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const multer = require('multer');
+const path = require('path');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const morgan = require('morgan');
+const Database = require('better-sqlite3');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 const CONFIG = {
-  baserowBaseUrl: process.env.BASEROW_BASE_URL || "https://api.baserow.io",
-  baserowToken: process.env.BASEROW_TOKEN || "",
-  agentiTableId: process.env.BASEROW_TABLE_AGENTI_ID || "",
-  contrattiTableId: process.env.BASEROW_TABLE_CONTRATTI_ID || "",
-  contrattiAgenteField: process.env.BASEROW_FIELD_CONTRATTI_AGENTE || "agente",
+  baserowBaseUrl: process.env.BASEROW_BASE_URL || 'https://api.baserow.io',
+  baserowToken: process.env.BASEROW_TOKEN || '',
+  agentiTableId: process.env.BASEROW_TABLE_AGENTI_ID || '',
+  contrattiTableId: process.env.BASEROW_TABLE_CONTRATTI_ID || '',
+  contrattiAgenteField: process.env.BASEROW_FIELD_CONTRATTI_AGENTE || 'agente',
   sessionTtlMs: Number(process.env.SESSION_TTL_HOURS || 12) * 60 * 60 * 1000,
-  cookieSecure: process.env.NODE_ENV === "production",
+  cookieSecure: process.env.NODE_ENV === 'production',
 };
 
-const allowedClientTypes = new Set(["Business", "Privato", "Condominio"]);
-const allowedCustomerCategories = new Set(["prospect", "cb", "ex cb"]);
-const allowedStatuses = new Set(["Caricato", "OK", "K.O.", "Switch - Out"]);
-const allowedOperations = new Set(["switch", "switch + voltura", "cambio listino", "subentro"]);
-const allowedSupplyTypes = new Set(["luce", "gas", "dual"]);
-const allowedPaymentMethods = new Set(["bollettino", "rid"]);
+const allowedClientTypes = new Set(['Business', 'Privato', 'Condominio']);
+const allowedCustomerCategories = new Set(['prospect', 'cb', 'ex cb']);
+const allowedStatuses = new Set(['Caricato', 'OK', 'K.O.', 'Switch - Out']);
+const allowedOperations = new Set(['switch', 'switch + voltura', 'cambio listino', 'subentro']);
+const allowedSupplyTypes = new Set(['luce', 'gas', 'dual']);
+const allowedPaymentMethods = new Set(['bollettino', 'rid']);
 const maxContractFiles = 10;
 const maxContractFileSize = 15 * 1024 * 1024;
+const baserowPageSize = 200;
+const apiCacheTtlMs = Number(process.env.API_CACHE_TTL_MS || 15_000);
 const allowedContractFileExtensions = new Set([
-  "pdf",
-  "doc",
-  "docx",
-  "xls",
-  "xlsx",
-  "ppt",
-  "pptx",
-  "odt",
-  "ods",
-  "jpg",
-  "jpeg",
-  "png",
-  "webp",
-  "heic",
-  "heif",
+  'pdf',
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+  'ppt',
+  'pptx',
+  'odt',
+  'ods',
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+  'heic',
+  'heif',
 ]);
 const allowedContractFileTypes = new Set([
-  "application/pdf",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.ms-powerpoint",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "application/vnd.oasis.opendocument.text",
-  "application/vnd.oasis.opendocument.spreadsheet",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/heic",
-  "image/heif",
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.oasis.opendocument.text',
+  'application/vnd.oasis.opendocument.spreadsheet',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
 ]);
+const apiCache = new Map();
 // ---- Sessioni persistenti su SQLite ----
 class SqliteSessionStore {
   constructor(dbPath) {
@@ -77,13 +80,17 @@ class SqliteSessionStore {
       )
     `);
     // Rimuovi sessioni scadute all'avvio
-    this._db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(Date.now());
+    this._db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(Date.now());
 
-    this._get     = this._db.prepare("SELECT agent_id, email, expires_at FROM sessions WHERE token = ?");
-    this._set     = this._db.prepare("INSERT OR REPLACE INTO sessions (token, agent_id, email, expires_at) VALUES (?, ?, ?, ?)");
-    this._delete  = this._db.prepare("DELETE FROM sessions WHERE token = ?");
-    this._touch   = this._db.prepare("UPDATE sessions SET expires_at = ? WHERE token = ?");
-    this._cleanup = this._db.prepare("DELETE FROM sessions WHERE expires_at <= ?");
+    this._get = this._db.prepare(
+      'SELECT agent_id, email, expires_at FROM sessions WHERE token = ?'
+    );
+    this._set = this._db.prepare(
+      'INSERT OR REPLACE INTO sessions (token, agent_id, email, expires_at) VALUES (?, ?, ?, ?)'
+    );
+    this._delete = this._db.prepare('DELETE FROM sessions WHERE token = ?');
+    this._touch = this._db.prepare('UPDATE sessions SET expires_at = ? WHERE token = ?');
+    this._cleanup = this._db.prepare('DELETE FROM sessions WHERE expires_at <= ?');
   }
 
   get(token) {
@@ -109,23 +116,37 @@ class SqliteSessionStore {
   }
 }
 
-const sessionDbPath = process.env.SESSION_DB_PATH || path.join(__dirname, "sessions.db");
+const sessionDbPath = process.env.SESSION_DB_PATH || path.join(__dirname, 'sessions.db');
 const sessions = new SqliteSessionStore(sessionDbPath);
-const sessionCookieName = "crm_session";
+const sessionCookieName = 'crm_session';
 
 // Pulizia sessioni scadute ogni ora
-setInterval(() => {
-  const removed = sessions.cleanup();
-  if (removed > 0) console.log(`[sessions] rimosse ${removed} sessioni scadute`);
-}, 60 * 60 * 1000).unref();
+setInterval(
+  () => {
+    const removed = sessions.cleanup();
+    if (removed > 0) console.log(`[sessions] rimosse ${removed} sessioni scadute`);
+  },
+  60 * 60 * 1000
+).unref();
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
-  message: { error: "TOO_MANY_ATTEMPTS", message: "Troppi tentativi di accesso. Riprova tra 15 minuti." },
+  message: {
+    error: 'TOO_MANY_ATTEMPTS',
+    message: 'Troppi tentativi di accesso. Riprova tra 15 minuti.',
+  },
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true,
+});
+
+const apiReadLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  message: { error: 'TOO_MANY_REQUESTS', message: 'Troppe richieste. Riprova tra un minuto.' },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 const upload = multer({
@@ -136,44 +157,46 @@ const upload = multer({
   },
 });
 
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      // 'unsafe-inline' necessario per colori dinamici dei grafici (inline style nei legend dot)
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "https://images.unsplash.com"],
-      connectSrc: ["'self'"],
-      fontSrc: ["'self'"],
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        // 'unsafe-inline' necessario per colori dinamici dei grafici (inline style nei legend dot)
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'https://images.unsplash.com'],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
+      },
     },
-  },
-}));
+  })
+);
 
-app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 // HTTPS redirect in produzione (dietro reverse proxy: Nginx, Railway, Render, ecc.)
-if (process.env.NODE_ENV === "production") {
-  app.set("trust proxy", 1);
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
   app.use((req, res, next) => {
-    if (req.headers["x-forwarded-proto"] !== "https") {
+    if (req.headers['x-forwarded-proto'] !== 'https') {
       return res.redirect(301, `https://${req.headers.host}${req.url}`);
     }
     next();
   });
 }
 
-app.use(express.json({ limit: "100kb" }));
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.json({ limit: '100kb' }));
+app.use(express.static(path.join(__dirname, 'public')));
 
-app.get("/api/health", (req, res) => {
+app.get('/api/health', (req, res) => {
   res.json({
     ok: isConfigured(),
-    service: "crm-energia",
+    service: 'crm-energia',
   });
 });
 
-app.get("/api/session", attachSession, async (req, res) => {
+app.get('/api/session', attachSession, async (req, res) => {
   if (!req.session) {
     res.json({ authenticated: false });
     return;
@@ -185,11 +208,11 @@ app.get("/api/session", attachSession, async (req, res) => {
     res.json({ authenticated: true, agent });
   } catch (error) {
     clearSessionCookie(res);
-    handleApiError(res, error, "SESSION_LOAD_FAILED", "Sessione non valida.");
+    handleApiError(res, error, 'SESSION_LOAD_FAILED', 'Sessione non valida.');
   }
 });
 
-app.post("/api/login", loginLimiter, async (req, res) => {
+app.post('/api/login', loginLimiter, async (req, res) => {
   try {
     ensureConfigured();
 
@@ -197,29 +220,31 @@ app.post("/api/login", loginLimiter, async (req, res) => {
     const password = cleanText(req.body.password);
 
     if (!email || !password) {
-      throw publicError(401, "LOGIN_FAILED", "Credenziali non valide.");
+      throw publicError(401, 'LOGIN_FAILED', 'Credenziali non valide.');
     }
 
     const agent = await getAgentByEmail(email);
-    const passwordOk = agent.passwordHash ? await bcrypt.compare(password, agent.passwordHash) : false;
+    const passwordOk = agent.passwordHash
+      ? await bcrypt.compare(password, agent.passwordHash)
+      : false;
 
     if (!passwordOk) {
-      throw publicError(401, "LOGIN_FAILED", "Credenziali non valide.");
+      throw publicError(401, 'LOGIN_FAILED', 'Credenziali non valide.');
     }
 
     if (!agent.attivo) {
-      throw publicError(403, "AGENT_DISABLED", "Agente non attivo.");
+      throw publicError(403, 'AGENT_DISABLED', 'Agente non attivo.');
     }
 
     const token = createSession(agent.id, email);
     setSessionCookie(res, token);
     res.json({ authenticated: true, agent: publicAgent(agent) });
   } catch (error) {
-    handleApiError(res, error, "LOGIN_FAILED", "Accesso non riuscito.");
+    handleApiError(res, error, 'LOGIN_FAILED', 'Accesso non riuscito.');
   }
 });
 
-app.post("/api/logout", attachSession, (req, res) => {
+app.post('/api/logout', attachSession, (req, res) => {
   if (req.sessionToken) {
     sessions.delete(req.sessionToken);
   }
@@ -227,183 +252,225 @@ app.post("/api/logout", attachSession, (req, res) => {
   res.json({ ok: true });
 });
 
-app.get("/api/agent", requireAuth, async (req, res) => {
+app.get('/api/agent', requireAuth, async (req, res) => {
   try {
     ensureConfigured();
     const agent = await getCurrentAgent(req.session.agentId);
     res.json(agent);
   } catch (error) {
-    handleApiError(res, error, "AGENT_LOAD_FAILED", "Impossibile caricare l'agente.");
+    handleApiError(res, error, 'AGENT_LOAD_FAILED', "Impossibile caricare l'agente.");
   }
 });
 
-app.get("/api/contracts", requireAuth, async (req, res) => {
+app.get('/api/contracts', apiReadLimiter, requireAuth, async (req, res) => {
   try {
     ensureConfigured();
-    const contracts = await listContracts(req.session.agentId);
+    const cacheKey = contractsCacheKey(req.session.agentId);
+    const contracts = await getCached(cacheKey, () => listContracts(req.session.agentId));
     res.json(contracts);
   } catch (error) {
-    handleApiError(res, error, "CONTRACTS_LOAD_FAILED", "Impossibile caricare i contratti.");
+    handleApiError(res, error, 'CONTRACTS_LOAD_FAILED', 'Impossibile caricare i contratti.');
   }
 });
 
-app.post("/api/contracts", requireAuth, upload.array("fileContratto", maxContractFiles), async (req, res) => {
-  try {
-    ensureConfigured();
-    const agent = await getCurrentAgent(req.session.agentId);
-    const contract = sanitizeContractInput(req.body);
-    const files = Array.isArray(req.files) ? req.files : [];
-    const uploadedFiles = await Promise.all(files.map(uploadContractFile));
-    const payload = {
-      agente: [req.session.agentId],
-      data_inserimento: todayIsoDate(),
-      ragione_sociale: contract.ragioneSociale,
-      cellulare: contract.cellulare,
-      tipo_cliente: contract.tipoCliente,
-      categoria_cliente: contract.categoriaCliente,
-      fornitore: contract.fornitore,
-      nome_offerta: contract.nomeOfferta,
-      tipo_operazione: contract.tipoOperazione,
-      tipo_fornitura: contract.tipoFornitura,
-      pod: contract.pod,
-      pdr: contract.pdr,
-      metodo_pagamento: contract.metodoPagamento,
-      iban: contract.iban,
-      piva: contract.piva,
-      email: contract.email,
-      indirizzo: contract.indirizzo,
-      indirizzo_fatturazione: contract.indirizzoFatturazione,
-      indirizzo_fornitura: contract.indirizzoFornitura,
-      descrizione: contract.descrizione,
-      stato_contratto: "Caricato",
-      data_inizio_fornitura: contract.dataInizioFornitura,
-      cb_unitaria_snapshot: agent.cbUnitaria,
-    };
+app.post(
+  '/api/contracts',
+  requireAuth,
+  upload.array('fileContratto', maxContractFiles),
+  async (req, res) => {
+    try {
+      ensureConfigured();
+      const agent = await getCurrentAgent(req.session.agentId);
+      const contract = sanitizeContractInput(req.body);
+      const files = Array.isArray(req.files) ? req.files : [];
+      const uploadedFiles = await Promise.all(files.map(uploadContractFile));
+      const payload = {
+        agente: [req.session.agentId],
+        data_inserimento: todayIsoDate(),
+        ragione_sociale: contract.ragioneSociale,
+        cellulare: contract.cellulare,
+        tipo_cliente: contract.tipoCliente,
+        categoria_cliente: contract.categoriaCliente,
+        fornitore: contract.fornitore,
+        nome_offerta: contract.nomeOfferta,
+        tipo_operazione: contract.tipoOperazione,
+        tipo_fornitura: contract.tipoFornitura,
+        pod: contract.pod,
+        pdr: contract.pdr,
+        metodo_pagamento: contract.metodoPagamento,
+        iban: contract.iban,
+        piva: contract.piva,
+        email: contract.email,
+        indirizzo: contract.indirizzo,
+        indirizzo_fatturazione: contract.indirizzoFatturazione,
+        indirizzo_fornitura: contract.indirizzoFornitura,
+        descrizione: contract.descrizione,
+        stato_contratto: 'Caricato',
+        data_inizio_fornitura: contract.dataInizioFornitura,
+        cb_unitaria_snapshot: agent.cbUnitaria,
+      };
 
-    if (contract.idContratto) {
-      payload.id_contratto = contract.idContratto;
+      if (contract.idContratto) {
+        payload.id_contratto = contract.idContratto;
+      }
+
+      if (uploadedFiles.length) {
+        payload.file_contratto = uploadedFiles.map((uploadedFile, index) => ({
+          name: uploadedFile.name,
+          visible_name: files[index].originalname,
+        }));
+      }
+
+      const created = await createBaserowContract(payload);
+      invalidateContractsCache(req.session.agentId);
+      invalidateAdminStatsCache();
+      res.status(201).json(normalizeContract(created));
+    } catch (error) {
+      handleApiError(res, error, 'CONTRACT_NOT_SAVED', 'Contratto non salvato.');
     }
-
-    if (uploadedFiles.length) {
-      payload.file_contratto = uploadedFiles.map((uploadedFile, index) => ({
-        name: uploadedFile.name,
-        visible_name: files[index].originalname,
-      }));
-    }
-
-    const created = await createBaserowContract(payload);
-    res.status(201).json(normalizeContract(created));
-  } catch (error) {
-    handleApiError(res, error, "CONTRACT_NOT_SAVED", "Contratto non salvato.");
   }
-});
+);
 
-app.patch("/api/contracts/:id/status", requireAuth, async (req, res) => {
+app.patch('/api/contracts/:id/status', requireAuth, async (req, res) => {
   try {
     ensureConfigured();
     const contractId = Number(req.params.id);
     const status = normalizeStatus(req.body.status);
 
     if (!Number.isInteger(contractId) || contractId <= 0) {
-      throw publicError(400, "INVALID_CONTRACT_ID", "Contratto non valido.");
+      throw publicError(400, 'INVALID_CONTRACT_ID', 'Contratto non valido.');
     }
 
     if (!allowedStatuses.has(status)) {
-      throw publicError(400, "INVALID_STATUS", "Stato contratto non valido.");
+      throw publicError(400, 'INVALID_STATUS', 'Stato contratto non valido.');
     }
 
     const existing = await getBaserowContract(contractId);
     if (!isCurrentAgentContract(existing, req.session.agentId)) {
-      throw publicError(403, "CONTRACT_FORBIDDEN", "Contratto non accessibile.");
+      throw publicError(403, 'CONTRACT_FORBIDDEN', 'Contratto non accessibile.');
     }
 
     const updated = await updateBaserowContract(contractId, { stato_contratto: status });
+    invalidateContractsCache(req.session.agentId);
+    invalidateAdminStatsCache();
     res.json(normalizeContract(updated));
   } catch (error) {
-    handleApiError(res, error, "CONTRACT_STATUS_NOT_UPDATED", "Stato contratto non aggiornato.");
+    handleApiError(res, error, 'CONTRACT_STATUS_NOT_UPDATED', 'Stato contratto non aggiornato.');
   }
 });
 
-app.get("/api/admin/agents", requireAdmin, async (req, res) => {
+app.get('/api/admin/agents', apiReadLimiter, requireAdmin, async (req, res) => {
   try {
     ensureConfigured();
     const agents = await listAgents();
     res.json(agents);
   } catch (error) {
-    handleApiError(res, error, "ADMIN_AGENTS_LOAD_FAILED", "Impossibile caricare gli agenti.");
+    handleApiError(res, error, 'ADMIN_AGENTS_LOAD_FAILED', 'Impossibile caricare gli agenti.');
   }
 });
 
-app.post("/api/admin/agents", requireAdmin, async (req, res) => {
+app.post('/api/admin/agents', requireAdmin, async (req, res) => {
   try {
     ensureConfigured();
     const agent = sanitizeAgentInput(req.body, { requirePassword: true });
     const created = await createBaserowAgent(agentToBaserowPayload(agent));
+    invalidateAdminStatsCache();
     res.status(201).json(publicAgent(normalizeAgent(created)));
   } catch (error) {
-    handleApiError(res, error, "ADMIN_AGENT_NOT_CREATED", "Agente non creato.");
+    handleApiError(res, error, 'ADMIN_AGENT_NOT_CREATED', 'Agente non creato.');
   }
 });
 
-app.patch("/api/admin/agents/:id", requireAdmin, async (req, res) => {
+app.patch('/api/admin/agents/:id', requireAdmin, async (req, res) => {
   try {
     ensureConfigured();
     const agentId = Number(req.params.id);
     if (!Number.isInteger(agentId) || agentId <= 0) {
-      throw publicError(400, "INVALID_AGENT_ID", "Agente non valido.");
+      throw publicError(400, 'INVALID_AGENT_ID', 'Agente non valido.');
     }
 
     const agent = sanitizeAgentInput(req.body, { requirePassword: false });
     const updated = await updateBaserowAgent(agentId, agentToBaserowPayload(agent));
+    invalidateAdminStatsCache();
     res.json(publicAgent(normalizeAgent(updated)));
   } catch (error) {
-    handleApiError(res, error, "ADMIN_AGENT_NOT_UPDATED", "Agente non aggiornato.");
+    handleApiError(res, error, 'ADMIN_AGENT_NOT_UPDATED', 'Agente non aggiornato.');
   }
 });
 
-app.get("/api/admin/stats", requireAdmin, async (req, res) => {
+app.get('/api/admin/stats', apiReadLimiter, requireAdmin, async (req, res) => {
   try {
     ensureConfigured();
-    const [agents, contracts] = await Promise.all([listAgents(), listAllContracts()]);
-    res.json(buildAdminStats(agents, contracts));
+    const stats = await getCached(adminStatsCacheKey(), async () => {
+      const [agents, contracts] = await Promise.all([listAgents(), listAllContracts()]);
+      return buildAdminStats(agents, contracts);
+    });
+    res.json(stats);
   } catch (error) {
-    handleApiError(res, error, "ADMIN_STATS_LOAD_FAILED", "Statistiche non disponibili.");
+    handleApiError(res, error, 'ADMIN_STATS_LOAD_FAILED', 'Statistiche non disponibili.');
   }
 });
 
-app.use("/api", (req, res) => {
+app.use('/api', (req, res) => {
   res.status(404).json({
-    error: "API_NOT_FOUND",
-    message: "Endpoint non disponibile.",
+    error: 'API_NOT_FOUND',
+    message: 'Endpoint non disponibile.',
   });
 });
 
 app.use((req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`CRM Energia avviato su http://localhost:${PORT}`);
+    console.log(`Volt CRM avviato su http://localhost:${PORT}`);
     if (!isConfigured()) {
-      console.warn("Configurazione Baserow incompleta. Controlla il file .env.");
+      console.warn('Configurazione Baserow incompleta. Controlla il file .env.');
     }
   });
 }
 
-module.exports = { sanitizeContractInput, sanitizeAgentInput, cleanText, publicError };
+module.exports = {
+  app,
+  agentToBaserowPayload,
+  SqliteSessionStore,
+  buildAdminStats,
+  cleanText,
+  contractCommissionValue,
+  contractUnitCount,
+  createSession,
+  fetchAllRows,
+  fileValue,
+  getCachedWithStore,
+  handleApiError,
+  integerValue,
+  invalidateAdminStatsCache,
+  invalidateContractsCache,
+  isCurrentAgentContract,
+  isAllowedContractFile,
+  isValidVatOrFiscalCode,
+  linkedAgentId,
+  multiSelectValue,
+  normalizeAgent,
+  normalizeContract,
+  normalizeStatus,
+  numberValue,
+  publicError,
+  publicAgent,
+  sanitizeAgentInput,
+  sanitizeContractInput,
+  selectValue,
+  todayIsoDate,
+};
 
 function isConfigured() {
-  return Boolean(
-    CONFIG.baserowToken &&
-      CONFIG.agentiTableId &&
-      CONFIG.contrattiTableId,
-  );
+  return Boolean(CONFIG.baserowToken && CONFIG.agentiTableId && CONFIG.contrattiTableId);
 }
 
 function ensureConfigured() {
   if (!isConfigured()) {
-    throw publicError(503, "BASEROW_NOT_CONFIGURED", "Baserow non configurato.");
+    throw publicError(503, 'BASEROW_NOT_CONFIGURED', 'Baserow non configurato.');
   }
 }
 
@@ -411,8 +478,8 @@ function requireAuth(req, res, next) {
   attachSession(req, res, () => {
     if (!req.session) {
       res.status(401).json({
-        error: "AUTH_REQUIRED",
-        message: "Accesso richiesto.",
+        error: 'AUTH_REQUIRED',
+        message: 'Accesso richiesto.',
       });
       return;
     }
@@ -424,17 +491,17 @@ function requireAdmin(req, res, next) {
   requireAuth(req, res, async () => {
     try {
       const agent = await getCurrentAgent(req.session.agentId);
-      if (agent.ruolo !== "admin") {
+      if (agent.ruolo !== 'admin') {
         res.status(403).json({
-          error: "ADMIN_REQUIRED",
-          message: "Permesso admin richiesto.",
+          error: 'ADMIN_REQUIRED',
+          message: 'Permesso admin richiesto.',
         });
         return;
       }
       req.agent = agent;
       next();
     } catch (error) {
-      handleApiError(res, error, "ADMIN_CHECK_FAILED", "Permesso admin non verificato.");
+      handleApiError(res, error, 'ADMIN_CHECK_FAILED', 'Permesso admin non verificato.');
     }
   });
 }
@@ -460,7 +527,7 @@ function attachSession(req, res, next) {
 }
 
 function createSession(agentId, email) {
-  const token = crypto.randomBytes(32).toString("hex");
+  const token = crypto.randomBytes(32).toString('hex');
   sessions.set(token, {
     agentId,
     email,
@@ -470,22 +537,66 @@ function createSession(agentId, email) {
 }
 
 function setSessionCookie(res, token) {
-  const secure = CONFIG.cookieSecure ? "; Secure" : "";
+  const secure = CONFIG.cookieSecure ? '; Secure' : '';
   res.setHeader(
-    "Set-Cookie",
-    `${sessionCookieName}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(CONFIG.sessionTtlMs / 1000)}${secure}`,
+    'Set-Cookie',
+    `${sessionCookieName}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(CONFIG.sessionTtlMs / 1000)}${secure}`
   );
 }
 
 function clearSessionCookie(res) {
-  res.setHeader("Set-Cookie", `${sessionCookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
+  res.setHeader('Set-Cookie', `${sessionCookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
 }
 
 function getCookie(req, name) {
-  const cookies = String(req.headers.cookie || "").split(";").map((item) => item.trim());
+  const cookies = String(req.headers.cookie || '')
+    .split(';')
+    .map((item) => item.trim());
   const prefix = `${name}=`;
   const found = cookies.find((item) => item.startsWith(prefix));
-  return found ? decodeURIComponent(found.slice(prefix.length)) : "";
+  return found ? decodeURIComponent(found.slice(prefix.length)) : '';
+}
+
+async function getCachedWithStore(store, key, loader, ttlMs, now = Date.now()) {
+  const cached = store.get(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+
+  const value = await loader();
+  store.set(key, {
+    value,
+    expiresAt: now + ttlMs,
+  });
+  return value;
+}
+
+async function getCached(key, loader) {
+  return getCachedWithStore(apiCache, key, loader, apiCacheTtlMs);
+}
+
+function invalidateCacheByPrefix(prefix) {
+  for (const key of apiCache.keys()) {
+    if (key.startsWith(prefix)) {
+      apiCache.delete(key);
+    }
+  }
+}
+
+function contractsCacheKey(agentId) {
+  return `contracts:${agentId}`;
+}
+
+function adminStatsCacheKey() {
+  return 'admin:stats';
+}
+
+function invalidateContractsCache(agentId) {
+  invalidateCacheByPrefix(`contracts:${agentId}`);
+}
+
+function invalidateAdminStatsCache() {
+  apiCache.delete(adminStatsCacheKey());
 }
 
 async function baserowFetch(pathname, options = {}) {
@@ -493,7 +604,7 @@ async function baserowFetch(pathname, options = {}) {
     ...options,
     headers: {
       Authorization: `Token ${CONFIG.baserowToken}`,
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...(options.headers || {}),
     },
   });
@@ -510,123 +621,190 @@ async function baserowFetch(pathname, options = {}) {
 
 async function getCurrentAgent(agentId) {
   const row = await baserowFetch(
-    `/api/database/rows/table/${CONFIG.agentiTableId}/${agentId}/?user_field_names=true`,
+    `/api/database/rows/table/${CONFIG.agentiTableId}/${agentId}/?user_field_names=true`
   );
   return publicAgent(normalizeAgent(row));
 }
 
 async function getAgentByEmail(email) {
   const params = new URLSearchParams({
-    user_field_names: "true",
-    size: "1",
-    filter_type: "AND",
+    user_field_names: 'true',
+    size: '1',
+    filter_type: 'AND',
     filters: JSON.stringify({
-      filter_type: "AND",
+      filter_type: 'AND',
       filters: [
         {
-          field: "email",
-          type: "equal",
+          field: 'email',
+          type: 'equal',
           value: email,
         },
       ],
     }),
   });
 
-  const data = await baserowFetch(`/api/database/rows/table/${CONFIG.agentiTableId}/?${params.toString()}`);
+  const data = await baserowFetch(
+    `/api/database/rows/table/${CONFIG.agentiTableId}/?${params.toString()}`
+  );
   const row = (data.results || [])[0];
 
   if (!row) {
-    throw publicError(401, "LOGIN_FAILED", "Credenziali non valide.");
+    throw publicError(401, 'LOGIN_FAILED', 'Credenziali non valide.');
   }
 
   return normalizeAgent(row);
 }
 
+async function fetchAllRows(fetchPage, params, label, pageSize = baserowPageSize, maxPages = 100) {
+  const rows = [];
+  let page = 1;
+  let totalCount = 0;
+
+  while (true) {
+    const pageParams = new URLSearchParams(params);
+    const data = await fetchPage(pageParams, page, pageSize);
+    const results = Array.isArray(data.results) ? data.results : [];
+    totalCount = Number(data.count) || totalCount;
+    rows.push(...results);
+
+    if (!data.next || results.length === 0) {
+      break;
+    }
+
+    page += 1;
+
+    if (page > maxPages) {
+      console.warn(
+        `[BASEROW_PAGINATION] Interrotta paginazione ${label}: superate ${maxPages} pagine`
+      );
+      break;
+    }
+  }
+
+  if (page > 1) {
+    console.warn(
+      `[BASEROW_PAGINATION] ${label}: caricate ${rows.length} righe su ${totalCount} totali in ${page} pagine`
+    );
+  }
+
+  return rows;
+}
+
+async function fetchAllBaserowRows(tableId, params, label) {
+  return fetchAllRows(
+    async (pageParams, page, pageSize) => {
+      pageParams.set('page', String(page));
+      pageParams.set('size', String(pageSize));
+      return baserowFetch(`/api/database/rows/table/${tableId}/?${pageParams.toString()}`);
+    },
+    params,
+    label,
+    baserowPageSize,
+    100
+  );
+}
+
 async function listContracts(agentId) {
   const params = new URLSearchParams({
-    user_field_names: "true",
-    order_by: "-data_inserimento",
-    size: "200",
-    filter_type: "AND",
+    user_field_names: 'true',
+    order_by: '-data_inserimento',
+    filter_type: 'AND',
     filters: JSON.stringify({
-      filter_type: "AND",
+      filter_type: 'AND',
       filters: [
         {
           field: CONFIG.contrattiAgenteField,
-          type: "link_row_has",
+          type: 'link_row_has',
           value: String(agentId),
         },
       ],
     }),
   });
 
-  const data = await baserowFetch(`/api/database/rows/table/${CONFIG.contrattiTableId}/?${params.toString()}`);
-  return (data.results || []).filter((row) => isCurrentAgentContract(row, agentId)).map(normalizeContract);
+  const rows = await fetchAllBaserowRows(
+    CONFIG.contrattiTableId,
+    params,
+    `contratti agente ${agentId}`
+  );
+  return rows.filter((row) => isCurrentAgentContract(row, agentId)).map(normalizeContract);
 }
 
 async function listAgents() {
   const params = new URLSearchParams({
-    user_field_names: "true",
-    order_by: "nome",
-    size: "200",
+    user_field_names: 'true',
+    order_by: 'nome',
   });
-  const data = await baserowFetch(`/api/database/rows/table/${CONFIG.agentiTableId}/?${params.toString()}`);
-  return (data.results || []).map((row) => publicAgent(normalizeAgent(row)));
+  const rows = await fetchAllBaserowRows(CONFIG.agentiTableId, params, 'lista agenti');
+  return rows.map((row) => publicAgent(normalizeAgent(row)));
 }
 
 async function listAllContracts() {
   const params = new URLSearchParams({
-    user_field_names: "true",
-    order_by: "-data_inserimento",
-    size: "200",
+    user_field_names: 'true',
+    order_by: '-data_inserimento',
   });
-  const data = await baserowFetch(`/api/database/rows/table/${CONFIG.contrattiTableId}/?${params.toString()}`);
-  return (data.results || []).map(normalizeContract);
+  const rows = await fetchAllBaserowRows(CONFIG.contrattiTableId, params, 'lista contratti admin');
+  return rows.map(normalizeContract);
 }
 
 async function getBaserowContract(contractId) {
-  return baserowFetch(`/api/database/rows/table/${CONFIG.contrattiTableId}/${contractId}/?user_field_names=true`);
+  return baserowFetch(
+    `/api/database/rows/table/${CONFIG.contrattiTableId}/${contractId}/?user_field_names=true`
+  );
 }
 
 async function createBaserowContract(payload) {
-  return baserowFetch(`/api/database/rows/table/${CONFIG.contrattiTableId}/?user_field_names=true`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  return baserowFetch(
+    `/api/database/rows/table/${CONFIG.contrattiTableId}/?user_field_names=true`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
 }
 
 async function updateBaserowContract(contractId, payload) {
-  return baserowFetch(`/api/database/rows/table/${CONFIG.contrattiTableId}/${contractId}/?user_field_names=true`, {
-    method: "PATCH",
-    body: JSON.stringify(payload),
-  });
+  return baserowFetch(
+    `/api/database/rows/table/${CONFIG.contrattiTableId}/${contractId}/?user_field_names=true`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }
+  );
 }
 
 async function createBaserowAgent(payload) {
   return baserowFetch(`/api/database/rows/table/${CONFIG.agentiTableId}/?user_field_names=true`, {
-    method: "POST",
+    method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
 async function updateBaserowAgent(agentId, payload) {
-  return baserowFetch(`/api/database/rows/table/${CONFIG.agentiTableId}/${agentId}/?user_field_names=true`, {
-    method: "PATCH",
-    body: JSON.stringify(payload),
-  });
+  return baserowFetch(
+    `/api/database/rows/table/${CONFIG.agentiTableId}/${agentId}/?user_field_names=true`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }
+  );
 }
 
 async function uploadContractFile(file) {
   if (!isAllowedContractFile(file)) {
-    throw publicError(400, "FILE_TYPE_INVALID", "Carica solo PDF, documenti Office/OpenDocument o immagini.");
+    throw publicError(
+      400,
+      'FILE_TYPE_INVALID',
+      'Carica solo PDF, documenti Office/OpenDocument o immagini.'
+    );
   }
 
   const formData = new FormData();
   const blob = new Blob([file.buffer], { type: file.mimetype });
-  formData.append("file", blob, file.originalname);
+  formData.append('file', blob, file.originalname);
 
   const response = await fetch(`${CONFIG.baserowBaseUrl}/api/user-files/upload-file/`, {
-    method: "POST",
+    method: 'POST',
     headers: {
       Authorization: `Token ${CONFIG.baserowToken}`,
     },
@@ -657,7 +835,7 @@ function sanitizeContractInput(input) {
     pod: cleanText(input.pod).toUpperCase(),
     pdr: cleanText(input.pdr),
     metodoPagamento: cleanText(input.metodoPagamento).toLowerCase(),
-    iban: cleanText(input.iban).replace(/\s+/g, "").toUpperCase(),
+    iban: cleanText(input.iban).replace(/\s+/g, '').toUpperCase(),
     piva: cleanText(input.piva),
     email: cleanText(input.email).toLowerCase(),
     indirizzo: cleanText(input.indirizzo),
@@ -668,63 +846,70 @@ function sanitizeContractInput(input) {
   };
 
   if (!contract.ragioneSociale) {
-    throw publicError(400, "CUSTOMER_REQUIRED", "Inserisci il cliente.");
+    throw publicError(400, 'CUSTOMER_REQUIRED', 'Inserisci il cliente.');
   }
 
   if (!contract.cellulare) {
-    throw publicError(400, "PHONE_REQUIRED", "Inserisci il cellulare.");
+    throw publicError(400, 'PHONE_REQUIRED', 'Inserisci il cellulare.');
   }
 
   if (!allowedClientTypes.has(contract.tipoCliente)) {
-    throw publicError(400, "CLIENT_TYPE_INVALID", "Tipo cliente non valido.");
+    throw publicError(400, 'CLIENT_TYPE_INVALID', 'Tipo cliente non valido.');
   }
 
   if (!allowedCustomerCategories.has(contract.categoriaCliente)) {
-    throw publicError(400, "CUSTOMER_CATEGORY_INVALID", "Categoria cliente non valida.");
+    throw publicError(400, 'CUSTOMER_CATEGORY_INVALID', 'Categoria cliente non valida.');
   }
 
   if (!contract.fornitore) {
-    throw publicError(400, "SUPPLIER_REQUIRED", "Inserisci il fornitore.");
+    throw publicError(400, 'SUPPLIER_REQUIRED', 'Inserisci il fornitore.');
   }
 
   if (!contract.nomeOfferta) {
-    throw publicError(400, "OFFER_REQUIRED", "Inserisci il nome dell'offerta.");
+    throw publicError(400, 'OFFER_REQUIRED', "Inserisci il nome dell'offerta.");
   }
 
-  if (!contract.tipoOperazione.length || contract.tipoOperazione.some((operation) => !allowedOperations.has(operation))) {
-    throw publicError(400, "OPERATION_INVALID", "Tipo operazione non valido.");
+  if (
+    !contract.tipoOperazione.length ||
+    contract.tipoOperazione.some((operation) => !allowedOperations.has(operation))
+  ) {
+    throw publicError(400, 'OPERATION_INVALID', 'Tipo operazione non valido.');
   }
 
   if (!allowedSupplyTypes.has(contract.tipoFornitura)) {
-    throw publicError(400, "SUPPLY_TYPE_INVALID", "Tipo fornitura non valido.");
+    throw publicError(400, 'SUPPLY_TYPE_INVALID', 'Tipo fornitura non valido.');
   }
 
-  if ((contract.tipoFornitura === "luce" || contract.tipoFornitura === "dual") && !contract.pod) {
-    throw publicError(400, "POD_REQUIRED", "Inserisci il POD.");
+  if ((contract.tipoFornitura === 'luce' || contract.tipoFornitura === 'dual') && !contract.pod) {
+    throw publicError(400, 'POD_REQUIRED', 'Inserisci il POD.');
   }
 
-  if ((contract.tipoFornitura === "gas" || contract.tipoFornitura === "dual") && !contract.pdr) {
-    throw publicError(400, "PDR_REQUIRED", "Inserisci il PDR.");
+  if ((contract.tipoFornitura === 'gas' || contract.tipoFornitura === 'dual') && !contract.pdr) {
+    throw publicError(400, 'PDR_REQUIRED', 'Inserisci il PDR.');
   }
 
   if (!allowedPaymentMethods.has(contract.metodoPagamento)) {
-    throw publicError(400, "PAYMENT_METHOD_INVALID", "Metodo di pagamento non valido.");
+    throw publicError(400, 'PAYMENT_METHOD_INVALID', 'Metodo di pagamento non valido.');
   }
 
-  if (contract.metodoPagamento === "rid" && !contract.iban) {
-    throw publicError(400, "IBAN_REQUIRED", "Inserisci l'IBAN.");
+  if (contract.metodoPagamento === 'rid' && !contract.iban) {
+    throw publicError(400, 'IBAN_REQUIRED', "Inserisci l'IBAN.");
   }
 
   if (contract.iban && !/^[A-Z]{2}[0-9A-Z]{13,32}$/.test(contract.iban)) {
-    throw publicError(400, "IBAN_INVALID", "IBAN non valido.");
+    throw publicError(400, 'IBAN_INVALID', 'IBAN non valido.');
   }
 
   if (contract.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contract.email)) {
-    throw publicError(400, "EMAIL_INVALID", "Email non valida.");
+    throw publicError(400, 'EMAIL_INVALID', 'Email non valida.');
   }
 
   if (contract.piva && !isValidVatOrFiscalCode(contract.piva)) {
-    throw publicError(400, "PIVA_INVALID", "Inserisci una P.IVA di 11 cifre o un codice fiscale valido.");
+    throw publicError(
+      400,
+      'PIVA_INVALID',
+      'Inserisci una P.IVA di 11 cifre o un codice fiscale valido.'
+    );
   }
 
   return contract;
@@ -739,28 +924,32 @@ function sanitizeAgentInput(input, { requirePassword }) {
     targetMensile: integerValue(input.targetMensile),
     targetTrimestrale: integerValue(input.targetTrimestrale),
     targetAnnuale: integerValue(input.targetAnnuale),
-    ruolo: cleanText(input.ruolo).toLowerCase() || "agente",
+    ruolo: cleanText(input.ruolo).toLowerCase() || 'agente',
     attivo: Boolean(input.attivo),
   };
 
   if (!agent.nome) {
-    throw publicError(400, "AGENT_NAME_REQUIRED", "Inserisci il nome agente.");
+    throw publicError(400, 'AGENT_NAME_REQUIRED', 'Inserisci il nome agente.');
   }
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(agent.email)) {
-    throw publicError(400, "AGENT_EMAIL_INVALID", "Email agente non valida.");
+    throw publicError(400, 'AGENT_EMAIL_INVALID', 'Email agente non valida.');
   }
 
-  if (!["agente", "admin"].includes(agent.ruolo)) {
-    throw publicError(400, "AGENT_ROLE_INVALID", "Ruolo agente non valido.");
+  if (!['agente', 'admin'].includes(agent.ruolo)) {
+    throw publicError(400, 'AGENT_ROLE_INVALID', 'Ruolo agente non valido.');
   }
 
   if (requirePassword && agent.password.length < 8) {
-    throw publicError(400, "AGENT_PASSWORD_REQUIRED", "La password deve avere almeno 8 caratteri.");
+    throw publicError(400, 'AGENT_PASSWORD_REQUIRED', 'La password deve avere almeno 8 caratteri.');
   }
 
   if (!requirePassword && agent.password && agent.password.length < 8) {
-    throw publicError(400, "AGENT_PASSWORD_INVALID", "La nuova password deve avere almeno 8 caratteri.");
+    throw publicError(
+      400,
+      'AGENT_PASSWORD_INVALID',
+      'La nuova password deve avere almeno 8 caratteri.'
+    );
   }
 
   return agent;
@@ -779,7 +968,10 @@ function agentToBaserowPayload(agent) {
   };
 
   if (agent.password) {
-    payload.password_hash = bcrypt.hashSync(agent.password, Number(process.env.BCRYPT_ROUNDS || 12));
+    payload.password_hash = bcrypt.hashSync(
+      agent.password,
+      Number(process.env.BCRYPT_ROUNDS || 12)
+    );
   }
 
   return payload;
@@ -788,15 +980,15 @@ function agentToBaserowPayload(agent) {
 function normalizeAgent(row) {
   return {
     id: row.id,
-    nome: row.nome || "Agente sconosciuto",
-    email: row.email || "",
+    nome: row.nome || 'Agente sconosciuto',
+    email: row.email || '',
     cbUnitaria: numberValue(row.cb_unitaria),
     targetMensile: integerValue(row.target_mensile),
     targetTrimestrale: integerValue(row.target_trimestrale),
     targetAnnuale: integerValue(row.target_annuale),
-    ruolo: selectValue(row.ruolo) || "agente",
+    ruolo: selectValue(row.ruolo) || 'agente',
     attivo: row.attivo !== undefined ? Boolean(row.attivo) : true,
-    passwordHash: row.password_hash || "",
+    passwordHash: row.password_hash || '',
   };
 }
 
@@ -815,41 +1007,50 @@ function publicAgent(agent) {
 }
 
 function normalizeContract(row) {
-  const status = selectValue(row.stato_contratto) || "Caricato";
+  const status = selectValue(row.stato_contratto) || 'Caricato';
   const cbSnapshot = numberValue(row.cb_unitaria_snapshot);
-  const cbMaturata = row.cb_maturata !== undefined ? numberValue(row.cb_maturata) : (status === "K.O." || status === "Switch - Out") ? 0 : cbSnapshot;
-
-  return {
+  const cbMaturata =
+    row.cb_maturata !== undefined
+      ? numberValue(row.cb_maturata)
+      : status === 'K.O.' || status === 'Switch - Out'
+        ? 0
+        : cbSnapshot;
+  const normalized = {
     id: row.id,
     agenteId: linkedAgentId(row.agente),
-    dataInserimento: row.data_inserimento || "",
-    idContratto: row.id_contratto || "",
-    ragioneSociale: row.ragione_sociale || "",
-    cellulare: row.cellulare || "",
+    dataInserimento: row.data_inserimento || '',
+    idContratto: row.id_contratto || '',
+    ragioneSociale: row.ragione_sociale || '',
+    cellulare: row.cellulare || '',
     tipoCliente: selectValue(row.tipo_cliente),
     categoriaCliente: selectValue(row.categoria_cliente),
-    fornitore: row.fornitore || "",
-    nomeOfferta: row.nome_offerta || "",
+    fornitore: row.fornitore || '',
+    nomeOfferta: row.nome_offerta || '',
     tipoOperazione: multiSelectValue(row.tipo_operazione),
     tipoFornitura: selectValue(row.tipo_fornitura),
-    pod: row.pod || "",
-    pdr: row.pdr || "",
+    pod: row.pod || '',
+    pdr: row.pdr || '',
     metodoPagamento: selectValue(row.metodo_pagamento),
-    iban: row.iban || "",
+    iban: row.iban || '',
     fileContratto: fileValue(row.file_contratto),
-    piva: row.piva || "",
-    email: row.email || "",
-    indirizzo: row.indirizzo || "",
-    indirizzoFatturazione: row.indirizzo_fatturazione || "",
-    indirizzoFornitura: row.indirizzo_fornitura || "",
-    descrizione: row.descrizione || "",
+    piva: row.piva || '',
+    email: row.email || '',
+    indirizzo: row.indirizzo || '',
+    indirizzoFatturazione: row.indirizzo_fatturazione || '',
+    indirizzoFornitura: row.indirizzo_fornitura || '',
+    descrizione: row.descrizione || '',
     statoContratto: status,
     cbUnitariaSnapshot: cbSnapshot,
     cbMaturata,
-    dataInizioFornitura: row.data_inizio_fornitura || "",
-    meseRiferimento: row.mese_riferimento || "",
-    trimestreRiferimento: row.trimestre_riferimento || "",
-    annoRiferimento: row.anno_riferimento || "",
+    dataInizioFornitura: row.data_inizio_fornitura || '',
+    meseRiferimento: row.mese_riferimento || '',
+    trimestreRiferimento: row.trimestre_riferimento || '',
+    annoRiferimento: row.anno_riferimento || '',
+  };
+  return {
+    ...normalized,
+    unitCount: contractUnitCount(normalized),
+    commissionValue: contractCommissionValue(normalized),
   };
 }
 
@@ -858,11 +1059,11 @@ function isCurrentAgentContract(row, agentId) {
     return row.agente.some((agentRow) => Number(agentRow.id) === Number(agentId));
   }
 
-  if (typeof row.agente === "number" || typeof row.agente === "string") {
+  if (typeof row.agente === 'number' || typeof row.agente === 'string') {
     return Number(row.agente) === Number(agentId);
   }
 
-  if (row.agente && typeof row.agente === "object" && "id" in row.agente) {
+  if (row.agente && typeof row.agente === 'object' && 'id' in row.agente) {
     return Number(row.agente.id) === Number(agentId);
   }
 
@@ -873,19 +1074,35 @@ function buildAdminStats(agents, contracts) {
   const month = currentMonthKey();
   const quarter = currentQuarterKey();
   const year = String(new Date().getFullYear());
-  const monthlyContracts = contracts.filter((contract) => contract.dataInserimento.startsWith(month));
-  const quarterContracts = contracts.filter((contract) => contract.trimestreRiferimento === quarter);
-  const yearContracts = contracts.filter((contract) => contract.annoRiferimento === year || contract.dataInserimento.startsWith(year));
+  const monthlyContracts = contracts.filter((contract) =>
+    contract.dataInserimento.startsWith(month)
+  );
+  const quarterContracts = contracts.filter(
+    (contract) => contract.trimestreRiferimento === quarter
+  );
+  const yearContracts = contracts.filter(
+    (contract) => contract.annoRiferimento === year || contract.dataInserimento.startsWith(year)
+  );
   const agentRows = agents.map((agent) => {
-    const agentContracts = monthlyContracts.filter((contract) => Number(contract.agenteId) === Number(agent.id));
-    const agentQuarterContracts = quarterContracts.filter((contract) => Number(contract.agenteId) === Number(agent.id));
-    const agentYearContracts = yearContracts.filter((contract) => Number(contract.agenteId) === Number(agent.id));
-    const ok = agentContracts.filter((contract) => contract.statoContratto === "OK");
-    const okTrimestre = agentQuarterContracts.filter((contract) => contract.statoContratto === "OK");
-    const okAnno = agentYearContracts.filter((contract) => contract.statoContratto === "OK");
-    const caricati = agentContracts.filter((contract) => contract.statoContratto === "Caricato");
-    const ko = agentContracts.filter((contract) => contract.statoContratto === "K.O.");
-    const switchOut = agentContracts.filter((contract) => contract.statoContratto === "Switch - Out");
+    const agentContracts = monthlyContracts.filter(
+      (contract) => Number(contract.agenteId) === Number(agent.id)
+    );
+    const agentQuarterContracts = quarterContracts.filter(
+      (contract) => Number(contract.agenteId) === Number(agent.id)
+    );
+    const agentYearContracts = yearContracts.filter(
+      (contract) => Number(contract.agenteId) === Number(agent.id)
+    );
+    const ok = agentContracts.filter((contract) => contract.statoContratto === 'OK');
+    const okTrimestre = agentQuarterContracts.filter(
+      (contract) => contract.statoContratto === 'OK'
+    );
+    const okAnno = agentYearContracts.filter((contract) => contract.statoContratto === 'OK');
+    const caricati = agentContracts.filter((contract) => contract.statoContratto === 'Caricato');
+    const ko = agentContracts.filter((contract) => contract.statoContratto === 'K.O.');
+    const switchOut = agentContracts.filter(
+      (contract) => contract.statoContratto === 'Switch - Out'
+    );
     const contractUnits = sumContractUnits(agentContracts);
     const okUnits = sumContractUnits(ok);
     const okTrimestreUnits = sumContractUnits(okTrimestre);
@@ -928,15 +1145,21 @@ function buildAdminStats(agents, contracts) {
     totals: {
       practices: monthlyContracts.length,
       contracts: sumContractUnits(monthlyContracts),
-      ok: sumContractUnits(monthlyContracts.filter((contract) => contract.statoContratto === "OK")),
-      caricati: sumContractUnits(monthlyContracts.filter((contract) => contract.statoContratto === "Caricato")),
-      ko: sumContractUnits(monthlyContracts.filter((contract) => contract.statoContratto === "K.O.")),
-      switchOut: sumContractUnits(monthlyContracts.filter((contract) => contract.statoContratto === "Switch - Out")),
+      ok: sumContractUnits(monthlyContracts.filter((contract) => contract.statoContratto === 'OK')),
+      caricati: sumContractUnits(
+        monthlyContracts.filter((contract) => contract.statoContratto === 'Caricato')
+      ),
+      ko: sumContractUnits(
+        monthlyContracts.filter((contract) => contract.statoContratto === 'K.O.')
+      ),
+      switchOut: sumContractUnits(
+        monthlyContracts.filter((contract) => contract.statoContratto === 'Switch - Out')
+      ),
       cbValidata: monthlyContracts
-        .filter((contract) => contract.statoContratto === "OK")
+        .filter((contract) => contract.statoContratto === 'OK')
         .reduce((sum, contract) => sum + contractCommissionValue(contract), 0),
       cbPotenziale: monthlyContracts
-        .filter((contract) => ["OK", "Caricato"].includes(contract.statoContratto))
+        .filter((contract) => ['OK', 'Caricato'].includes(contract.statoContratto))
         .reduce((sum, contract) => sum + contractCommissionValue(contract), 0),
     },
     agents: agentRows,
@@ -945,7 +1168,7 @@ function buildAdminStats(agents, contracts) {
 
 function currentMonthKey() {
   const date = new Date();
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
 function currentQuarterKey() {
@@ -958,9 +1181,12 @@ function percent(done, target) {
 }
 
 function contractUnitCount(contract) {
+  if (Number.isFinite(Number(contract.unitCount)) && Number(contract.unitCount) > 0) {
+    return Number(contract.unitCount);
+  }
   const supplyType = cleanText(contract.tipoFornitura).toLowerCase();
   const customerCategory = cleanText(contract.categoriaCliente).toLowerCase();
-  return supplyType === "dual" && customerCategory === "prospect" ? 2 : 1;
+  return supplyType === 'dual' && customerCategory === 'prospect' ? 2 : 1;
 }
 
 function sumContractUnits(items) {
@@ -968,6 +1194,9 @@ function sumContractUnits(items) {
 }
 
 function contractCommissionValue(contract) {
+  if (Number.isFinite(Number(contract.commissionValue)) && Number(contract.commissionValue) >= 0) {
+    return Number(contract.commissionValue);
+  }
   return numberValue(contract.cbMaturata) * contractUnitCount(contract);
 }
 
@@ -976,24 +1205,29 @@ function sumContractCommissions(items) {
 }
 
 function isAllowedContractFile(file) {
-  const extension = path.extname(file.originalname || "").slice(1).toLowerCase();
-  return allowedContractFileExtensions.has(extension) || allowedContractFileTypes.has(file.mimetype);
+  const extension = path
+    .extname(file.originalname || '')
+    .slice(1)
+    .toLowerCase();
+  return (
+    allowedContractFileExtensions.has(extension) || allowedContractFileTypes.has(file.mimetype)
+  );
 }
 
 function isValidVatOrFiscalCode(value) {
-  const normalized = cleanText(value).replace(/\s+/g, "").toUpperCase();
+  const normalized = cleanText(value).replace(/\s+/g, '').toUpperCase();
   return /^\d{11}$/.test(normalized) || /^[A-Z0-9]{16}$/.test(normalized);
 }
 
 function linkedAgentId(value) {
   if (Array.isArray(value) && value.length > 0) return value[0].id;
-  if (value && typeof value === "object" && "id" in value) return value.id;
+  if (value && typeof value === 'object' && 'id' in value) return value.id;
   return value || null;
 }
 
 function selectValue(value) {
-  if (value && typeof value === "object" && "value" in value) return value.value;
-  return value || "";
+  if (value && typeof value === 'object' && 'value' in value) return value.value;
+  return value || '';
 }
 
 function multiSelectValue(value) {
@@ -1006,10 +1240,10 @@ function multiSelectValue(value) {
 function fileValue(value) {
   return Array.isArray(value)
     ? value.map((file) => ({
-        name: file.name || "",
-        visibleName: file.visible_name || file.name || "",
-        url: file.url || "",
-        mimeType: file.mime_type || "",
+        name: file.name || '',
+        visibleName: file.visible_name || file.name || '',
+        url: file.url || '',
+        mimeType: file.mime_type || '',
         size: numberValue(file.size),
       }))
     : [];
@@ -1032,15 +1266,15 @@ function normalizeStatus(value) {
   if (allowedStatuses.has(status)) return status;
 
   const map = {
-    "validato": "OK",
-    "in attesa": "Caricato",
-    "scartato": "K.O."
+    validato: 'OK',
+    'in attesa': 'Caricato',
+    scartato: 'K.O.',
   };
-  return map[status.toLowerCase()] || "Caricato";
+  return map[status.toLowerCase()] || 'Caricato';
 }
 
 function cleanText(value) {
-  return String(value || "").trim();
+  return String(value || '').trim();
 }
 
 function normalizeOperations(value) {
@@ -1050,7 +1284,7 @@ function normalizeOperations(value) {
 
 function todayIsoDate() {
   const date = new Date();
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 function publicError(status, code, message) {
@@ -1062,17 +1296,17 @@ function publicError(status, code, message) {
 }
 
 function handleApiError(res, error, code, message) {
-  if (error.code === "LIMIT_FILE_SIZE") {
+  if (error.code === 'LIMIT_FILE_SIZE') {
     res.status(400).json({
-      error: "FILE_TOO_LARGE",
-      message: "Ogni documento non deve superare 15 MB.",
+      error: 'FILE_TOO_LARGE',
+      message: 'Ogni documento non deve superare 15 MB.',
     });
     return;
   }
 
-  if (error.code === "LIMIT_FILE_COUNT") {
+  if (error.code === 'LIMIT_FILE_COUNT') {
     res.status(400).json({
-      error: "TOO_MANY_FILES",
+      error: 'TOO_MANY_FILES',
       message: `Puoi caricare al massimo ${maxContractFiles} documenti.`,
     });
     return;

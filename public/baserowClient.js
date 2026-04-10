@@ -5,64 +5,64 @@ const baserowClient = {
   },
 
   async getCurrentAgent() {
-    return fetchJson("/api/agent");
+    return fetchJson('/api/agent');
   },
 
   async getSession() {
-    return fetchJson("/api/session");
+    return fetchJson('/api/session');
   },
 
   async login(credentials) {
-    return fetchJson("/api/login", {
-      method: "POST",
+    return fetchJson('/api/login', {
+      method: 'POST',
       body: JSON.stringify(credentials),
     });
   },
 
   async logout() {
-    return fetchJson("/api/logout", {
-      method: "POST",
+    return fetchJson('/api/logout', {
+      method: 'POST',
     });
   },
 
   async listContracts() {
-    return fetchJson("/api/contracts");
+    return fetchJson('/api/contracts');
   },
 
   async createContract(contract) {
-    return fetchJson("/api/contracts", {
-      method: "POST",
+    return fetchJson('/api/contracts', {
+      method: 'POST',
       body: contract,
     });
   },
 
   async updateContractStatus(contractId, status) {
     return fetchJson(`/api/contracts/${contractId}/status`, {
-      method: "PATCH",
+      method: 'PATCH',
       body: JSON.stringify({ status }),
     });
   },
 
   async listAdminAgents() {
-    return fetchJson("/api/admin/agents");
+    return fetchJson('/api/admin/agents');
   },
 
   async createAdminAgent(agent) {
-    return fetchJson("/api/admin/agents", {
-      method: "POST",
+    return fetchJson('/api/admin/agents', {
+      method: 'POST',
       body: JSON.stringify(agent),
     });
   },
 
   async updateAdminAgent(agentId, agent) {
     return fetchJson(`/api/admin/agents/${agentId}`, {
-      method: "PATCH",
+      method: 'PATCH',
       body: JSON.stringify(agent),
     });
   },
 
   async getAdminStats() {
-    return fetchJson("/api/admin/stats");
+    return fetchJson('/api/admin/stats');
   },
 };
 
@@ -73,7 +73,7 @@ async function fetchJson(url, options = {}) {
     headers: isFormData
       ? options.headers || {}
       : {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
           ...(options.headers || {}),
         },
   });
@@ -81,9 +81,9 @@ async function fetchJson(url, options = {}) {
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const error = new Error(data.message || "Richiesta non riuscita.");
+    const error = new Error(data.message || 'Richiesta non riuscita.');
     error.status = response.status;
-    error.code = data.error || "API_ERROR";
+    error.code = data.error || 'API_ERROR';
     throw error;
   }
 
