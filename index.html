@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CRM Energia</title>
+    <link rel="preconnect" href="https://images.unsplash.com" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Vai al contenuto</a>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Navigazione principale">
+        <div class="brand">
+          <img
+            src="https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?auto=format&fit=crop&w=160&q=80"
+            alt="Pannelli energetici"
+          />
+          <div>
+            <strong>Energia CRM</strong>
+            <span>Area agente</span>
+          </div>
+        </div>
+
+        <nav class="nav-list">
+          <button class="nav-item active" type="button" data-page="dashboard" aria-current="page">Dashboard</button>
+          <button class="nav-item" type="button" data-page="new-contract">Nuovo contratto</button>
+          <button class="nav-item" type="button" data-page="contracts">Contratti</button>
+          <button class="nav-item" type="button" data-page="cb">CB</button>
+          <button class="nav-item" type="button" data-page="progress">Avanzamento</button>
+        </nav>
+      </aside>
+
+      <main class="main-content" id="main-content" tabindex="-1">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow" id="current-period">Mese corrente</p>
+            <h1 id="page-title">Dashboard</h1>
+          </div>
+          <div class="topbar-actions">
+            <button class="primary-button quick-action" type="button" data-go-page="new-contract">Nuovo contratto</button>
+            <div class="connection-pill status-loading" id="connection-status" role="status" aria-live="polite">
+              <span class="status-dot"></span>
+              <span>Connessione...</span>
+            </div>
+            <div class="agent-pill" aria-label="Agente collegato">
+              <span class="agent-dot"></span>
+              <span id="agent-name">Marco Bianchi</span>
+            </div>
+          </div>
+        </header>
+
+        <section class="page active" id="dashboard">
+          <div class="metrics-grid" id="dashboard-metrics"></div>
+
+          <div class="content-grid">
+            <article class="panel">
+              <div class="panel-heading">
+                <h2>Stati contratti</h2>
+                <span>mese corrente</span>
+              </div>
+              <div class="donut-layout">
+                <div class="donut-chart" id="donut-chart" aria-label="Distribuzione stati contratti"></div>
+                <div class="legend" id="status-legend"></div>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <h2>Target mensile</h2>
+                <span id="target-copy"></span>
+              </div>
+              <div class="target-large">
+                <strong id="target-percent"></strong>
+                <span>raggiunto</span>
+              </div>
+              <div class="progress-track" aria-label="Avanzamento target mensile">
+                <span id="target-bar"></span>
+              </div>
+              <p class="motivation" id="dashboard-motivation"></p>
+            </article>
+          </div>
+
+          <div class="content-grid">
+            <article class="panel panel-wide">
+              <div class="panel-heading">
+                <h2>Andamento del mese</h2>
+                <span>contratti cumulati</span>
+              </div>
+              <div class="line-chart" id="line-chart"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <h2>Confronto mesi</h2>
+                <span>contratti validati</span>
+              </div>
+              <div class="bar-chart" id="bar-chart"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="page" id="new-contract">
+          <form class="contract-form" id="contract-form">
+            <div class="form-head">
+              <div>
+                <h2>Nuovo contratto</h2>
+                <p>Compila i dati essenziali. Il contratto entra subito in attesa di validazione.</p>
+              </div>
+              <span>Tempo obiettivo: meno di 1 minuto</span>
+            </div>
+            <div class="form-grid">
+              <label>
+                Ragione sociale o nome cliente
+                <input name="ragioneSociale" type="text" placeholder="Es. Rossi SRL" autocomplete="organization" required />
+              </label>
+              <label>
+                Cellulare
+                <input name="cellulare" type="tel" inputmode="tel" placeholder="+39 333 1234567" autocomplete="tel" required />
+              </label>
+              <label>
+                Tipo cliente
+                <select name="tipoCliente" required>
+                  <option value="">Seleziona</option>
+                  <option>Business</option>
+                  <option>Privato</option>
+                  <option>Condominio</option>
+                </select>
+              </label>
+              <label>
+                P.IVA
+                <input name="piva" type="text" inputmode="numeric" placeholder="01234567890" />
+              </label>
+              <label>
+                Email
+                <input name="email" type="email" placeholder="cliente@email.it" autocomplete="email" />
+              </label>
+              <div class="readonly-field" aria-label="Stato contratto iniziale">
+                <span>Stato contratto</span>
+                <strong>In attesa</strong>
+                <input name="statoContratto" type="hidden" value="in attesa" />
+              </div>
+              <label>
+                Indirizzo
+                <input name="indirizzo" type="text" placeholder="Via Roma 12, Milano" autocomplete="street-address" />
+              </label>
+              <label>
+                Agente assegnato
+                <input name="agente" type="text" value="Marco Bianchi" readonly />
+              </label>
+              <label>
+                Indirizzo fatturazione
+                <input name="indirizzoFatturazione" type="text" placeholder="Se diverso da indirizzo" />
+              </label>
+              <label>
+                Indirizzo fornitura
+                <input name="indirizzoFornitura" type="text" placeholder="POD/PDR o indirizzo fornitura" />
+              </label>
+              <label class="full-span">
+                Descrizione / note
+                <textarea name="descrizione" rows="4" placeholder="Note utili per validazione"></textarea>
+              </label>
+            </div>
+            <div class="form-actions">
+              <p id="save-feedback" role="status"></p>
+              <button class="primary-button" type="submit">Salva contratto</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="page" id="contracts">
+          <div class="filters">
+            <input id="search-input" type="search" placeholder="Cerca cliente, telefono, email" />
+            <select id="month-filter" aria-label="Filtra per mese">
+              <option value="all">Tutti i mesi</option>
+            </select>
+            <select id="status-filter" aria-label="Filtra per stato">
+              <option value="all">Tutti gli stati</option>
+              <option value="validato">Validato</option>
+              <option value="in attesa">In attesa</option>
+              <option value="scartato">Scartato</option>
+            </select>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <caption class="sr-only">Contratti dell'agente</caption>
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Data</th>
+                  <th>Stato</th>
+                  <th>Tipo</th>
+                  <th>CB</th>
+                  <th>Telefono</th>
+                </tr>
+              </thead>
+              <tbody id="contracts-table"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="contracts-empty" hidden>
+            <strong>Nessun contratto trovato</strong>
+            <p>Controlla i filtri oppure inserisci subito un nuovo contratto.</p>
+            <button class="secondary-button" type="button" data-go-page="new-contract">Nuovo contratto</button>
+          </div>
+        </section>
+
+        <section class="page" id="cb">
+          <div class="metrics-grid" id="cb-metrics"></div>
+          <article class="panel">
+            <div class="panel-heading">
+              <h2>Contratti collegati</h2>
+              <span>CB del mese</span>
+            </div>
+            <div class="table-wrap flat">
+              <table>
+                <caption class="sr-only">Contratti collegati alla CB del mese</caption>
+                <thead>
+                  <tr>
+                    <th>Cliente</th>
+                    <th>Stato</th>
+                    <th>CB</th>
+                    <th>Data</th>
+                  </tr>
+                </thead>
+                <tbody id="cb-table"></tbody>
+              </table>
+            </div>
+            <div class="empty-state compact" id="cb-empty" hidden>
+              <strong>Nessuna CB nel mese corrente</strong>
+              <p>I contratti validati e in attesa appariranno qui.</p>
+              <button class="secondary-button" type="button" data-go-page="new-contract">Nuovo contratto</button>
+            </div>
+          </article>
+        </section>
+
+        <section class="page" id="progress">
+          <div class="progress-layout">
+            <article class="panel progress-focus">
+              <div class="panel-heading">
+                <h2>Target mensile</h2>
+                <span id="month-target-label"></span>
+              </div>
+              <strong id="month-target-percent"></strong>
+              <div class="progress-track">
+                <span id="month-target-bar"></span>
+              </div>
+              <p class="motivation" id="progress-message"></p>
+            </article>
+            <div class="target-stack">
+              <article class="panel">
+                <h2>Trimestre</h2>
+                <p class="target-line" id="quarter-target"></p>
+              </article>
+              <article class="panel">
+                <h2>Anno</h2>
+                <p class="target-line" id="year-target"></p>
+              </article>
+              <article class="panel">
+                <h2>Media necessaria</h2>
+                <p class="target-line" id="daily-need"></p>
+              </article>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal-backdrop" id="contract-modal" hidden>
+      <section class="contract-detail" role="dialog" aria-modal="true" aria-labelledby="contract-detail-title">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">Dettaglio contratto</p>
+            <h2 id="contract-detail-title">Contratto</h2>
+          </div>
+          <button class="icon-button" type="button" id="close-contract-modal" aria-label="Chiudi dettaglio">×</button>
+        </div>
+        <div class="detail-grid" id="contract-detail-content"></div>
+      </section>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="baserowClient.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
