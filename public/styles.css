@@ -159,6 +159,15 @@ body.auth-locked .app-shell {
   display: none;
 }
 
+/* Nav label variants: mobile mostra la versione corta */
+.nav-full {
+  display: none;
+}
+
+.nav-short {
+  display: inline;
+}
+
 /* Login brand always visible */
 .brand.login-brand {
   display: flex;
@@ -362,8 +371,8 @@ body.auth-locked .app-shell {
 .secondary-button {
   border: 1px solid var(--line);
   border-radius: 8px;
-  min-height: 44px;
-  padding: 11px 14px;
+  min-height: 40px;
+  padding: 8px 14px;
   color: var(--primary-strong);
   background: #ffffff;
   cursor: pointer;
@@ -373,17 +382,16 @@ body.auth-locked .app-shell {
 
 .secondary-button:hover {
   border-color: #bfdbfe;
-  background: #eff6ff;
-}
+  background: #eff6ff;}
 
+/* Mobile: "Nuovo contratto" è già nel bottom nav, non serve nel topbar */
 .quick-action {
-  flex: 0 0 auto;
-  width: calc(50% - 4px);
+  display: none;
 }
 
 .logout-button {
   flex: 0 0 auto;
-  width: calc(50% - 4px);
+  width: auto;
 }
 
 .icon-button {
@@ -1064,7 +1072,12 @@ td[colspan]::before {
     width: auto;
   }
 
-  .quick-action,
+  /* Tablet: ripristina quick-action e label complete */
+  .quick-action {
+    display: inline-flex;
+    width: auto;
+  }
+
   .logout-button {
     width: auto;
   }
@@ -1075,6 +1088,15 @@ td[colspan]::before {
 
   .secondary-button {
     width: auto;
+  }
+
+  /* Tablet+: mostra label complete, nascondi quelle corte */
+  .nav-full {
+    display: inline;
+  }
+
+  .nav-short {
+    display: none;
   }
 
   /* Metrics: 2 columns */
