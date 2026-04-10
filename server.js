@@ -280,6 +280,10 @@ app.post("/api/contracts", requireAuth, upload.array("fileContratto", maxContrac
       cb_unitaria_snapshot: agent.cbUnitaria,
     };
 
+    if (contract.idContratto) {
+      payload.id_contratto = contract.idContratto;
+    }
+
     if (uploadedFiles.length) {
       payload.file_contratto = uploadedFiles.map((uploadedFile, index) => ({
         name: uploadedFile.name,
@@ -641,6 +645,7 @@ async function uploadContractFile(file) {
 
 function sanitizeContractInput(input) {
   const contract = {
+    idContratto: cleanText(input.idContratto),
     ragioneSociale: cleanText(input.ragioneSociale),
     cellulare: cleanText(input.cellulare),
     tipoCliente: cleanText(input.tipoCliente),
@@ -718,8 +723,8 @@ function sanitizeContractInput(input) {
     throw publicError(400, "EMAIL_INVALID", "Email non valida.");
   }
 
-  if (contract.piva && !/^\d{11}$/.test(contract.piva)) {
-    throw publicError(400, "PIVA_INVALID", "La P.IVA deve avere 11 cifre.");
+  if (contract.piva && !isValidVatOrFiscalCode(contract.piva)) {
+    throw publicError(400, "PIVA_INVALID", "Inserisci una P.IVA di 11 cifre o un codice fiscale valido.");
   }
 
   return contract;
@@ -818,6 +823,7 @@ function normalizeContract(row) {
     id: row.id,
     agenteId: linkedAgentId(row.agente),
     dataInserimento: row.data_inserimento || "",
+    idContratto: row.id_contratto || "",
     ragioneSociale: row.ragione_sociale || "",
     cellulare: row.cellulare || "",
     tipoCliente: selectValue(row.tipo_cliente),
@@ -974,6 +980,11 @@ function isAllowedContractFile(file) {
   return allowedContractFileExtensions.has(extension) || allowedContractFileTypes.has(file.mimetype);
 }
 
+function isValidVatOrFiscalCode(value) {
+  const normalized = cleanText(value).replace(/\s+/g, "").toUpperCase();
+  return /^\d{11}$/.test(normalized) || /^[A-Z0-9]{16}$/.test(normalized);
+}
+
 function linkedAgentId(value) {
   if (Array.isArray(value) && value.length > 0) return value[0].id;
   if (value && typeof value === "object" && "id" in value) return value.id;
@@ -1068,7 +1079,7 @@ function handleApiError(res, error, code, message) {
   }
 
   if (!error.publicMessage) {
-    console.error(error.message);
+    console.error(`[${code}]`, error.message);
   }
 
   res.status(error.status || 500).json({

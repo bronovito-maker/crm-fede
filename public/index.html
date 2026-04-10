@@ -166,7 +166,7 @@
             </div>
             <div class="form-grid">
               <label>
-                Ragione sociale o nome cliente
+                Ragione sociale - Nome cliente
                 <input name="ragioneSociale" type="text" placeholder="Es. Rossi SRL" autocomplete="organization" required />
               </label>
               <label>
@@ -183,12 +183,16 @@
                 </select>
               </label>
               <label>
-                P.IVA
+                P.IVA - Cod. fiscale
                 <input name="piva" type="text" inputmode="numeric" placeholder="01234567890" />
               </label>
               <label>
                 Email
                 <input name="email" type="email" placeholder="cliente@email.it" autocomplete="email" />
+              </label>
+              <label>
+                ID CONTRATTO
+                <input name="idContratto" type="text" placeholder="Es. 277543" autocomplete="off" />
               </label>
               <input name="statoContratto" type="hidden" value="Caricato" />
               <label>
@@ -263,14 +267,26 @@
                 <input name="indirizzoFornitura" type="text" placeholder="POD/PDR o indirizzo fornitura" />
               </label>
               <label class="full-span">
-                Documenti contratto
+                <span class="field-with-counter">
+                  <span>Documenti contratto</span>
+                  <span class="counter-pill" id="contract-files-pill">Nessun documento</span>
+                </span>
                 <input
+                  id="contract-files-input"
                   name="fileContratto"
                   type="file"
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.jpg,.jpeg,.png,.webp,.heic,.heif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/jpeg,image/png,image/webp,image/heic,image/heif"
                   multiple
                 />
+                <small id="contract-files-help">Puoi aggiungere file in piu passaggi: l'elenco resta cumulativo fino al salvataggio.</small>
               </label>
+              <div class="file-selection full-span" id="contract-files-selection" hidden>
+                <div class="file-selection-head">
+                  <strong>Documenti selezionati</strong>
+                  <span id="contract-files-count">Nessun documento selezionato</span>
+                </div>
+                <div class="file-selection-list" id="contract-files-list"></div>
+              </div>
               <label class="full-span">
                 Descrizione / note
                 <textarea name="descrizione" rows="4" placeholder="Note utili per validazione"></textarea>

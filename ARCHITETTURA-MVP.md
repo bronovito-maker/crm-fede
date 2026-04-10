@@ -83,6 +83,7 @@ Home dell'agente. Mostra:
 Pagina più importante. Layout a 2 colonne desktop, 1 colonna mobile. Campi ridotti al minimo:
 
 - Ragione sociale o nome cliente
+- ID contratto
 - Cellulare
 - Tipo cliente
 - Categoria cliente: prospect, CB o ex CB
@@ -209,6 +210,7 @@ MVP admin:
 | `id` | Autonumber | ID interno Baserow |
 | `agente` | Link to table | Relazione verso `Agenti` |
 | `data_inserimento` | Date | Default oggi |
+| `id_contratto` | Testo | ID interno o esterno del contratto |
 | `ragione_sociale` | Testo | Cliente o azienda |
 | `cellulare` | Testo | Meglio testo, non numero |
 | `tipo_cliente` | Single select | `Business`, `Privato`, `Condominio` |

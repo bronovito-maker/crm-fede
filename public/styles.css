@@ -793,6 +793,87 @@ textarea {
   grid-column: 1 / -1;
 }
 
+.field-with-counter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.counter-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid #d6e4ff;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: var(--primary-strong);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.file-selection {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfdff;
+}
+
+.file-selection-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.file-selection-head strong,
+.file-selection-head span {
+  font-size: 0.92rem;
+}
+
+.file-selection-head span {
+  color: var(--muted);
+}
+
+.file-selection-list {
+  display: grid;
+  gap: 8px;
+}
+
+.file-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #ffffff;
+}
+
+.file-chip-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.92rem;
+}
+
+.file-chip button {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 8px;
+  min-height: 36px;
+  padding: 8px 10px;
+  background: #eef2ff;
+  color: var(--primary-strong);
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .form-actions {
   display: flex;
   flex-direction: column;
