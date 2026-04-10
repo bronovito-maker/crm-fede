@@ -30,6 +30,53 @@ body {
   color: var(--text);
 }
 
+body.auth-locked {
+  min-height: 100vh;
+}
+
+body.auth-locked .app-shell {
+  display: none;
+}
+
+.login-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: var(--bg);
+}
+
+.login-card {
+  width: min(430px, 100%);
+  display: grid;
+  gap: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 24px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.login-brand {
+  margin-bottom: 0;
+}
+
+.login-copy {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+#login-feedback {
+  margin: 0;
+  color: var(--red);
+  line-height: 1.4;
+}
+
+#login-feedback.is-success {
+  color: var(--green);
+}
+
 .skip-link {
   position: fixed;
   top: 10px;
@@ -250,6 +297,66 @@ h2 {
 
 .page.active {
   display: block;
+}
+
+.app-loading .page {
+  display: none;
+}
+
+.loading-state {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 20px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.loading-state[hidden] {
+  display: none;
+}
+
+.loading-state strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text);
+  font-size: 1.05rem;
+}
+
+.loading-state p {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.loading-bar {
+  position: relative;
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #edf1f6;
+}
+
+.loading-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 42%;
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--teal), var(--primary));
+  animation: loading-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes loading-slide {
+  0% {
+    transform: translateX(-110%);
+  }
+
+  100% {
+    transform: translateX(250%);
+  }
 }
 
 .metrics-grid {
@@ -514,6 +621,18 @@ textarea {
   color: var(--green);
 }
 
+.form-actions p.is-saving {
+  color: var(--muted);
+}
+
+.form-actions p.is-error {
+  color: var(--red);
+}
+
+.form-actions p.is-success {
+  color: var(--green);
+}
+
 .primary-button {
   border: 0;
   border-radius: 8px;
@@ -529,7 +648,16 @@ textarea {
   background: var(--primary-strong);
 }
 
+.primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
 .quick-action {
+  flex: 0 0 auto;
+}
+
+.logout-button {
   flex: 0 0 auto;
 }
 
@@ -823,7 +951,12 @@ tbody tr:hover {
 
   .quick-action {
     order: 3;
-    width: 100%;
+    width: calc(50% - 5px);
+  }
+
+  .logout-button {
+    order: 4;
+    width: calc(50% - 5px);
   }
 
   h1 {
@@ -962,5 +1095,12 @@ tbody tr:hover {
   .detail-grid {
     grid-template-columns: 1fr;
     padding: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-bar::after {
+    animation: none;
+    width: 100%;
   }
 }

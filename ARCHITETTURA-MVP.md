@@ -6,50 +6,57 @@ Prodotto interno per agente commerciale energia. L'MVP fa solo tre cose: inserir
 
 Principio UI: mobile-first. L'agente deve poter usare l'app da telefono senza zoom, senza tabelle compresse e senza campi inutili.
 
-## Architettura frontend
+## Architettura
 
-- `index.html`: shell applicativa, navigazione e pagine principali.
-- `styles.css`: design system minimale con layout responsive.
-- `app.js`: stato demo, rendering UI, filtri, salvataggio locale in `localStorage`.
-- Integrazione futura Baserow: sostituire l'array `contracts` con chiamate API filtrate per `agente_id`.
+- `server.js`: server Express, serve il frontend e espone API interne controllate.
+- `public/index.html`: shell applicativa, navigazione e pagine principali.
+- `public/styles.css`: design system minimale con layout responsive.
+- `public/app.js`: stato UI, rendering, filtri, feedback e interazioni.
+- `public/baserowClient.js`: client API interno. Non chiama Baserow direttamente.
+- `public/config.js`: solo flag non sensibili per il frontend.
+- `.env`: token Baserow, ID tabelle e agente corrente per MVP.
 
-Per un MVP reale consigliato:
-
-- Vite + React oppure SvelteKit se serve routing e build moderna.
-- Nessun backend custom nella prima versione se Baserow gestisce dati e permessi.
-- Un piccolo layer `baserowClient` con funzioni `listContracts`, `createContract`, `getAgentStats`.
-- Autenticazione separata o token server-side se l'app diventa pubblica. Non esporre token Baserow admin nel browser.
-- Stato MVP attuale: prototipo statico apribile da browser, senza build step e senza backend.
-
-### Struttura consigliata quando si passa a Baserow
+Flusso dati:
 
 ```text
-src/
-  app/
-    AppShell
-    navigation
-  pages/
-    Dashboard
-    NewContract
-    Contracts
-    Cb
-    Progress
-  components/
-    MetricCard
-    Panel
-    StatusBadge
-    ProgressBar
-    charts
-    tables
-  services/
-    baserowClient
-    stats
-  utils/
-    dates
-    money
+Browser -> /api/agent e /api/contracts -> server.js -> Baserow
 ```
 
-Il frontend deve chiedere a Baserow solo dati dell'agente corrente. Se l'app viene pubblicata online, il token Baserow va protetto dietro un piccolo proxy/API server.
+Il browser non deve conoscere token Baserow, ID tabelle, ID campo Baserow o logica di filtro agente.
+
+### API interne
+
+```text
+GET    /api/health
+GET    /api/session
+POST   /api/login
+POST   /api/logout
+GET    /api/agent
+GET    /api/contracts
+POST   /api/contracts
+PATCH  /api/contracts/:id/status
+```
+
+`POST /api/contracts` accetta solo i campi del form agente. Il server aggiunge automaticamente agente, data, stato `in attesa` e `cb_unitaria_snapshot`.
+
+Il login usa email + password. Il server cerca l'agente in Baserow tramite email, confronta la password con `password_hash` e crea una sessione con cookie `HttpOnly`.
+
+### Configurazione `.env`
+
+- `BASEROW_BASE_URL`
+- `BASEROW_TOKEN`
+- `BASEROW_TABLE_AGENTI_ID`
+- `BASEROW_TABLE_CONTRATTI_ID`
+- `BASEROW_FIELD_CONTRATTI_AGENTE`
+- `SESSION_TTL_HOURS`
+- `BCRYPT_ROUNDS`
+- `PORT`
+
+Le password non devono essere salvate in chiaro. Generare l'hash con `npm run hash-password -- passwordDaUsare` e copiarlo nel campo `password_hash` dell'agente in Baserow.
+
+### Fallback demo
+
+Il fallback demo/localStorage resta utile solo aprendo il frontend come file statico o impostando `ENABLE_DEMO_FALLBACK` in `public/config.js`. Quando l'app gira tramite server, se le API non rispondono non deve salvare dati locali in silenzio.
 
 ## Pagine
 
@@ -164,6 +171,7 @@ Pagina motivazionale:
 | `target_annuale` | Numero intero | Contratti validati |
 | `ruolo` | Single select | `agente`, `admin` |
 | `attivo` | Boolean | Per nascondere agenti disattivati |
+| `password_hash` | Long text | Hash bcrypt della password |
 | `created_at` | Created on | Audit |
 | `updated_at` | Last modified | Audit |
 

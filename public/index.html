@@ -9,6 +9,36 @@
   </head>
   <body>
     <a class="skip-link" href="#main-content">Vai al contenuto</a>
+    <section class="login-screen" id="login-screen" aria-labelledby="login-title">
+      <form class="login-card" id="login-form">
+        <div class="brand login-brand">
+          <img
+            src="https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?auto=format&fit=crop&w=160&q=80"
+            alt="Pannelli energetici"
+          />
+          <div>
+            <strong>Energia CRM</strong>
+            <span>Area agente</span>
+          </div>
+        </div>
+        <div>
+          <p class="eyebrow">Accesso agente</p>
+          <h1 id="login-title">Entra nel CRM</h1>
+          <p class="login-copy">Usa email e password. Vedrai solo i tuoi contratti.</p>
+        </div>
+        <label>
+          Email
+          <input name="email" type="email" placeholder="agente@email.it" autocomplete="email" required />
+        </label>
+        <label>
+          Password
+          <input name="password" type="password" placeholder="Password" autocomplete="current-password" required />
+        </label>
+        <p id="login-feedback" role="status"></p>
+        <button class="primary-button" type="submit">Accedi</button>
+      </form>
+    </section>
+
     <div class="app-shell">
       <aside class="sidebar" aria-label="Navigazione principale">
         <div class="brand">
@@ -47,8 +77,17 @@
               <span class="agent-dot"></span>
               <span id="agent-name">Marco Bianchi</span>
             </div>
+            <button class="secondary-button logout-button" type="button" id="logout-button">Esci</button>
           </div>
         </header>
+
+        <section class="loading-state" id="loading-state" aria-live="polite">
+          <div>
+            <strong>Caricamento dati...</strong>
+            <p>Sto preparando dashboard, contratti e avanzamento.</p>
+          </div>
+          <span class="loading-bar"></span>
+        </section>
 
         <section class="page active" id="dashboard">
           <div class="metrics-grid" id="dashboard-metrics"></div>

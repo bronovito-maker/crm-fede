@@ -141,6 +141,8 @@ const statusColors = {
 
 const today = new Date();
 const currentMonthKey = monthKey(today);
+const isStaticFileMode = window.location.protocol === "file:";
+const demoFallbackEnabled = Boolean(CONFIG.ENABLE_DEMO_FALLBACK || isStaticFileMode);
 const euro = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" });
 const formatDate = new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" });
 const formatMonth = new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric" });
@@ -148,6 +150,8 @@ const formatMonth = new Intl.DateTimeFormat("it-IT", { month: "long", year: "num
 document.getElementById("agent-name").textContent = agent.nome;
 document.getElementById("current-period").textContent = capitalize(formatMonth.format(today));
 setConnectionStatus("loading", "Connessione...");
+setAppLoading(true);
+setAuthLocked(true);
 
 document.querySelectorAll(".nav-item").forEach((button) => {
   button.addEventListener("click", () => setActivePage(button.dataset.page));
@@ -156,6 +160,9 @@ document.querySelectorAll(".nav-item").forEach((button) => {
 document.querySelectorAll("[data-go-page]").forEach((button) => {
   button.addEventListener("click", () => setActivePage(button.dataset.goPage));
 });
+
+document.getElementById("login-form").addEventListener("submit", handleLogin);
+document.getElementById("logout-button").addEventListener("click", handleLogout);
 
 document.getElementById("close-contract-modal").addEventListener("click", closeContractModal);
 document.getElementById("contract-modal").addEventListener("click", (event) => {
@@ -167,66 +174,57 @@ document.addEventListener("keydown", (event) => {
 
 document.getElementById("contract-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  const form = new FormData(event.currentTarget);
-  const stato = normalizeStatus(form.get("statoContratto"));
-  const submitBtn = event.currentTarget.querySelector('button[type="submit"]');
+  const formElement = event.currentTarget;
+  const form = new FormData(formElement);
+  const draft = buildContractDraft(form);
+  const submitBtn = formElement.querySelector('button[type="submit"]');
   const feedback = document.getElementById("save-feedback");
 
-  submitBtn.disabled = true;
-  feedback.textContent = "Salvataggio in corso...";
+  if (!draft.ragioneSociale || !draft.cellulare || !draft.tipoCliente) {
+    setFormFeedback("error", "Compila cliente, cellulare e tipo cliente.");
+    return;
+  }
 
-  if (baserowClient.isConfigured()) {
+  submitBtn.disabled = true;
+  setFormFeedback("saving", "Salvataggio in corso...");
+
+  if (typeof baserowClient !== "undefined" && baserowClient.isConfigured()) {
     try {
       await baserowClient.createContract({
-        "agente": [CONFIG.CURRENT_AGENT_ID],
-        "data_inserimento": form.get("dataInserimento") || toInputDate(today),
-        "ragione_sociale": String(form.get("ragioneSociale")).trim(),
-        "cellulare": String(form.get("cellulare")).trim(),
-        "tipo_cliente": String(form.get("tipoCliente")),
-        "piva": String(form.get("piva")).trim(),
-        "email": String(form.get("email")).trim(),
-        "indirizzo": String(form.get("indirizzo")).trim(),
-        "indirizzo_fatturazione": String(form.get("indirizzoFatturazione")).trim(),
-        "indirizzo_fornitura": String(form.get("indirizzoFornitura")).trim(),
-        "descrizione": String(form.get("descrizione")).trim(),
-        "stato_contratto": stato,
-        "cb_unitaria_snapshot": agent.cbUnitaria
+        ragioneSociale: draft.ragioneSociale,
+        cellulare: draft.cellulare,
+        tipoCliente: draft.tipoCliente,
+        piva: draft.piva,
+        email: draft.email,
+        indirizzo: draft.indirizzo,
+        indirizzoFatturazione: draft.indirizzoFatturazione,
+        indirizzoFornitura: draft.indirizzoFornitura,
+        descrizione: draft.descrizione,
       });
-      feedback.textContent = "Contratto salvato.";
       contracts = await baserowClient.listContracts();
+      setFormFeedback("success", "Contratto salvato su Baserow.");
     } catch (err) {
       console.error(err);
-      feedback.textContent = "Contratto non salvato. Riprova.";
       submitBtn.disabled = false;
+      setFormFeedback("error", "Contratto non salvato. I dati sono ancora qui.");
       return;
     }
-  } else {
-    contracts.unshift({
-      id: Date.now(),
-      agenteId: agent.id,
-      dataInserimento: toInputDate(today),
-      ragioneSociale: String(form.get("ragioneSociale")).trim(),
-      cellulare: String(form.get("cellulare")).trim(),
-      tipoCliente: String(form.get("tipoCliente")),
-      piva: String(form.get("piva")).trim(),
-      email: String(form.get("email")).trim(),
-      indirizzo: String(form.get("indirizzo")).trim(),
-      indirizzoFatturazione: String(form.get("indirizzoFatturazione")).trim(),
-      indirizzoFornitura: String(form.get("indirizzoFornitura")).trim(),
-      descrizione: String(form.get("descrizione")).trim(),
-      statoContratto: stato,
-      cbMaturata: stato === "scartato" ? 0 : agent.cbUnitaria,
-    });
+  } else if (demoFallbackEnabled) {
+    contracts.unshift(draft);
     saveContracts();
-    feedback.textContent = "Contratto salvato (demo).";
+    setFormFeedback("success", "Contratto salvato in modalità demo.");
+  } else {
+    submitBtn.disabled = false;
+    setFormFeedback("error", "Connessione non disponibile. Contratto non salvato.");
+    return;
   }
 
   submitBtn.disabled = false;
-  event.currentTarget.reset();
-  event.currentTarget.elements.agente.value = agent.nome;
-  event.currentTarget.elements.statoContratto.value = "in attesa";
-  setActivePage("contracts");
+  formElement.reset();
+  formElement.elements.agente.value = agent.nome;
+  formElement.elements.statoContratto.value = "in attesa";
   renderAll();
+  setTimeout(() => setActivePage("contracts"), 350);
 });
 
 ["search-input", "month-filter", "status-filter"].forEach((id) => {
@@ -555,6 +553,45 @@ function renderAll() {
   renderProgressPage();
 }
 
+function buildContractDraft(form) {
+  const stato = normalizeStatus(form.get("statoContratto"));
+
+  return {
+    id: Date.now(),
+    agenteId: agent.id,
+    dataInserimento: toInputDate(today),
+    ragioneSociale: String(form.get("ragioneSociale")).trim(),
+    cellulare: String(form.get("cellulare")).trim(),
+    tipoCliente: String(form.get("tipoCliente")).trim(),
+    piva: String(form.get("piva")).trim(),
+    email: String(form.get("email")).trim(),
+    indirizzo: String(form.get("indirizzo")).trim(),
+    indirizzoFatturazione: String(form.get("indirizzoFatturazione")).trim(),
+    indirizzoFornitura: String(form.get("indirizzoFornitura")).trim(),
+    descrizione: String(form.get("descrizione")).trim(),
+    statoContratto: stato,
+    cbUnitariaSnapshot: agent.cbUnitaria,
+    cbMaturata: stato === "scartato" ? 0 : agent.cbUnitaria,
+  };
+}
+
+function setFormFeedback(type, message) {
+  const feedback = document.getElementById("save-feedback");
+  feedback.className = type ? `is-${type}` : "";
+  feedback.textContent = message;
+}
+
+function setAppLoading(isLoading) {
+  document.body.classList.toggle("app-loading", isLoading);
+  const loadingState = document.getElementById("loading-state");
+  if (loadingState) loadingState.hidden = !isLoading;
+}
+
+function setAuthLocked(isLocked) {
+  document.body.classList.toggle("auth-locked", isLocked);
+  document.getElementById("login-screen").hidden = !isLocked;
+}
+
 function setConnectionStatus(status, label) {
   const element = document.getElementById("connection-status");
   if (!element) return;
@@ -564,6 +601,53 @@ function setConnectionStatus(status, label) {
     <span class="status-dot"></span>
     <span>${escapeHtml(label)}</span>
   `;
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const submitBtn = event.currentTarget.querySelector('button[type="submit"]');
+  const feedback = document.getElementById("login-feedback");
+
+  submitBtn.disabled = true;
+  feedback.className = "";
+  feedback.textContent = "Accesso in corso...";
+
+  try {
+    const session = await baserowClient.login({
+      email: String(form.get("email")).trim(),
+      password: String(form.get("password")).trim(),
+    });
+
+    agent = session.agent;
+    contracts = await baserowClient.listContracts();
+    document.getElementById("agent-name").textContent = agent.nome;
+    document.getElementById("contract-form").elements.agente.value = agent.nome;
+    setConnectionStatus("online", "Baserow connesso");
+    renderAll();
+    setAuthLocked(false);
+    event.currentTarget.reset();
+    feedback.className = "is-success";
+    feedback.textContent = "";
+  } catch (error) {
+    feedback.textContent = error.message || "Accesso non riuscito.";
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+async function handleLogout() {
+  try {
+    await baserowClient.logout();
+  } catch (error) {
+    console.error(error);
+  }
+
+  contracts = [];
+  closeContractModal();
+  setActivePage("dashboard");
+  setConnectionStatus("loading", "Accesso richiesto");
+  setAuthLocked(true);
 }
 
 function monthKey(date) {
@@ -621,24 +705,50 @@ function escapeHtml(value) {
 }
 
 async function initApp() {
-  if (typeof baserowClient !== "undefined" && baserowClient.isConfigured()) {
-    try {
-      setConnectionStatus("loading", "Caricamento Baserow...");
-      agent = await baserowClient.getCurrentAgent();
-      contracts = await baserowClient.listContracts();
-      document.getElementById("agent-name").textContent = agent.nome;
-      document.getElementById("contract-form").elements.agente.value = agent.nome;
-      setConnectionStatus("online", "Baserow connesso");
-    } catch (err) {
-      console.error(err);
+  try {
+    if (isStaticFileMode && demoFallbackEnabled) {
       contracts = loadContracts();
-      setConnectionStatus("error", "Errore Baserow");
+      setConnectionStatus("demo", "Modalità demo");
+      setAuthLocked(false);
+      renderAll();
+      return;
     }
-  } else {
-    contracts = loadContracts();
-    setConnectionStatus("demo", "Modalità demo");
+
+    if (typeof baserowClient !== "undefined" && baserowClient.isConfigured()) {
+      try {
+        setConnectionStatus("loading", "Controllo accesso...");
+        const session = await baserowClient.getSession();
+        if (!session.authenticated) {
+          setConnectionStatus("loading", "Accesso richiesto");
+          setAuthLocked(true);
+          return;
+        }
+
+        agent = session.agent;
+        contracts = await baserowClient.listContracts();
+        document.getElementById("agent-name").textContent = agent.nome;
+        document.getElementById("contract-form").elements.agente.value = agent.nome;
+        setConnectionStatus("online", "Baserow connesso");
+        setAuthLocked(false);
+      } catch (err) {
+        console.error(err);
+        contracts = demoFallbackEnabled ? loadContracts() : [];
+        setConnectionStatus("error", demoFallbackEnabled ? "Errore Baserow" : "Connessione non disponibile");
+        setAuthLocked(!demoFallbackEnabled);
+      }
+    } else if (demoFallbackEnabled) {
+      contracts = loadContracts();
+      setConnectionStatus("demo", "Modalità demo");
+      setAuthLocked(false);
+    } else {
+      contracts = [];
+      setConnectionStatus("error", "Connessione non disponibile");
+      setAuthLocked(true);
+    }
+    renderAll();
+  } finally {
+    setAppLoading(false);
   }
-  renderAll();
 }
 
 initApp();
