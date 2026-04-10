@@ -3,6 +3,7 @@ require("dotenv").config();
 const crypto = require("crypto");
 const express = require("express");
 const bcrypt = require("bcryptjs");
+const multer = require("multer");
 const path = require("path");
 
 const app = express();
@@ -20,8 +21,17 @@ const CONFIG = {
 
 const allowedClientTypes = new Set(["Business", "Privato", "Condominio"]);
 const allowedStatuses = new Set(["in attesa", "validato", "scartato"]);
+const allowedOperations = new Set(["switch", "switch + voltura", "cambio listino", "subentro"]);
+const allowedSupplyTypes = new Set(["luce", "gas", "dual"]);
+const allowedPaymentMethods = new Set(["bollettino", "rid"]);
 const sessions = new Map();
 const sessionCookieName = "crm_session";
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+  },
+});
 
 app.use(express.json({ limit: "100kb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -107,17 +117,26 @@ app.get("/api/contracts", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/contracts", requireAuth, async (req, res) => {
+app.post("/api/contracts", requireAuth, upload.single("fileContratto"), async (req, res) => {
   try {
     ensureConfigured();
     const agent = await getCurrentAgent(req.session.agentId);
     const contract = sanitizeContractInput(req.body);
+    const uploadedFile = req.file ? await uploadContractFile(req.file) : null;
     const payload = {
       agente: [req.session.agentId],
       data_inserimento: todayIsoDate(),
       ragione_sociale: contract.ragioneSociale,
       cellulare: contract.cellulare,
       tipo_cliente: contract.tipoCliente,
+      fornitore: contract.fornitore,
+      nome_offerta: contract.nomeOfferta,
+      tipo_operazione: contract.tipoOperazione,
+      tipo_fornitura: contract.tipoFornitura,
+      pod: contract.pod,
+      pdr: contract.pdr,
+      metodo_pagamento: contract.metodoPagamento,
+      iban: contract.iban,
       piva: contract.piva,
       email: contract.email,
       indirizzo: contract.indirizzo,
@@ -127,6 +146,15 @@ app.post("/api/contracts", requireAuth, async (req, res) => {
       stato_contratto: "in attesa",
       cb_unitaria_snapshot: agent.cbUnitaria,
     };
+
+    if (uploadedFile) {
+      payload.file_contratto = [
+        {
+          name: uploadedFile.name,
+          visible_name: req.file.originalname,
+        },
+      ];
+    }
 
     const created = await createBaserowContract(payload);
     res.status(201).json(normalizeContract(created));
@@ -347,11 +375,46 @@ async function updateBaserowContract(contractId, payload) {
   });
 }
 
+async function uploadContractFile(file) {
+  if (file.mimetype !== "application/pdf" || !file.originalname.toLowerCase().endsWith(".pdf")) {
+    throw publicError(400, "PDF_REQUIRED", "Carica un file PDF valido.");
+  }
+
+  const formData = new FormData();
+  const blob = new Blob([file.buffer], { type: file.mimetype });
+  formData.append("file", blob, file.originalname);
+
+  const response = await fetch(`${CONFIG.baserowBaseUrl}/api/user-files/upload-file/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${CONFIG.baserowToken}`,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    const error = new Error(`Baserow file upload ${response.status}: ${body}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
+
 function sanitizeContractInput(input) {
   const contract = {
     ragioneSociale: cleanText(input.ragioneSociale),
     cellulare: cleanText(input.cellulare),
     tipoCliente: cleanText(input.tipoCliente),
+    fornitore: cleanText(input.fornitore),
+    nomeOfferta: cleanText(input.nomeOfferta),
+    tipoOperazione: normalizeOperations(input.tipoOperazione),
+    tipoFornitura: cleanText(input.tipoFornitura).toLowerCase(),
+    pod: cleanText(input.pod).toUpperCase(),
+    pdr: cleanText(input.pdr),
+    metodoPagamento: cleanText(input.metodoPagamento).toLowerCase(),
+    iban: cleanText(input.iban).replace(/\s+/g, "").toUpperCase(),
     piva: cleanText(input.piva),
     email: cleanText(input.email).toLowerCase(),
     indirizzo: cleanText(input.indirizzo),
@@ -370,6 +433,42 @@ function sanitizeContractInput(input) {
 
   if (!allowedClientTypes.has(contract.tipoCliente)) {
     throw publicError(400, "CLIENT_TYPE_INVALID", "Tipo cliente non valido.");
+  }
+
+  if (!contract.fornitore) {
+    throw publicError(400, "SUPPLIER_REQUIRED", "Inserisci il fornitore.");
+  }
+
+  if (!contract.nomeOfferta) {
+    throw publicError(400, "OFFER_REQUIRED", "Inserisci il nome dell'offerta.");
+  }
+
+  if (!contract.tipoOperazione.length || contract.tipoOperazione.some((operation) => !allowedOperations.has(operation))) {
+    throw publicError(400, "OPERATION_INVALID", "Tipo operazione non valido.");
+  }
+
+  if (!allowedSupplyTypes.has(contract.tipoFornitura)) {
+    throw publicError(400, "SUPPLY_TYPE_INVALID", "Tipo fornitura non valido.");
+  }
+
+  if ((contract.tipoFornitura === "luce" || contract.tipoFornitura === "dual") && !contract.pod) {
+    throw publicError(400, "POD_REQUIRED", "Inserisci il POD.");
+  }
+
+  if ((contract.tipoFornitura === "gas" || contract.tipoFornitura === "dual") && !contract.pdr) {
+    throw publicError(400, "PDR_REQUIRED", "Inserisci il PDR.");
+  }
+
+  if (!allowedPaymentMethods.has(contract.metodoPagamento)) {
+    throw publicError(400, "PAYMENT_METHOD_INVALID", "Metodo di pagamento non valido.");
+  }
+
+  if (contract.metodoPagamento === "rid" && !contract.iban) {
+    throw publicError(400, "IBAN_REQUIRED", "Inserisci l'IBAN.");
+  }
+
+  if (contract.iban && !/^[A-Z]{2}[0-9A-Z]{13,32}$/.test(contract.iban)) {
+    throw publicError(400, "IBAN_INVALID", "IBAN non valido.");
   }
 
   if (contract.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contract.email)) {
@@ -424,6 +523,15 @@ function normalizeContract(row) {
     ragioneSociale: row.ragione_sociale || "",
     cellulare: row.cellulare || "",
     tipoCliente: selectValue(row.tipo_cliente),
+    fornitore: row.fornitore || "",
+    nomeOfferta: row.nome_offerta || "",
+    tipoOperazione: multiSelectValue(row.tipo_operazione),
+    tipoFornitura: selectValue(row.tipo_fornitura),
+    pod: row.pod || "",
+    pdr: row.pdr || "",
+    metodoPagamento: selectValue(row.metodo_pagamento),
+    iban: row.iban || "",
+    fileContratto: fileValue(row.file_contratto),
     piva: row.piva || "",
     email: row.email || "",
     indirizzo: row.indirizzo || "",
@@ -466,6 +574,25 @@ function selectValue(value) {
   return value || "";
 }
 
+function multiSelectValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(selectValue).filter(Boolean);
+  }
+  return value ? [selectValue(value)].filter(Boolean) : [];
+}
+
+function fileValue(value) {
+  return Array.isArray(value)
+    ? value.map((file) => ({
+        name: file.name || "",
+        visibleName: file.visible_name || file.name || "",
+        url: file.url || "",
+        mimeType: file.mime_type || "",
+        size: numberValue(file.size),
+      }))
+    : [];
+}
+
 function numberValue(value) {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -484,6 +611,11 @@ function cleanText(value) {
   return String(value || "").trim();
 }
 
+function normalizeOperations(value) {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  return values.map((item) => cleanText(item).toLowerCase()).filter(Boolean);
+}
+
 function todayIsoDate() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -498,6 +630,14 @@ function publicError(status, code, message) {
 }
 
 function handleApiError(res, error, code, message) {
+  if (error.code === "LIMIT_FILE_SIZE") {
+    res.status(400).json({
+      error: "FILE_TOO_LARGE",
+      message: "Il PDF non deve superare 10 MB.",
+    });
+    return;
+  }
+
   if (!error.publicMessage) {
     console.error(error.message);
   }

@@ -17,6 +17,14 @@ const defaultContracts = [
     tipoCliente: "Business",
     piva: "03849270121",
     email: "info@rossiimpianti.it",
+    fornitore: "Enel Energia",
+    nomeOfferta: "Flex Business Luce",
+    tipoOperazione: ["switch"],
+    tipoFornitura: "luce",
+    pod: "IT001E12345678",
+    pdr: "",
+    metodoPagamento: "rid",
+    iban: "IT60X0542811101000000123456",
     indirizzo: "Via Roma 12, Milano",
     indirizzoFatturazione: "Via Roma 12, Milano",
     indirizzoFornitura: "Via Industria 7, Milano",
@@ -33,6 +41,14 @@ const defaultContracts = [
     tipoCliente: "Business",
     piva: "01923440982",
     email: "amministrazione@studioverdi.it",
+    fornitore: "A2A Energia",
+    nomeOfferta: "Gas Smart",
+    tipoOperazione: ["cambio listino"],
+    tipoFornitura: "gas",
+    pod: "",
+    pdr: "12345678901234",
+    metodoPagamento: "bollettino",
+    iban: "",
     indirizzo: "Corso Italia 41, Torino",
     indirizzoFatturazione: "Corso Italia 41, Torino",
     indirizzoFornitura: "Corso Italia 41, Torino",
@@ -49,6 +65,14 @@ const defaultContracts = [
     tipoCliente: "Privato",
     piva: "",
     email: "laura.neri@email.it",
+    fornitore: "Edison",
+    nomeOfferta: "Dual Casa",
+    tipoOperazione: ["switch + voltura"],
+    tipoFornitura: "dual",
+    pod: "IT001E87654321",
+    pdr: "99887766554433",
+    metodoPagamento: "rid",
+    iban: "IT60X0542811101000000654321",
     indirizzo: "Via Manzoni 8, Pavia",
     indirizzoFatturazione: "Via Manzoni 8, Pavia",
     indirizzoFornitura: "Via Manzoni 8, Pavia",
@@ -65,6 +89,14 @@ const defaultContracts = [
     tipoCliente: "Condominio",
     piva: "09777130159",
     email: "aurora@amministrazioni.it",
+    fornitore: "Sorgenia",
+    nomeOfferta: "Condominio Luce",
+    tipoOperazione: ["subentro"],
+    tipoFornitura: "luce",
+    pod: "IT001E55555555",
+    pdr: "",
+    metodoPagamento: "bollettino",
+    iban: "",
     indirizzo: "Via Piave 22, Monza",
     indirizzoFatturazione: "Via Piave 22, Monza",
     indirizzoFornitura: "Via Piave 22, Monza",
@@ -81,6 +113,14 @@ const defaultContracts = [
     tipoCliente: "Business",
     piva: "02900341209",
     email: "marketsole@email.it",
+    fornitore: "Plenitude",
+    nomeOfferta: "Business Dual",
+    tipoOperazione: ["switch"],
+    tipoFornitura: "dual",
+    pod: "IT001E44444444",
+    pdr: "11223344556677",
+    metodoPagamento: "rid",
+    iban: "IT60X0542811101000000112233",
     indirizzo: "Piazza Garibaldi 3, Novara",
     indirizzoFatturazione: "Piazza Garibaldi 3, Novara",
     indirizzoFornitura: "Piazza Garibaldi 3, Novara",
@@ -97,6 +137,14 @@ const defaultContracts = [
     tipoCliente: "Privato",
     piva: "",
     email: "gianni@email.it",
+    fornitore: "Enel Energia",
+    nomeOfferta: "Casa Luce",
+    tipoOperazione: ["switch"],
+    tipoFornitura: "luce",
+    pod: "IT001E22222222",
+    pdr: "",
+    metodoPagamento: "bollettino",
+    iban: "",
     indirizzo: "Via Dante 14, Como",
     indirizzoFatturazione: "Via Dante 14, Como",
     indirizzoFornitura: "Via Dante 14, Como",
@@ -113,6 +161,14 @@ const defaultContracts = [
     tipoCliente: "Business",
     piva: "08111230963",
     email: "barcentrale@email.it",
+    fornitore: "A2A Energia",
+    nomeOfferta: "Bar Gas",
+    tipoOperazione: ["cambio listino"],
+    tipoFornitura: "gas",
+    pod: "",
+    pdr: "22334455667788",
+    metodoPagamento: "rid",
+    iban: "IT60X0542811101000000998877",
     indirizzo: "Via Milano 90, Lecco",
     indirizzoFatturazione: "Via Milano 90, Lecco",
     indirizzoFornitura: "Via Milano 90, Lecco",
@@ -152,6 +208,7 @@ document.getElementById("current-period").textContent = capitalize(formatMonth.f
 setConnectionStatus("loading", "Connessione...");
 setAppLoading(true);
 setAuthLocked(true);
+updateConditionalFields();
 
 document.querySelectorAll(".nav-item").forEach((button) => {
   button.addEventListener("click", () => setActivePage(button.dataset.page));
@@ -161,6 +218,8 @@ document.querySelectorAll("[data-go-page]").forEach((button) => {
   button.addEventListener("click", () => setActivePage(button.dataset.goPage));
 });
 
+document.getElementById("tipo-fornitura").addEventListener("change", updateConditionalFields);
+document.getElementById("metodo-pagamento").addEventListener("change", updateConditionalFields);
 document.getElementById("login-form").addEventListener("submit", handleLogin);
 document.getElementById("logout-button").addEventListener("click", handleLogout);
 
@@ -180,8 +239,9 @@ document.getElementById("contract-form").addEventListener("submit", async (event
   const submitBtn = formElement.querySelector('button[type="submit"]');
   const feedback = document.getElementById("save-feedback");
 
-  if (!draft.ragioneSociale || !draft.cellulare || !draft.tipoCliente) {
-    setFormFeedback("error", "Compila cliente, cellulare e tipo cliente.");
+  const validationMessage = validateContractDraft(draft);
+  if (validationMessage) {
+    setFormFeedback("error", validationMessage);
     return;
   }
 
@@ -190,17 +250,7 @@ document.getElementById("contract-form").addEventListener("submit", async (event
 
   if (typeof baserowClient !== "undefined" && baserowClient.isConfigured()) {
     try {
-      await baserowClient.createContract({
-        ragioneSociale: draft.ragioneSociale,
-        cellulare: draft.cellulare,
-        tipoCliente: draft.tipoCliente,
-        piva: draft.piva,
-        email: draft.email,
-        indirizzo: draft.indirizzo,
-        indirizzoFatturazione: draft.indirizzoFatturazione,
-        indirizzoFornitura: draft.indirizzoFornitura,
-        descrizione: draft.descrizione,
-      });
+      await baserowClient.createContract(buildContractFormData(draft));
       contracts = await baserowClient.listContracts();
       setFormFeedback("success", "Contratto salvato nel database.");
     } catch (err) {
@@ -223,6 +273,7 @@ document.getElementById("contract-form").addEventListener("submit", async (event
   formElement.reset();
   formElement.elements.agente.value = agent.nome;
   formElement.elements.statoContratto.value = "in attesa";
+  updateConditionalFields();
   renderAll();
   setTimeout(() => setActivePage("contracts"), 350);
 });
@@ -443,6 +494,15 @@ function openContractModal(contractId) {
     detailItem("Stato", capitalize(contract.statoContratto)),
     detailItem("Data inserimento", formatDate.format(new Date(contract.dataInserimento))),
     detailItem("Tipo cliente", contract.tipoCliente),
+    detailItem("Fornitore", contract.fornitore || "Non inserito"),
+    detailItem("Nome offerta", contract.nomeOfferta || "Non inserita"),
+    detailItem("Tipo operazione", formatList(contract.tipoOperazione) || "Non inserita"),
+    detailItem("Tipo fornitura", capitalize(contract.tipoFornitura || "Non inserita")),
+    detailItem("POD", contract.pod || "Non inserito"),
+    detailItem("PDR", contract.pdr || "Non inserito"),
+    detailItem("Metodo pagamento", capitalize(contract.metodoPagamento || "Non inserito")),
+    detailItem("IBAN", contract.iban ? maskIban(contract.iban) : "Non inserito"),
+    fileDetailItem(contract.fileContratto),
     detailItem("CB", euro.format(contract.cbMaturata)),
     detailItem("Cellulare", contract.cellulare),
     detailItem("Email", contract.email || "Non inserita"),
@@ -470,6 +530,32 @@ function detailItem(label, value, full = false) {
       <strong>${escapeHtml(value)}</strong>
     </div>
   `;
+}
+
+function fileDetailItem(files) {
+  const file = Array.isArray(files) ? files[0] : null;
+  if (!file) return detailItem("PDF contratto", "Non caricato", true);
+
+  const label = escapeHtml(file.visibleName || "PDF contratto");
+  const content = file.url
+    ? `<a href="${escapeHtml(file.url)}" target="_blank" rel="noopener">${label}</a>`
+    : label;
+
+  return `
+    <div class="detail-item full">
+      <span>PDF contratto</span>
+      <strong>${content}</strong>
+    </div>
+  `;
+}
+
+function formatList(value) {
+  return Array.isArray(value) ? value.join(", ") : String(value || "");
+}
+
+function maskIban(value) {
+  const compact = String(value).replace(/\s+/g, "");
+  return compact.length <= 4 ? compact : `•••• ${compact.slice(-4)}`;
 }
 
 function statusBadge(status) {
@@ -555,6 +641,7 @@ function renderAll() {
 
 function buildContractDraft(form) {
   const stato = normalizeStatus(form.get("statoContratto"));
+  const fileContratto = form.get("fileContratto");
 
   return {
     id: Date.now(),
@@ -563,16 +650,127 @@ function buildContractDraft(form) {
     ragioneSociale: String(form.get("ragioneSociale")).trim(),
     cellulare: String(form.get("cellulare")).trim(),
     tipoCliente: String(form.get("tipoCliente")).trim(),
+    fornitore: String(form.get("fornitore")).trim(),
+    nomeOfferta: String(form.get("nomeOfferta")).trim(),
+    tipoOperazione: form.getAll("tipoOperazione").map((value) => String(value).trim()).filter(Boolean),
+    tipoFornitura: String(form.get("tipoFornitura")).trim(),
+    pod: String(form.get("pod")).trim(),
+    pdr: String(form.get("pdr")).trim(),
+    metodoPagamento: String(form.get("metodoPagamento")).trim(),
+    iban: String(form.get("iban")).trim(),
     piva: String(form.get("piva")).trim(),
     email: String(form.get("email")).trim(),
     indirizzo: String(form.get("indirizzo")).trim(),
     indirizzoFatturazione: String(form.get("indirizzoFatturazione")).trim(),
     indirizzoFornitura: String(form.get("indirizzoFornitura")).trim(),
     descrizione: String(form.get("descrizione")).trim(),
+    fileContratto: fileContratto && fileContratto.size > 0 ? fileContratto : null,
     statoContratto: stato,
     cbUnitariaSnapshot: agent.cbUnitaria,
     cbMaturata: stato === "scartato" ? 0 : agent.cbUnitaria,
   };
+}
+
+function buildContractFormData(draft) {
+  const formData = new FormData();
+  [
+    "ragioneSociale",
+    "cellulare",
+    "tipoCliente",
+    "fornitore",
+    "nomeOfferta",
+    "tipoFornitura",
+    "pod",
+    "pdr",
+    "metodoPagamento",
+    "iban",
+    "piva",
+    "email",
+    "indirizzo",
+    "indirizzoFatturazione",
+    "indirizzoFornitura",
+    "descrizione",
+  ].forEach((key) => {
+    formData.append(key, draft[key] || "");
+  });
+
+  draft.tipoOperazione.forEach((operation) => {
+    formData.append("tipoOperazione", operation);
+  });
+
+  if (draft.fileContratto) {
+    formData.append("fileContratto", draft.fileContratto);
+  }
+
+  return formData;
+}
+
+function validateContractDraft(draft) {
+  if (!draft.ragioneSociale || !draft.cellulare || !draft.tipoCliente) {
+    return "Compila cliente, cellulare e tipo cliente.";
+  }
+
+  if (!draft.fornitore || !draft.nomeOfferta) {
+    return "Compila fornitore e nome offerta.";
+  }
+
+  if (!draft.tipoOperazione.length) {
+    return "Seleziona almeno un tipo operazione.";
+  }
+
+  if (!draft.tipoFornitura) {
+    return "Seleziona il tipo fornitura.";
+  }
+
+  if ((draft.tipoFornitura === "luce" || draft.tipoFornitura === "dual") && !draft.pod) {
+    return "Inserisci il POD.";
+  }
+
+  if ((draft.tipoFornitura === "gas" || draft.tipoFornitura === "dual") && !draft.pdr) {
+    return "Inserisci il PDR.";
+  }
+
+  if (!draft.metodoPagamento) {
+    return "Seleziona il metodo di pagamento.";
+  }
+
+  if (draft.metodoPagamento === "rid" && !draft.iban) {
+    return "Inserisci l'IBAN per il RID.";
+  }
+
+  if (draft.fileContratto) {
+    const isPdf =
+      draft.fileContratto.type === "application/pdf" ||
+      draft.fileContratto.name.toLowerCase().endsWith(".pdf");
+    if (!isPdf) {
+      return "Carica solo file PDF.";
+    }
+    if (draft.fileContratto.size > 10 * 1024 * 1024) {
+      return "Il PDF non deve superare 10 MB.";
+    }
+  }
+
+  return "";
+}
+
+function updateConditionalFields() {
+  const tipoFornitura = document.getElementById("tipo-fornitura").value;
+  const metodoPagamento = document.getElementById("metodo-pagamento").value;
+  const showPod = tipoFornitura === "luce" || tipoFornitura === "dual";
+  const showPdr = tipoFornitura === "gas" || tipoFornitura === "dual";
+  const showIban = metodoPagamento === "rid";
+
+  toggleField("pod-field", showPod);
+  toggleField("pdr-field", showPdr);
+  toggleField("iban-field", showIban);
+}
+
+function toggleField(id, isVisible) {
+  const field = document.getElementById(id);
+  const input = field.querySelector("input");
+  field.hidden = !isVisible;
+  input.required = isVisible;
+  if (!isVisible) input.value = "";
 }
 
 function setFormFeedback(type, message) {

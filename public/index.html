@@ -194,6 +194,52 @@
                 <input name="statoContratto" type="hidden" value="in attesa" />
               </div>
               <label>
+                Fornitore
+                <input name="fornitore" type="text" placeholder="Es. Enel Energia" required />
+              </label>
+              <label>
+                Nome offerta
+                <input name="nomeOfferta" type="text" placeholder="Es. Flex Business Luce" required />
+              </label>
+              <fieldset class="field-group full-span">
+                <legend>Tipo operazione</legend>
+                <div class="checkbox-grid">
+                  <label><input name="tipoOperazione" type="checkbox" value="switch" /> Switch</label>
+                  <label><input name="tipoOperazione" type="checkbox" value="switch + voltura" /> Switch + voltura</label>
+                  <label><input name="tipoOperazione" type="checkbox" value="cambio listino" /> Cambio listino</label>
+                  <label><input name="tipoOperazione" type="checkbox" value="subentro" /> Subentro</label>
+                </div>
+              </fieldset>
+              <label>
+                Tipo fornitura
+                <select name="tipoFornitura" id="tipo-fornitura" required>
+                  <option value="">Seleziona</option>
+                  <option value="luce">Luce</option>
+                  <option value="gas">Gas</option>
+                  <option value="dual">Dual</option>
+                </select>
+              </label>
+              <label class="conditional-field" id="pod-field" hidden>
+                POD
+                <input name="pod" type="text" placeholder="IT001E..." />
+              </label>
+              <label class="conditional-field" id="pdr-field" hidden>
+                PDR
+                <input name="pdr" type="text" placeholder="Numero PDR" />
+              </label>
+              <label>
+                Metodo pagamento
+                <select name="metodoPagamento" id="metodo-pagamento" required>
+                  <option value="">Seleziona</option>
+                  <option value="bollettino">Bollettino</option>
+                  <option value="rid">RID</option>
+                </select>
+              </label>
+              <label class="conditional-field" id="iban-field" hidden>
+                IBAN
+                <input name="iban" type="text" placeholder="IT60X..." autocomplete="off" />
+              </label>
+              <label>
                 Indirizzo
                 <input name="indirizzo" type="text" placeholder="Via Roma 12, Milano" autocomplete="street-address" />
               </label>
@@ -208,6 +254,10 @@
               <label>
                 Indirizzo fornitura
                 <input name="indirizzoFornitura" type="text" placeholder="POD/PDR o indirizzo fornitura" />
+              </label>
+              <label class="full-span">
+                PDF contratto
+                <input name="fileContratto" type="file" accept="application/pdf,.pdf" />
               </label>
               <label class="full-span">
                 Descrizione / note

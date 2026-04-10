@@ -692,6 +692,45 @@ label,
   min-width: 0;
 }
 
+.field-group {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.field-group legend {
+  padding: 0 6px;
+  color: #334155;
+  font-weight: 650;
+}
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.checkbox-grid label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #f8fafc;
+  font-weight: 650;
+}
+
+.checkbox-grid input {
+  width: auto;
+  min-height: 0;
+}
+
 input,
 select,
 textarea {
@@ -732,6 +771,10 @@ textarea {
   color: var(--yellow);
   background: #fffbeb;
   font-size: 1rem;
+}
+
+.conditional-field {
+  transition: opacity 0.18s ease;
 }
 
 .full-span {
@@ -1002,6 +1045,10 @@ td[colspan]::before {
   line-height: 1.45;
 }
 
+.detail-item a {
+  color: var(--primary-strong);
+}
+
 /* =============================================
    TABLET — min-width: 640px
    Sidebar becomes sticky top horizontal bar
@@ -1148,6 +1195,10 @@ td[colspan]::before {
   .form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 16px;
+  }
+
+  .checkbox-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .form-head {

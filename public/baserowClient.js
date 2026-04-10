@@ -32,7 +32,7 @@ const baserowClient = {
   async createContract(contract) {
     return fetchJson("/api/contracts", {
       method: "POST",
-      body: JSON.stringify(contract),
+      body: contract,
     });
   },
 
@@ -45,12 +45,15 @@ const baserowClient = {
 };
 
 async function fetchJson(url, options = {}) {
+  const isFormData = options.body instanceof FormData;
   const response = await fetch(url, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
+    headers: isFormData
+      ? options.headers || {}
+      : {
+          "Content-Type": "application/json",
+          ...(options.headers || {}),
+        },
   });
 
   const data = await response.json().catch(() => ({}));

@@ -82,6 +82,14 @@ Pagina più importante. Layout a 2 colonne desktop, 1 colonna mobile. Campi rido
 - Tipo cliente
 - P.IVA
 - Email
+- Fornitore
+- Nome offerta
+- Tipo operazione
+- Tipo fornitura
+- POD/PDR in base alla fornitura
+- Metodo pagamento
+- IBAN se pagamento RID
+- PDF contratto
 - Indirizzo
 - Indirizzo fatturazione
 - Indirizzo fornitura
@@ -185,6 +193,15 @@ Pagina motivazionale:
 | `ragione_sociale` | Testo | Cliente o azienda |
 | `cellulare` | Testo | Meglio testo, non numero |
 | `tipo_cliente` | Single select | `Business`, `Privato`, `Condominio` |
+| `fornitore` | Testo | Nome fornitore |
+| `nome_offerta` | Testo | Nome offerta venduta |
+| `tipo_operazione` | Multiple select | `switch`, `switch + voltura`, `cambio listino`, `subentro` |
+| `tipo_fornitura` | Single select | `luce`, `gas`, `dual` |
+| `pod` | Testo | Obbligatorio se luce o dual |
+| `pdr` | Testo | Obbligatorio se gas o dual |
+| `metodo_pagamento` | Single select | `bollettino`, `rid` |
+| `iban` | Testo | Obbligatorio se RID |
+| `file_contratto` | File | PDF del contratto |
 | `piva` | Testo | Opzionale |
 | `email` | Email | Opzionale |
 | `indirizzo` | Long text | Indirizzo principale |
