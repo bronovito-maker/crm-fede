@@ -35,11 +35,16 @@ GET    /api/agent
 GET    /api/contracts
 POST   /api/contracts
 PATCH  /api/contracts/:id/status
+GET    /api/admin/agents
+POST   /api/admin/agents
+PATCH  /api/admin/agents/:id
+GET    /api/admin/stats
 ```
 
-`POST /api/contracts` accetta solo i campi del form agente. Il server aggiunge automaticamente agente, data, stato `in attesa` e `cb_unitaria_snapshot`.
+`POST /api/contracts` accetta solo i campi del form agente. Il server aggiunge automaticamente agente, data, stato `Caricato` e `cb_unitaria_snapshot`.
 
 Il login usa email + password. Il server cerca l'agente in Baserow tramite email, confronta la password con `password_hash` e crea una sessione con cookie `HttpOnly`.
+Gli endpoint `/api/admin/*` richiedono `ruolo = admin` nella tabella `Agenti`.
 
 ### Configurazione `.env`
 
@@ -80,6 +85,7 @@ Pagina più importante. Layout a 2 colonne desktop, 1 colonna mobile. Campi rido
 - Ragione sociale o nome cliente
 - Cellulare
 - Tipo cliente
+- Categoria cliente: prospect, CB o ex CB
 - P.IVA
 - Email
 - Fornitore
@@ -89,17 +95,16 @@ Pagina più importante. Layout a 2 colonne desktop, 1 colonna mobile. Campi rido
 - POD/PDR in base alla fornitura
 - Metodo pagamento
 - IBAN se pagamento RID
-- PDF contratto
+- Documenti contratto: PDF, Office/OpenDocument e immagini da telefono
 - Indirizzo
 - Indirizzo fatturazione
 - Indirizzo fornitura
 - Descrizione / note
-- Stato contratto
 - Agente assegnato
 
-Scelta UX: il valore predefinito di `stato_contratto` è `in attesa`. L'agente inserisce, la validazione avviene dopo.
+Scelta UX: il valore predefinito di `stato_contratto` è `Caricato`. L'agente inserisce, la validazione avviene dopo.
 
-Nel form agente lo stato non deve essere modificabile: viene mostrato come `In attesa` e salvato automaticamente.
+Nel form agente lo stato non deve essere modificabile ne visibile: viene salvato automaticamente come `Caricato`. Al suo posto l'agente sceglie la categoria cliente: `prospect`, `cb` o `ex cb`.
 
 ### Contratti
 
@@ -136,9 +141,23 @@ Pagina motivazionale:
 
 - Target mensile, trimestrale, annuale
 - Percentuale raggiunta
+- Barre percentuali per target mensile, trimestrale e annuale
 - Quanto manca
 - Media giornaliera necessaria
 - Messaggio diretto e utile
+
+### Admin
+
+Visibile solo agli agenti con `ruolo = admin`.
+
+MVP admin:
+
+- creazione agente con password hashata lato server
+- lista agenti
+- modifica dati agente
+- modifica ruolo e stato attivo
+- statistiche globali mese corrente
+- statistiche per agente su target mensile, trimestrale e annuale
 
 ## Componenti UI
 
@@ -193,6 +212,7 @@ Pagina motivazionale:
 | `ragione_sociale` | Testo | Cliente o azienda |
 | `cellulare` | Testo | Meglio testo, non numero |
 | `tipo_cliente` | Single select | `Business`, `Privato`, `Condominio` |
+| `categoria_cliente` | Single select | `prospect`, `cb`, `ex cb` |
 | `fornitore` | Testo | Nome fornitore |
 | `nome_offerta` | Testo | Nome offerta venduta |
 | `tipo_operazione` | Multiple select | `switch`, `switch + voltura`, `cambio listino`, `subentro` |
@@ -201,15 +221,15 @@ Pagina motivazionale:
 | `pdr` | Testo | Obbligatorio se gas o dual |
 | `metodo_pagamento` | Single select | `bollettino`, `rid` |
 | `iban` | Testo | Obbligatorio se RID |
-| `file_contratto` | File | PDF del contratto |
+| `file_contratto` | File | Allegati multipli: PDF, Word, Excel, PowerPoint, OpenDocument, JPG, PNG, WebP, HEIC/HEIF |
 | `piva` | Testo | Opzionale |
 | `email` | Email | Opzionale |
 | `indirizzo` | Long text | Indirizzo principale |
 | `indirizzo_fatturazione` | Long text | Opzionale |
 | `indirizzo_fornitura` | Long text | Opzionale |
 | `descrizione` | Long text | Note |
-| `stato_contratto` | Single select | `in attesa`, `validato`, `scartato` |
-| `cb_maturata` | Formula/Numero | `0` se scartato, altrimenti valore CB |
+| `stato_contratto` | Single select | `Caricato`, `OK`, `K.O.`, `Switch - Out` |
+| `cb_maturata` | Formula/Numero | `0` se `K.O.` o `Switch - Out`, altrimenti valore CB |
 | `mese_riferimento` | Formula | `YYYY-MM` da `data_inserimento` |
 | `trimestre_riferimento` | Formula | `YYYY-Qn` |
 | `anno_riferimento` | Formula | `YYYY` |
@@ -218,7 +238,7 @@ Pagina motivazionale:
 
 ### Formule consigliate
 
-- `cb_maturata`: se `stato_contratto = scartato`, valore `0`; altrimenti usa la CB unitaria dell'agente o un numero copiato al momento dell'inserimento.
+- `cb_maturata`: se `stato_contratto = K.O.` o `Switch - Out`, valore `0`; altrimenti usa la CB unitaria dell'agente o un numero copiato al momento dell'inserimento.
 - `mese_riferimento`: anno e mese da `data_inserimento`.
 - `trimestre_riferimento`: anno + trimestre da `data_inserimento`.
 - `anno_riferimento`: anno da `data_inserimento`.
@@ -229,22 +249,25 @@ Per stabilita contabile, in produzione conviene salvare anche `cb_unitaria_snaps
 
 - `Contratti - agente corrente`: filtrata per agente.
 - `Contratti - mese corrente`: filtrata per `mese_riferimento`.
-- `Contratti - validati`: `stato_contratto = validato`.
-- `Contratti - in attesa`: `stato_contratto = in attesa`.
-- `Contratti - scartati`: `stato_contratto = scartato`.
+- `Contratti - validati`: `stato_contratto = OK`.
+- `Contratti - in attesa`: `stato_contratto = Caricato`.
+- `Contratti - scartati`: `stato_contratto = K.O.` oppure `Switch - Out`.
 
 ### Permessi minimi
 
 - Agente: crea contratti, legge solo contratti collegati al proprio agente, non modifica target.
 - Admin: modifica agenti, target, stati contratto e dati economici.
-- Validazione: lo stato `validato/scartato` dovrebbe essere gestito da admin o backoffice, non dall'agente standard.
+- Validazione: lo stato `OK/K.O./Switch - Out` dovrebbe essere gestito da admin o backoffice, non dall'agente standard.
 
 ## Regole MVP
 
-- La CB validata conta solo contratti `validato`.
-- La CB potenziale conta `validato` + `in attesa`.
-- I contratti `scartato` valgono `0`.
-- Il target si misura sui contratti validati, non sugli inseriti.
+- La CB validata conta solo contratti `OK` e usa lo stesso moltiplicatore del target.
+- La CB potenziale conta `OK` + `Caricato` e usa lo stesso moltiplicatore del target.
+- I contratti `K.O.` e `Switch - Out` valgono `0`.
+- Il target si misura sui contratti `OK`, non sugli inseriti.
+- Le statistiche e i target usano il conteggio ponderato: `tipo_fornitura = dual` e `categoria_cliente = prospect` vale `2` contratti.
+- Tutti gli altri casi valgono `1` contratto, inclusi dual con `categoria_cliente = cb` o `ex cb`.
+- La riga Baserow resta sempre una sola pratica: il doppio conteggio e una regola statistica/economica applicata dall'app.
 - L'agente vede solo i propri contratti.
 
 ## Wireframe testuale
@@ -268,8 +291,8 @@ Nuovo contratto
 │ Nuovo contratto                         Tempo: meno di 1 min │
 ├──────────────────────────────┬───────────────────────────────┤
 │ Ragione sociale              │ Cellulare                     │
-│ Tipo cliente                 │ P.IVA                         │
-│ Email                        │ Stato                         │
+│ Tipo cliente                 │ Categoria cliente             │
+│ Email                        │ P.IVA                         │
 │ Indirizzo                    │ Agente                        │
 │ Indirizzo fatturazione       │ Indirizzo fornitura           │
 │ Note                                                         │

@@ -42,6 +42,28 @@ const baserowClient = {
       body: JSON.stringify({ status }),
     });
   },
+
+  async listAdminAgents() {
+    return fetchJson("/api/admin/agents");
+  },
+
+  async createAdminAgent(agent) {
+    return fetchJson("/api/admin/agents", {
+      method: "POST",
+      body: JSON.stringify(agent),
+    });
+  },
+
+  async updateAdminAgent(agentId, agent) {
+    return fetchJson(`/api/admin/agents/${agentId}`, {
+      method: "PATCH",
+      body: JSON.stringify(agent),
+    });
+  },
+
+  async getAdminStats() {
+    return fetchJson("/api/admin/stats");
+  },
 };
 
 async function fetchJson(url, options = {}) {

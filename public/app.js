@@ -15,6 +15,7 @@ const defaultContracts = [
     ragioneSociale: "Rossi Impianti SRL",
     cellulare: "+39 333 120 4501",
     tipoCliente: "Business",
+    categoriaCliente: "cb",
     piva: "03849270121",
     email: "info@rossiimpianti.it",
     fornitore: "Enel Energia",
@@ -29,8 +30,9 @@ const defaultContracts = [
     indirizzoFatturazione: "Via Roma 12, Milano",
     indirizzoFornitura: "Via Industria 7, Milano",
     descrizione: "Cliente business con doppia fornitura.",
-    statoContratto: "validato",
+    statoContratto: "OK",
     cbMaturata: 85,
+    dataInizioFornitura: "2026-06-01",
   },
   {
     id: 2,
@@ -39,6 +41,7 @@ const defaultContracts = [
     ragioneSociale: "Studio Verdi",
     cellulare: "+39 349 882 1044",
     tipoCliente: "Business",
+    categoriaCliente: "prospect",
     piva: "01923440982",
     email: "amministrazione@studioverdi.it",
     fornitore: "A2A Energia",
@@ -53,8 +56,9 @@ const defaultContracts = [
     indirizzoFatturazione: "Corso Italia 41, Torino",
     indirizzoFornitura: "Corso Italia 41, Torino",
     descrizione: "",
-    statoContratto: "in attesa",
+    statoContratto: "Caricato",
     cbMaturata: 85,
+    dataInizioFornitura: "2026-06-01",
   },
   {
     id: 3,
@@ -63,6 +67,7 @@ const defaultContracts = [
     ragioneSociale: "Laura Neri",
     cellulare: "+39 347 221 0034",
     tipoCliente: "Privato",
+    categoriaCliente: "ex cb",
     piva: "",
     email: "laura.neri@email.it",
     fornitore: "Edison",
@@ -77,8 +82,9 @@ const defaultContracts = [
     indirizzoFatturazione: "Via Manzoni 8, Pavia",
     indirizzoFornitura: "Via Manzoni 8, Pavia",
     descrizione: "",
-    statoContratto: "validato",
+    statoContratto: "OK",
     cbMaturata: 85,
+    dataInizioFornitura: "2026-06-01",
   },
   {
     id: 4,
@@ -87,6 +93,7 @@ const defaultContracts = [
     ragioneSociale: "Condominio Aurora",
     cellulare: "+39 02 8899 1200",
     tipoCliente: "Condominio",
+    categoriaCliente: "prospect",
     piva: "09777130159",
     email: "aurora@amministrazioni.it",
     fornitore: "Sorgenia",
@@ -101,8 +108,9 @@ const defaultContracts = [
     indirizzoFatturazione: "Via Piave 22, Monza",
     indirizzoFornitura: "Via Piave 22, Monza",
     descrizione: "Documenti incompleti.",
-    statoContratto: "scartato",
+    statoContratto: "K.O.",
     cbMaturata: 0,
+    dataInizioFornitura: "2026-06-01",
   },
   {
     id: 5,
@@ -111,6 +119,7 @@ const defaultContracts = [
     ragioneSociale: "Market Sole SNC",
     cellulare: "+39 331 771 4540",
     tipoCliente: "Business",
+    categoriaCliente: "cb",
     piva: "02900341209",
     email: "marketsole@email.it",
     fornitore: "Plenitude",
@@ -125,8 +134,9 @@ const defaultContracts = [
     indirizzoFatturazione: "Piazza Garibaldi 3, Novara",
     indirizzoFornitura: "Piazza Garibaldi 3, Novara",
     descrizione: "",
-    statoContratto: "in attesa",
+    statoContratto: "Caricato",
     cbMaturata: 85,
+    dataInizioFornitura: "2026-07-01",
   },
   {
     id: 6,
@@ -135,6 +145,7 @@ const defaultContracts = [
     ragioneSociale: "Gianni Costa",
     cellulare: "+39 348 900 1180",
     tipoCliente: "Privato",
+    categoriaCliente: "prospect",
     piva: "",
     email: "gianni@email.it",
     fornitore: "Enel Energia",
@@ -149,8 +160,9 @@ const defaultContracts = [
     indirizzoFatturazione: "Via Dante 14, Como",
     indirizzoFornitura: "Via Dante 14, Como",
     descrizione: "",
-    statoContratto: "validato",
+    statoContratto: "OK",
     cbMaturata: 85,
+    dataInizioFornitura: "2026-05-01",
   },
   {
     id: 7,
@@ -159,6 +171,7 @@ const defaultContracts = [
     ragioneSociale: "Bar Centrale",
     cellulare: "+39 331 440 9021",
     tipoCliente: "Business",
+    categoriaCliente: "ex cb",
     piva: "08111230963",
     email: "barcentrale@email.it",
     fornitore: "A2A Energia",
@@ -173,8 +186,9 @@ const defaultContracts = [
     indirizzoFatturazione: "Via Milano 90, Lecco",
     indirizzoFornitura: "Via Milano 90, Lecco",
     descrizione: "",
-    statoContratto: "validato",
+    statoContratto: "OK",
     cbMaturata: 85,
+    dataInizioFornitura: "2026-04-01",
   },
 ];
 
@@ -187,19 +201,93 @@ const pages = {
   contracts: "Contratti",
   cb: "CB",
   progress: "Avanzamento",
+  admin: "Admin",
 };
 
 const statusColors = {
-  validato: "#15803d",
-  "in attesa": "#b7791f",
-  scartato: "#c2410c",
+  OK: "#15803d",
+  Caricato: "#b7791f",
+  "K.O.": "#c2410c",
+  "Switch - Out": "#dc2626",
 };
 
 const today = new Date();
 const currentMonthKey = monthKey(today);
 const isStaticFileMode = window.location.protocol === "file:";
 const demoFallbackEnabled = Boolean(CONFIG.ENABLE_DEMO_FALLBACK || isStaticFileMode);
-const euro = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" });
+const maxContractFiles = 10;
+const maxContractFileSize = 15 * 1024 * 1024;
+const allowedContractFileExtensions = new Set([
+  "pdf",
+  "doc",
+  "docx",
+  "xls",
+  "xlsx",
+  "ppt",
+  "pptx",
+  "odt",
+  "ods",
+  "jpg",
+  "jpeg",
+  "png",
+  "webp",
+  "heic",
+  "heif",
+]);
+const allowedContractFileTypes = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.oasis.opendocument.text",
+  "application/vnd.oasis.opendocument.spreadsheet",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+]);
+/**
+ * Calcola la data d'ingresso in fornitura.
+ * Se inserito entro il 20 del mese corrente -> primo del mese tra due mesi.
+ * Se inserito dal 21 del mese corrente -> primo del mese tra tre mesi.
+ * @param {string} inputDate - La data di inserimento (YYYY-MM-DD)
+ * @returns {string} - Data inizio fornitura (YYYY-MM-DD)
+ */
+function calculateSupplyStartDate(inputDate) {
+  const date = inputDate ? new Date(inputDate) : new Date();
+  const day = date.getDate();
+  const month = date.getMonth();
+  const year = date.getFullYear();
+
+  let targetMonth;
+  let targetYear = year;
+
+  if (day <= 20) {
+    // Due mesi dopo
+    targetMonth = month + 2;
+  } else {
+    // Tre mesi dopo
+    targetMonth = month + 3;
+  }
+
+  // Crea la data al 1° del mese target (JS gestisce l'overflow dei mesi automatically)
+  const resultDate = new Date(targetYear, targetMonth, 1);
+
+  const yyyy = resultDate.getFullYear();
+  const mm = String(resultDate.getMonth() + 1).padStart(2, "0");
+  const dd = "01";
+
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+const formatCurrency = (val) =>
+  new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(
+    val
+  );
 const formatDate = new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" });
 const formatMonth = new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric" });
 
@@ -222,6 +310,8 @@ document.getElementById("tipo-fornitura").addEventListener("change", updateCondi
 document.getElementById("metodo-pagamento").addEventListener("change", updateConditionalFields);
 document.getElementById("login-form").addEventListener("submit", handleLogin);
 document.getElementById("logout-button").addEventListener("click", handleLogout);
+document.getElementById("admin-agent-form").addEventListener("submit", handleAdminAgentSubmit);
+document.getElementById("admin-agent-reset").addEventListener("click", resetAdminAgentForm);
 
 document.getElementById("close-contract-modal").addEventListener("click", closeContractModal);
 document.getElementById("contract-modal").addEventListener("click", (event) => {
@@ -272,7 +362,7 @@ document.getElementById("contract-form").addEventListener("submit", async (event
   submitBtn.disabled = false;
   formElement.reset();
   formElement.elements.agente.value = agent.nome;
-  formElement.elements.statoContratto.value = "in attesa";
+  formElement.elements.statoContratto.value = "Caricato";
   updateConditionalFields();
   renderAll();
   setTimeout(() => setActivePage("contracts"), 350);
@@ -315,15 +405,40 @@ function currentMonthContracts() {
 
 function getSummary() {
   const monthly = currentMonthContracts();
-  const validati = monthly.filter((contract) => contract.statoContratto === "validato");
-  const attesa = monthly.filter((contract) => contract.statoContratto === "in attesa");
-  const scartati = monthly.filter((contract) => contract.statoContratto === "scartato");
-  const cbValidata = validati.reduce((sum, contract) => sum + contract.cbMaturata, 0);
-  const cbPotenziale = [...validati, ...attesa].reduce((sum, contract) => sum + contract.cbMaturata, 0);
-  const mancanti = Math.max(agent.targetMensile - validati.length, 0);
-  const targetPercent = Math.min(Math.round((validati.length / agent.targetMensile) * 100), 100);
+  const ok = monthly.filter((contract) => contract.statoContratto === "OK");
+  const caricati = monthly.filter((contract) => contract.statoContratto === "Caricato");
+  const ko = monthly.filter((contract) => contract.statoContratto === "K.O.");
+  const switchOut = monthly.filter((contract) => contract.statoContratto === "Switch - Out");
+  const scartati = monthly.filter((contract) => contract.statoContratto === "K.O." || contract.statoContratto === "Switch - Out");
+  const monthlyUnits = sumContractUnits(monthly);
+  const okUnits = sumContractUnits(ok);
+  const caricatiUnits = sumContractUnits(caricati);
+  const koUnits = sumContractUnits(ko);
+  const switchOutUnits = sumContractUnits(switchOut);
+  const scartatiUnits = sumContractUnits(scartati);
+  const cbValidata = sumContractCommissions(ok);
+  const cbPotenziale = sumContractCommissions([...ok, ...caricati]);
+  const mancanti = Math.max(agent.targetMensile - okUnits, 0);
+  const targetPercent = percent(okUnits, agent.targetMensile);
 
-  return { monthly, validati, attesa, scartati, cbValidata, cbPotenziale, mancanti, targetPercent };
+  return {
+    monthly,
+    ok,
+    caricati,
+    ko,
+    switchOut,
+    scartati,
+    monthlyUnits,
+    okUnits,
+    caricatiUnits,
+    koUnits,
+    switchOutUnits,
+    scartatiUnits,
+    cbValidata,
+    cbPotenziale,
+    mancanti,
+    targetPercent,
+  };
 }
 
 function renderMetrics(containerId, metrics) {
@@ -342,39 +457,40 @@ function renderMetrics(containerId, metrics) {
 function renderDashboard() {
   const summary = getSummary();
   renderMetrics("dashboard-metrics", [
-    { label: "Contratti inseriti", value: summary.monthly.length },
-    { label: "Contratti validati", value: summary.validati.length },
-    { label: "Contratti scartati", value: summary.scartati.length },
-    { label: "CB maturata", value: euro.format(summary.cbValidata) },
-    { label: "CB potenziale", value: euro.format(summary.cbPotenziale) },
+    { label: "Contratti inseriti", value: summary.monthlyUnits },
+    { label: "Contratti OK", value: summary.okUnits },
+    { label: "Contratti scartati (K.O.)", value: summary.scartatiUnits },
+    { label: "CB maturata", value: formatCurrency(summary.cbValidata) },
+    { label: "CB potenziale", value: formatCurrency(summary.cbPotenziale) },
     { label: "Target mensile", value: agent.targetMensile },
     { label: "Manca al target", value: summary.mancanti },
-    { label: "In attesa", value: summary.attesa.length },
+    { label: "In attesa (Caricati)", value: summary.caricatiUnits },
   ]);
 
   renderDonut(summary);
   document.getElementById("target-percent").textContent = `${summary.targetPercent}%`;
-  document.getElementById("target-copy").textContent = `${summary.validati.length} di ${agent.targetMensile}`;
+  document.getElementById("target-copy").textContent = `${summary.okUnits} di ${agent.targetMensile}`;
   document.getElementById("target-bar").style.width = `${summary.targetPercent}%`;
   document.getElementById("dashboard-motivation").textContent =
     summary.mancanti === 0
       ? "Target mensile raggiunto. Ora ogni contratto alza la CB."
-      : `Ti mancano ${summary.mancanti} contratti validati per chiudere il target.`;
+      : `Ti mancano ${summary.mancanti} contratti OK per chiudere il target.`;
   renderLineChart();
   renderBarChart();
 }
 
 function renderDonut(summary) {
-  const total = Math.max(summary.monthly.length, 1);
-  const validatoEnd = (summary.validati.length / total) * 100;
-  const attesaEnd = validatoEnd + (summary.attesa.length / total) * 100;
+  const total = Math.max(summary.monthlyUnits, 1);
+  const okEnd = (summary.okUnits / total) * 100;
+  const caricatiEnd = okEnd + (summary.caricatiUnits / total) * 100;
+
   document.getElementById("donut-chart").style.background =
-    `conic-gradient(${statusColors.validato} 0 ${validatoEnd}%, ${statusColors["in attesa"]} ${validatoEnd}% ${attesaEnd}%, ${statusColors.scartato} ${attesaEnd}% 100%)`;
+    `conic-gradient(${statusColors.OK} 0 ${okEnd}%, ${statusColors.Caricato} ${okEnd}% ${caricatiEnd}%, ${statusColors["K.O."]} ${caricatiEnd}% 100%)`;
 
   document.getElementById("status-legend").innerHTML = [
-    ["Validati", summary.validati.length, statusColors.validato],
-    ["In attesa", summary.attesa.length, statusColors["in attesa"]],
-    ["Scartati", summary.scartati.length, statusColors.scartato],
+    ["OK", summary.okUnits, statusColors.OK],
+    ["Caricati", summary.caricatiUnits, statusColors.Caricato],
+    ["Scartati / Out", summary.scartatiUnits, statusColors["K.O."]],
   ]
     .map(
       ([label, value, color]) => `
@@ -392,9 +508,9 @@ function renderLineChart() {
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
   const step = Math.max(Math.ceil(daysInMonth / 12), 1);
   const days = Array.from(new Set([1, ...range(step, daysInMonth, step), daysInMonth])).sort((a, b) => a - b);
-  const maxCount = Math.max(monthContracts.length, 1);
+  const maxCount = Math.max(sumContractUnits(monthContracts), 1);
   const points = days.map((day, index) => {
-    const cumulative = monthContracts.filter((contract) => Number(contract.dataInserimento.slice(-2)) <= day).length;
+    const cumulative = sumContractUnits(monthContracts.filter((contract) => Number(contract.dataInserimento.slice(-2)) <= day));
     return {
       x: 32 + index * (590 / Math.max(days.length - 1, 1)),
       y: 200 - (cumulative / maxCount) * 160,
@@ -416,7 +532,7 @@ function renderBarChart() {
   const monthValues = getRecentMonths(4).map((key) => {
     const date = dateFromMonthKey(key);
     const label = capitalize(new Intl.DateTimeFormat("it-IT", { month: "short" }).format(date)).replace(".", "");
-    const value = contracts.filter((contract) => contract.dataInserimento.startsWith(key) && contract.statoContratto === "validato").length;
+    const value = sumContractUnits(contracts.filter((contract) => contract.dataInserimento.startsWith(key) && contract.statoContratto === "OK"));
     return [label, value, key === currentMonthKey];
   });
   const max = Math.max(...monthValues.map((value) => value[1]), 1);
@@ -472,13 +588,15 @@ function renderContractsTable() {
 }
 
 function contractRow(contract) {
+  const supplyDate = contract.dataInizioFornitura ? formatDate.format(new Date(contract.dataInizioFornitura)) : "-";
   return `
     <tr data-contract-id="${contract.id}" tabindex="0" aria-label="Apri dettaglio contratto ${escapeHtml(contract.ragioneSociale)}">
       <td data-label="Cliente"><strong>${escapeHtml(contract.ragioneSociale)}</strong></td>
       <td data-label="Data">${formatDate.format(new Date(contract.dataInserimento))}</td>
+      <td data-label="Inizio forn.">${supplyDate}</td>
       <td data-label="Stato">${statusBadge(contract.statoContratto)}</td>
       <td data-label="Tipo">${escapeHtml(contract.tipoCliente)}</td>
-      <td data-label="CB">${euro.format(contract.cbMaturata)}</td>
+      <td data-label="CB">${formatCurrency(contractCommissionValue(contract))}</td>
       <td data-label="Telefono">${escapeHtml(contract.cellulare)}</td>
     </tr>
   `;
@@ -493,17 +611,20 @@ function openContractModal(contractId) {
     detailItem("Cliente", contract.ragioneSociale),
     detailItem("Stato", capitalize(contract.statoContratto)),
     detailItem("Data inserimento", formatDate.format(new Date(contract.dataInserimento))),
+    detailItem("Inizio fornitura", contract.dataInizioFornitura ? formatDate.format(new Date(contract.dataInizioFornitura)) : "Non calcolata"),
     detailItem("Tipo cliente", contract.tipoCliente),
+    detailItem("Categoria cliente", contract.categoriaCliente || "Non inserita"),
     detailItem("Fornitore", contract.fornitore || "Non inserito"),
     detailItem("Nome offerta", contract.nomeOfferta || "Non inserita"),
     detailItem("Tipo operazione", formatList(contract.tipoOperazione) || "Non inserita"),
     detailItem("Tipo fornitura", capitalize(contract.tipoFornitura || "Non inserita")),
+    detailItem("Conteggio target", contractUnitCount(contract)),
     detailItem("POD", contract.pod || "Non inserito"),
     detailItem("PDR", contract.pdr || "Non inserito"),
     detailItem("Metodo pagamento", capitalize(contract.metodoPagamento || "Non inserito")),
     detailItem("IBAN", contract.iban ? maskIban(contract.iban) : "Non inserito"),
     fileDetailItem(contract.fileContratto),
-    detailItem("CB", euro.format(contract.cbMaturata)),
+    detailItem("CB", formatCurrency(contractCommissionValue(contract))),
     detailItem("Cellulare", contract.cellulare),
     detailItem("Email", contract.email || "Non inserita"),
     detailItem("P.IVA", contract.piva || "Non inserita"),
@@ -533,17 +654,21 @@ function detailItem(label, value, full = false) {
 }
 
 function fileDetailItem(files) {
-  const file = Array.isArray(files) ? files[0] : null;
-  if (!file) return detailItem("PDF contratto", "Non caricato", true);
+  const items = Array.isArray(files) ? files.filter(Boolean) : [];
+  if (!items.length) return detailItem("Documenti contratto", "Non caricati", true);
 
-  const label = escapeHtml(file.visibleName || "PDF contratto");
-  const content = file.url
-    ? `<a href="${escapeHtml(file.url)}" target="_blank" rel="noopener">${label}</a>`
-    : label;
+  const content = items
+    .map((file) => {
+      const label = escapeHtml(file.visibleName || file.name || "Documento contratto");
+      return file.url
+        ? `<a href="${escapeHtml(file.url)}" target="_blank" rel="noopener">${label}</a>`
+        : label;
+    })
+    .join("<br>");
 
   return `
     <div class="detail-item full">
-      <span>PDF contratto</span>
+      <span>Documenti contratto</span>
       <strong>${content}</strong>
     </div>
   `;
@@ -559,18 +684,26 @@ function maskIban(value) {
 }
 
 function statusBadge(status) {
-  return `<span class="badge ${status.replace(" ", "-")}">${capitalize(status)}</span>`;
+  return `<span class="badge ${statusClass(status)}">${capitalize(status)}</span>`;
+}
+
+function statusClass(status) {
+  return String(status)
+    .toLowerCase()
+    .replace(/\./g, "")
+    .replace(/\s*-\s*/g, "-")
+    .replace(/\s+/g, "-");
 }
 
 function renderCbPage() {
   const summary = getSummary();
   renderMetrics("cb-metrics", [
-    { label: "CB del mese", value: euro.format(summary.cbPotenziale) },
-    { label: "CB validata", value: euro.format(summary.cbValidata) },
-    { label: "CB in attesa", value: euro.format(summary.attesa.length * agent.cbUnitaria) },
-    { label: "Validati", value: summary.validati.length },
-    { label: "In attesa", value: summary.attesa.length },
-    { label: "Scartati", value: summary.scartati.length },
+    { label: "CB del mese", value: formatCurrency(summary.cbPotenziale) },
+    { label: "CB validata (OK)", value: formatCurrency(summary.cbValidata) },
+    { label: "CB in attesa", value: formatCurrency(sumContractCommissions(summary.caricati)) },
+    { label: "OK", value: summary.okUnits },
+    { label: "Caricati", value: summary.caricatiUnits },
+    { label: "K.O.", value: summary.koUnits },
   ]);
 
   const table = document.getElementById("cb-table");
@@ -583,7 +716,7 @@ function renderCbPage() {
         <tr>
           <td data-label="Cliente"><strong>${escapeHtml(contract.ragioneSociale)}</strong></td>
           <td data-label="Stato">${statusBadge(contract.statoContratto)}</td>
-          <td data-label="CB">${euro.format(contract.cbMaturata)}</td>
+          <td data-label="CB">${formatCurrency(contractCommissionValue(contract))}</td>
           <td data-label="Data">${formatDate.format(new Date(contract.dataInserimento))}</td>
         </tr>
       `,
@@ -598,25 +731,31 @@ function renderProgressPage() {
   const quarterKey = getQuarterKey(today);
   const yearKey = String(today.getFullYear());
   const quarterDone = contracts.filter(
-    (contract) => getQuarterKey(new Date(contract.dataInserimento)) === quarterKey && contract.statoContratto === "validato",
-  ).length;
+    (contract) => getQuarterKey(new Date(contract.dataInserimento)) === quarterKey && contract.statoContratto === "OK",
+  ).reduce((sum, contract) => sum + contractUnitCount(contract), 0);
   const yearDone = contracts.filter(
-    (contract) => contract.dataInserimento.startsWith(yearKey) && contract.statoContratto === "validato",
-  ).length;
+    (contract) => contract.dataInserimento.startsWith(yearKey) && contract.statoContratto === "OK",
+  ).reduce((sum, contract) => sum + contractUnitCount(contract), 0);
+  const quarterPercent = percent(quarterDone, agent.targetTrimestrale);
+  const yearPercent = percent(yearDone, agent.targetAnnuale);
   const daysLeft = Math.max(new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate() - today.getDate() + 1, 1);
   const dailyNeed = summary.mancanti === 0 ? 0 : summary.mancanti / daysLeft;
 
-  document.getElementById("month-target-label").textContent = `${summary.validati.length} di ${agent.targetMensile}`;
+  document.getElementById("month-target-label").textContent = `${summary.okUnits} di ${agent.targetMensile}`;
   document.getElementById("month-target-percent").textContent = `${summary.targetPercent}%`;
   document.getElementById("month-target-bar").style.width = `${summary.targetPercent}%`;
   document.getElementById("progress-message").textContent =
     summary.mancanti === 0
       ? "Target centrato. Puoi puntare al bonus extra."
-      : `Ti mancano ${summary.mancanti} contratti per chiudere il target.`;
-  document.getElementById("quarter-target").textContent = `${quarterDone} di ${agent.targetTrimestrale} contratti validati`;
-  document.getElementById("year-target").textContent = `${yearDone} di ${agent.targetAnnuale} contratti validati`;
+      : `Ti mancano ${summary.mancanti} contratti conteggiati per chiudere il target.`;
+  document.getElementById("quarter-target").textContent = `${quarterDone} di ${agent.targetTrimestrale} contratti conteggiati`;
+  document.getElementById("quarter-target-percent").textContent = `${quarterPercent}%`;
+  document.getElementById("quarter-target-bar").style.width = `${quarterPercent}%`;
+  document.getElementById("year-target").textContent = `${yearDone} di ${agent.targetAnnuale} contratti conteggiati`;
+  document.getElementById("year-target-percent").textContent = `${yearPercent}%`;
+  document.getElementById("year-target-bar").style.width = `${yearPercent}%`;
   document.getElementById("daily-need").textContent =
-    dailyNeed === 0 ? "Target mensile già raggiunto" : `${dailyNeed.toLocaleString("it-IT", { maximumFractionDigits: 1 })} contratti al giorno`;
+    dailyNeed === 0 ? "Target mensile già raggiunto" : `${dailyNeed.toLocaleString("it-IT", { maximumFractionDigits: 1 })} contratti conteggiati al giorno`;
 }
 
 function renderMonthFilter() {
@@ -637,19 +776,26 @@ function renderAll() {
   renderContractsTable();
   renderCbPage();
   renderProgressPage();
+  updateAdminVisibility();
+  if (agent.ruolo === "admin") {
+    renderAdminPage();
+  }
 }
 
 function buildContractDraft(form) {
   const stato = normalizeStatus(form.get("statoContratto"));
-  const fileContratto = form.get("fileContratto");
+  const dateInserimento = toInputDate(today);
+  const fileContratti = form.getAll("fileContratto").filter((file) => file && file.size > 0);
 
   return {
     id: Date.now(),
     agenteId: agent.id,
-    dataInserimento: toInputDate(today),
+    dataInserimento: dateInserimento,
+    dataInizioFornitura: calculateSupplyStartDate(dateInserimento),
     ragioneSociale: String(form.get("ragioneSociale")).trim(),
     cellulare: String(form.get("cellulare")).trim(),
     tipoCliente: String(form.get("tipoCliente")).trim(),
+    categoriaCliente: String(form.get("categoriaCliente")).trim().toLowerCase(),
     fornitore: String(form.get("fornitore")).trim(),
     nomeOfferta: String(form.get("nomeOfferta")).trim(),
     tipoOperazione: form.getAll("tipoOperazione").map((value) => String(value).trim()).filter(Boolean),
@@ -664,10 +810,10 @@ function buildContractDraft(form) {
     indirizzoFatturazione: String(form.get("indirizzoFatturazione")).trim(),
     indirizzoFornitura: String(form.get("indirizzoFornitura")).trim(),
     descrizione: String(form.get("descrizione")).trim(),
-    fileContratto: fileContratto && fileContratto.size > 0 ? fileContratto : null,
+    fileContratto: fileContratti,
     statoContratto: stato,
     cbUnitariaSnapshot: agent.cbUnitaria,
-    cbMaturata: stato === "scartato" ? 0 : agent.cbUnitaria,
+    cbMaturata: (stato === "K.O." || stato === "Switch - Out") ? 0 : agent.cbUnitaria,
   };
 }
 
@@ -677,6 +823,7 @@ function buildContractFormData(draft) {
     "ragioneSociale",
     "cellulare",
     "tipoCliente",
+    "categoriaCliente",
     "fornitore",
     "nomeOfferta",
     "tipoFornitura",
@@ -690,6 +837,7 @@ function buildContractFormData(draft) {
     "indirizzoFatturazione",
     "indirizzoFornitura",
     "descrizione",
+    "dataInizioFornitura",
   ].forEach((key) => {
     formData.append(key, draft[key] || "");
   });
@@ -698,9 +846,9 @@ function buildContractFormData(draft) {
     formData.append("tipoOperazione", operation);
   });
 
-  if (draft.fileContratto) {
-    formData.append("fileContratto", draft.fileContratto);
-  }
+  draft.fileContratto.forEach((file) => {
+    formData.append("fileContratto", file);
+  });
 
   return formData;
 }
@@ -708,6 +856,10 @@ function buildContractFormData(draft) {
 function validateContractDraft(draft) {
   if (!draft.ragioneSociale || !draft.cellulare || !draft.tipoCliente) {
     return "Compila cliente, cellulare e tipo cliente.";
+  }
+
+  if (!draft.categoriaCliente) {
+    return "Seleziona prospect, CB o ex CB.";
   }
 
   if (!draft.fornitore || !draft.nomeOfferta) {
@@ -738,15 +890,17 @@ function validateContractDraft(draft) {
     return "Inserisci l'IBAN per il RID.";
   }
 
-  if (draft.fileContratto) {
-    const isPdf =
-      draft.fileContratto.type === "application/pdf" ||
-      draft.fileContratto.name.toLowerCase().endsWith(".pdf");
-    if (!isPdf) {
-      return "Carica solo file PDF.";
+  if (draft.fileContratto.length > maxContractFiles) {
+    return `Puoi caricare al massimo ${maxContractFiles} documenti.`;
+  }
+
+  for (const file of draft.fileContratto) {
+    if (!isAllowedContractFile(file)) {
+      return "Carica solo PDF, Word, Excel, PowerPoint, OpenDocument o immagini.";
     }
-    if (draft.fileContratto.size > 10 * 1024 * 1024) {
-      return "Il PDF non deve superare 10 MB.";
+
+    if (file.size > maxContractFileSize) {
+      return "Ogni documento non deve superare 15 MB.";
     }
   }
 
@@ -799,6 +953,155 @@ function setConnectionStatus(status, label) {
     <span class="status-dot"></span>
     <span>${escapeHtml(label)}</span>
   `;
+}
+
+function updateAdminVisibility() {
+  document.querySelectorAll(".admin-only").forEach((element) => {
+    element.hidden = agent.ruolo !== "admin";
+  });
+}
+
+async function renderAdminPage() {
+  try {
+    const [stats, agents] = await Promise.all([
+      baserowClient.getAdminStats(),
+      baserowClient.listAdminAgents(),
+    ]);
+    renderAdminMetrics(stats);
+    renderAdminAgentList(stats, agents);
+  } catch (error) {
+    document.getElementById("admin-agent-list").innerHTML = `
+      <div class="empty-state compact">
+        <strong>Admin non disponibile</strong>
+        <p>${escapeHtml(error.message || "Statistiche non caricate.")}</p>
+      </div>
+    `;
+  }
+}
+
+function renderAdminMetrics(stats) {
+  renderMetrics("admin-metrics", [
+    { label: "Contratti mese", value: stats.totals.contracts },
+    { label: "Pratiche mese", value: stats.totals.practices || stats.totals.contracts },
+    { label: "OK", value: stats.totals.ok },
+    { label: "Caricati", value: stats.totals.caricati },
+    { label: "K.O.", value: stats.totals.ko },
+    { label: "Switch Out", value: stats.totals.switchOut },
+    { label: "CB validata", value: formatCurrency(stats.totals.cbValidata) },
+    { label: "CB potenziale", value: formatCurrency(stats.totals.cbPotenziale) },
+    { label: "Agenti", value: stats.agents.length },
+  ]);
+}
+
+function renderAdminAgentList(stats, agents) {
+  const statsByAgent = new Map(stats.agents.map((row) => [Number(row.id), row]));
+  document.getElementById("admin-agent-list").innerHTML = agents
+    .map((agentRow) => {
+      const row = statsByAgent.get(Number(agentRow.id)) || {};
+      return `
+        <article class="admin-agent-card">
+          <header>
+            <div>
+              <h3>${escapeHtml(agentRow.nome)}</h3>
+              <p>${escapeHtml(agentRow.email)}</p>
+            </div>
+            <span class="badge ${agentRow.attivo ? "ok" : "switch-out"}">${agentRow.attivo ? "Attivo" : "Disattivo"}</span>
+          </header>
+          <div class="admin-stat-grid">
+            <div><span>Ruolo</span><strong>${escapeHtml(agentRow.ruolo)}</strong></div>
+            <div><span>Contratti</span><strong>${row.contratti || 0}</strong></div>
+            <div><span>Pratiche</span><strong>${row.pratiche || row.contratti || 0}</strong></div>
+            <div><span>Mese</span><strong>${row.ok || 0}/${agentRow.targetMensile || 0} · ${row.percentualeTargetMensile || 0}%</strong></div>
+            <div><span>Trimestre</span><strong>${row.okTrimestre || 0}/${agentRow.targetTrimestrale || 0} · ${row.percentualeTargetTrimestrale || 0}%</strong></div>
+            <div><span>Anno</span><strong>${row.okAnno || 0}/${agentRow.targetAnnuale || 0} · ${row.percentualeTargetAnnuale || 0}%</strong></div>
+            <div><span>CB validata</span><strong>${formatCurrency(row.cbValidata || 0)}</strong></div>
+            <div><span>CB potenziale</span><strong>${formatCurrency(row.cbPotenziale || 0)}</strong></div>
+          </div>
+          <button class="secondary-button" type="button" data-edit-agent="${agentRow.id}">Modifica</button>
+        </article>
+      `;
+    })
+    .join("");
+
+  document.querySelectorAll("[data-edit-agent]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const selected = agents.find((item) => Number(item.id) === Number(button.dataset.editAgent));
+      if (selected) fillAdminAgentForm(selected);
+    });
+  });
+}
+
+function fillAdminAgentForm(agentRow) {
+  const form = document.getElementById("admin-agent-form");
+  form.elements.agentId.value = agentRow.id;
+  form.elements.nome.value = agentRow.nome || "";
+  form.elements.email.value = agentRow.email || "";
+  form.elements.password.value = "";
+  form.elements.cbUnitaria.value = agentRow.cbUnitaria || 0;
+  form.elements.targetMensile.value = agentRow.targetMensile || 0;
+  form.elements.targetTrimestrale.value = agentRow.targetTrimestrale || 0;
+  form.elements.targetAnnuale.value = agentRow.targetAnnuale || 0;
+  form.elements.ruolo.value = agentRow.ruolo || "agente";
+  form.elements.attivo.checked = Boolean(agentRow.attivo);
+  document.getElementById("admin-form-mode").textContent = "modifica";
+  setActivePage("admin");
+}
+
+function resetAdminAgentForm() {
+  const form = document.getElementById("admin-agent-form");
+  form.reset();
+  form.elements.agentId.value = "";
+  form.elements.attivo.checked = true;
+  document.getElementById("admin-form-mode").textContent = "nuovo";
+  setAdminFeedback("", "");
+}
+
+function adminAgentPayload(form) {
+  return {
+    nome: String(form.get("nome")).trim(),
+    email: String(form.get("email")).trim(),
+    password: String(form.get("password")).trim(),
+    cbUnitaria: Number(form.get("cbUnitaria") || 0),
+    targetMensile: Number(form.get("targetMensile") || 0),
+    targetTrimestrale: Number(form.get("targetTrimestrale") || 0),
+    targetAnnuale: Number(form.get("targetAnnuale") || 0),
+    ruolo: String(form.get("ruolo")).trim(),
+    attivo: form.get("attivo") === "on",
+  };
+}
+
+async function handleAdminAgentSubmit(event) {
+  event.preventDefault();
+  const formElement = event.currentTarget;
+  const form = new FormData(formElement);
+  const agentId = form.get("agentId");
+  const payload = adminAgentPayload(form);
+  const submit = formElement.querySelector('button[type="submit"]');
+
+  submit.disabled = true;
+  setAdminFeedback("", "Salvataggio agente...");
+
+  try {
+    if (agentId) {
+      await baserowClient.updateAdminAgent(agentId, payload);
+      setAdminFeedback("success", "Agente aggiornato.");
+    } else {
+      await baserowClient.createAdminAgent(payload);
+      setAdminFeedback("success", "Agente creato.");
+      resetAdminAgentForm();
+    }
+    await renderAdminPage();
+  } catch (error) {
+    setAdminFeedback("error", error.message || "Agente non salvato.");
+  } finally {
+    submit.disabled = false;
+  }
+}
+
+function setAdminFeedback(type, message) {
+  const feedback = document.getElementById("admin-agent-feedback");
+  feedback.className = type ? `is-${type}` : "";
+  feedback.textContent = message;
 }
 
 async function handleLogin(event) {
@@ -872,9 +1175,37 @@ function getQuarterKey(date) {
   return `${date.getFullYear()}-Q${Math.floor(date.getMonth() / 3) + 1}`;
 }
 
+function contractUnitCount(contract) {
+  const supplyType = String(contract.tipoFornitura || "").toLowerCase();
+  const customerCategory = String(contract.categoriaCliente || "").toLowerCase();
+  return supplyType === "dual" && customerCategory === "prospect" ? 2 : 1;
+}
+
+function sumContractUnits(items) {
+  return items.reduce((sum, contract) => sum + contractUnitCount(contract), 0);
+}
+
+function contractCommissionValue(contract) {
+  return Number(contract.cbMaturata || 0) * contractUnitCount(contract);
+}
+
+function sumContractCommissions(items) {
+  return items.reduce((sum, contract) => sum + contractCommissionValue(contract), 0);
+}
+
+function isAllowedContractFile(file) {
+  const extension = String(file.name || "").split(".").pop().toLowerCase();
+  return allowedContractFileExtensions.has(extension) || allowedContractFileTypes.has(file.type);
+}
+
+function percent(done, target) {
+  return target ? Math.min(Math.round((done / target) * 100), 100) : 0;
+}
+
 function normalizeStatus(value) {
-  const status = String(value).toLowerCase().trim();
-  return ["validato", "in attesa", "scartato"].includes(status) ? status : "in attesa";
+  const status = String(value).trim();
+  const valid = ["OK", "Caricato", "K.O.", "Switch - Out"];
+  return valid.includes(status) ? status : "Caricato";
 }
 
 function range(start, end, step) {
@@ -903,6 +1234,19 @@ function escapeHtml(value) {
 }
 
 async function initApp() {
+  // Aggiungi listener per predizione data inizio fornitura nel form
+  const infoBanner = document.getElementById("new-contract-summary");
+  const predictedDateEl = document.getElementById("predicted-start-date");
+
+  if (infoBanner && predictedDateEl) {
+    const updatePrediction = () => {
+      const pred = calculateSupplyStartDate(toInputDate(new Date()));
+      predictedDateEl.textContent = formatDate.format(new Date(pred));
+      infoBanner.hidden = false;
+    };
+    updatePrediction();
+  }
+
   try {
     if (isStaticFileMode && demoFallbackEnabled) {
       contracts = loadContracts();

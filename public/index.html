@@ -72,6 +72,9 @@
           <button class="nav-item" type="button" data-page="progress">
             <span class="nav-short">Target</span><span class="nav-full">Avanzamento</span>
           </button>
+          <button class="nav-item admin-only" type="button" data-page="admin" hidden>
+            <span class="nav-short">Admin</span><span class="nav-full">Admin</span>
+          </button>
         </nav>
       </aside>
 
@@ -85,7 +88,7 @@
             <button class="primary-button quick-action" type="button" data-go-page="new-contract">Nuovo contratto</button>
             <div class="connection-pill status-loading" id="connection-status" role="status" aria-live="polite">
               <span class="status-dot"></span>
-              <span>Connessione...</span>
+              <span>Database...</span>
             </div>
             <div class="agent-pill" aria-label="Agente collegato">
               <span class="agent-dot"></span>
@@ -156,11 +159,10 @@
         <section class="page" id="new-contract">
           <form class="contract-form" id="contract-form">
             <div class="form-head">
-              <div>
-                <h2>Nuovo contratto</h2>
-                <p>Compila i dati essenziali. Il contratto entra subito in attesa di validazione.</p>
-              </div>
               <span>Tempo obiettivo: meno di 1 minuto</span>
+            </div>
+            <div id="new-contract-summary" class="form-banner" hidden>
+              <span>Ingresso in fornitura previsto il: <strong id="predicted-start-date">--</strong></span>
             </div>
             <div class="form-grid">
               <label>
@@ -188,11 +190,16 @@
                 Email
                 <input name="email" type="email" placeholder="cliente@email.it" autocomplete="email" />
               </label>
-              <div class="readonly-field" aria-label="Stato contratto iniziale">
-                <span>Stato contratto</span>
-                <strong>In attesa</strong>
-                <input name="statoContratto" type="hidden" value="in attesa" />
-              </div>
+              <input name="statoContratto" type="hidden" value="Caricato" />
+              <label>
+                Categoria cliente
+                <select name="categoriaCliente" required>
+                  <option value="">Seleziona</option>
+                  <option value="prospect">Prospect</option>
+                  <option value="cb">CB</option>
+                  <option value="ex cb">Ex CB</option>
+                </select>
+              </label>
               <label>
                 Fornitore
                 <input name="fornitore" type="text" placeholder="Es. Enel Energia" required />
@@ -256,8 +263,13 @@
                 <input name="indirizzoFornitura" type="text" placeholder="POD/PDR o indirizzo fornitura" />
               </label>
               <label class="full-span">
-                PDF contratto
-                <input name="fileContratto" type="file" accept="application/pdf,.pdf" />
+                Documenti contratto
+                <input
+                  name="fileContratto"
+                  type="file"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.jpg,.jpeg,.png,.webp,.heic,.heif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/jpeg,image/png,image/webp,image/heic,image/heif"
+                  multiple
+                />
               </label>
               <label class="full-span">
                 Descrizione / note
@@ -279,9 +291,10 @@
             </select>
             <select id="status-filter" aria-label="Filtra per stato">
               <option value="all">Tutti gli stati</option>
-              <option value="validato">Validato</option>
-              <option value="in attesa">In attesa</option>
-              <option value="scartato">Scartato</option>
+              <option value="OK">OK</option>
+              <option value="Caricato">Caricato</option>
+              <option value="K.O.">K.O.</option>
+              <option value="Switch - Out">Switch - Out</option>
             </select>
           </div>
 
@@ -291,7 +304,8 @@
               <thead>
                 <tr>
                   <th>Cliente</th>
-                  <th>Data</th>
+                  <th>Data inst.</th>
+                  <th>Inizio forn.</th>
                   <th>Stato</th>
                   <th>Tipo</th>
                   <th>CB</th>
@@ -354,16 +368,92 @@
               <article class="panel">
                 <h2>Trimestre</h2>
                 <p class="target-line" id="quarter-target"></p>
+                <strong class="target-percent-small" id="quarter-target-percent"></strong>
+                <div class="progress-track compact">
+                  <span id="quarter-target-bar"></span>
+                </div>
               </article>
               <article class="panel">
                 <h2>Anno</h2>
                 <p class="target-line" id="year-target"></p>
+                <strong class="target-percent-small" id="year-target-percent"></strong>
+                <div class="progress-track compact">
+                  <span id="year-target-bar"></span>
+                </div>
               </article>
               <article class="panel">
                 <h2>Media necessaria</h2>
                 <p class="target-line" id="daily-need"></p>
               </article>
             </div>
+          </div>
+        </section>
+
+        <section class="page" id="admin">
+          <div class="metrics-grid" id="admin-metrics"></div>
+
+          <div class="content-grid">
+            <article class="panel">
+              <div class="panel-heading">
+                <h2>Agente</h2>
+                <span id="admin-form-mode">nuovo</span>
+              </div>
+              <form class="admin-form" id="admin-agent-form">
+                <input name="agentId" type="hidden" />
+                <label>
+                  Nome
+                  <input name="nome" type="text" required />
+                </label>
+                <label>
+                  Email
+                  <input name="email" type="email" required />
+                </label>
+                <label>
+                  Password
+                  <input name="password" type="password" placeholder="Solo se nuova o da cambiare" />
+                </label>
+                <label>
+                  CB unitaria
+                  <input name="cbUnitaria" type="number" min="0" step="0.01" required />
+                </label>
+                <label>
+                  Target mensile contratti OK
+                  <input name="targetMensile" type="number" min="0" step="1" required />
+                </label>
+                <label>
+                  Target trimestrale contratti OK
+                  <input name="targetTrimestrale" type="number" min="0" step="1" required />
+                </label>
+                <label>
+                  Target annuale contratti OK
+                  <input name="targetAnnuale" type="number" min="0" step="1" required />
+                </label>
+                <label>
+                  Ruolo
+                  <select name="ruolo" required>
+                    <option value="agente">Agente</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </label>
+                <label class="check-line">
+                  <input name="attivo" type="checkbox" checked />
+                  Attivo
+                </label>
+                <p id="admin-agent-feedback" role="status"></p>
+                <div class="admin-actions">
+                  <button class="primary-button" type="submit">Salva agente</button>
+                  <button class="secondary-button" type="button" id="admin-agent-reset">Nuovo agente</button>
+                </div>
+              </form>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <h2>Statistiche agenti</h2>
+                <span>mese corrente</span>
+              </div>
+              <div class="admin-agent-list" id="admin-agent-list"></div>
+            </article>
           </div>
         </section>
       </main>

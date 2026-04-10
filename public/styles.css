@@ -616,6 +616,18 @@ body.auth-locked .app-shell {
   background: linear-gradient(90deg, var(--teal), var(--primary));
 }
 
+.progress-track.compact {
+  height: 9px;
+  margin-top: 10px;
+}
+
+.target-percent-small {
+  display: block;
+  margin-top: 8px;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
 .motivation {
   margin: 14px 0 0;
   line-height: 1.5;
@@ -906,19 +918,24 @@ td[colspan]::before {
   font-weight: 700;
 }
 
-.badge.validato {
+.badge.ok {
   color: var(--green);
   background: #dcfce7;
 }
 
-.badge.in-attesa {
+.badge.caricato {
   color: var(--yellow);
   background: #fef3c7;
 }
 
-.badge.scartato {
+.badge.ko {
   color: var(--red);
   background: #ffedd5;
+}
+
+.badge.switch-out {
+  color: var(--red);
+  background: #fee2e2;
 }
 
 /* ---- Empty State ---- */
@@ -1047,6 +1064,116 @@ td[colspan]::before {
 
 .detail-item a {
   color: var(--primary-strong);
+}
+
+.admin-form {
+  display: grid;
+  gap: 14px;
+}
+
+.check-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.check-line input {
+  width: auto;
+  min-height: 0;
+}
+
+.admin-actions {
+  display: grid;
+  gap: 10px;
+}
+
+#admin-agent-feedback {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+#admin-agent-feedback.is-error {
+  color: var(--red);
+}
+
+#admin-agent-feedback.is-success {
+  color: var(--green);
+}
+
+.admin-agent-list {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-agent-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.admin-agent-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.admin-agent-card h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.admin-agent-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.form-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  background: #f0fdf4;
+  color: var(--green);
+  font-size: 0.9rem;
+  margin-bottom: 14px;
+}
+
+.form-banner strong {
+  font-weight: 700;
+}
+
+.admin-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.admin-stat-grid div {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--bg);
+}
+
+.admin-stat-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.admin-stat-grid strong {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--text);
 }
 
 /* =============================================
@@ -1216,6 +1343,14 @@ td[colspan]::before {
     flex-direction: row;
     align-items: center;
     gap: 16px;
+  }
+
+  .admin-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .admin-stat-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .contract-form {
