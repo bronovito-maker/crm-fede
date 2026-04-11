@@ -618,6 +618,10 @@
                   </select>
                 </label>
               </div>
+              <p class="admin-list-hint">
+                Apri un agente dalla lista per modificarlo qui sotto, oppure usa il pannello in
+                basso per crearne uno nuovo.
+              </p>
               <div class="admin-agent-list" id="admin-agent-list"></div>
               <div class="empty-state compact" id="admin-agent-empty" hidden>
                 <strong>Nessun agente trovato</strong>
@@ -628,56 +632,102 @@
             <article class="panel" id="admin-agent-editor">
               <div class="panel-heading">
                 <h2>Gestione account agente</h2>
-                <span id="admin-form-mode">nuovo agente</span>
+                <div class="panel-heading-actions">
+                  <span id="admin-form-mode">nuovo agente</span>
+                  <div class="admin-mode-switch" role="tablist" aria-label="Modalita form agente">
+                    <button
+                      class="mode-pill is-active"
+                      type="button"
+                      id="admin-agent-mode-create"
+                      role="tab"
+                      aria-selected="true"
+                    >
+                      Crea nuovo
+                    </button>
+                    <button
+                      class="mode-pill"
+                      type="button"
+                      id="admin-agent-mode-edit"
+                      role="tab"
+                      aria-selected="false"
+                    >
+                      Modifica selezionato
+                    </button>
+                  </div>
+                </div>
               </div>
               <p class="admin-form-copy" id="admin-form-copy">
                 Inserisci i dati per creare un nuovo agente.
               </p>
+              <div class="admin-editing-banner" id="admin-editing-banner">
+                <strong id="admin-editing-title">Nuovo agente</strong>
+                <span id="admin-editing-subtitle">Inserisci i dati del nuovo account.</span>
+              </div>
               <form class="admin-form" id="admin-agent-form">
                 <input name="agentId" type="hidden" />
-                <label>
-                  Nome
-                  <input name="nome" type="text" required />
-                </label>
-                <label>
-                  Email
-                  <input name="email" type="email" required />
-                </label>
-                <label>
-                  Password
-                  <input
-                    name="password"
-                    type="password"
-                    placeholder="Solo se nuova o da cambiare"
-                  />
-                </label>
-                <label>
-                  CB unitaria
-                  <input name="cbUnitaria" type="number" min="0" step="0.01" required />
-                </label>
-                <label>
-                  Target mensile contratti OK
-                  <input name="targetMensile" type="number" min="0" step="1" required />
-                </label>
-                <label>
-                  Target trimestrale contratti OK
-                  <input name="targetTrimestrale" type="number" min="0" step="1" required />
-                </label>
-                <label>
-                  Target annuale contratti OK
-                  <input name="targetAnnuale" type="number" min="0" step="1" required />
-                </label>
-                <label>
-                  Ruolo
-                  <select name="ruolo" required>
-                    <option value="agente">Agente</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </label>
-                <label class="check-line">
-                  <input name="attivo" type="checkbox" checked />
-                  Attivo
-                </label>
+                <section class="admin-form-section">
+                  <div class="admin-form-section-head">
+                    <h3>Accesso account</h3>
+                    <p>Dati usati per login e permessi.</p>
+                  </div>
+                  <div class="admin-form-grid">
+                    <label>
+                      Nome
+                      <input name="nome" type="text" required />
+                    </label>
+                    <label>
+                      Email
+                      <input name="email" type="email" required />
+                    </label>
+                    <label class="full-span">
+                      Password
+                      <input
+                        name="password"
+                        type="password"
+                        placeholder="Minimo 8 caratteri"
+                        autocomplete="new-password"
+                      />
+                      <small id="admin-password-hint"
+                        >Imposta una password per il nuovo agente.</small
+                      >
+                    </label>
+                    <label>
+                      Ruolo
+                      <select name="ruolo" required>
+                        <option value="agente">Agente</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </label>
+                    <label class="check-line">
+                      <input name="attivo" type="checkbox" checked />
+                      Attivo
+                    </label>
+                  </div>
+                </section>
+                <section class="admin-form-section">
+                  <div class="admin-form-section-head">
+                    <h3>Compensi e target</h3>
+                    <p>Valori personalizzati per ogni agente.</p>
+                  </div>
+                  <div class="admin-form-grid">
+                    <label>
+                      CB unitaria
+                      <input name="cbUnitaria" type="number" min="0" step="0.01" required />
+                    </label>
+                    <label>
+                      Target mensile contratti OK
+                      <input name="targetMensile" type="number" min="0" step="1" required />
+                    </label>
+                    <label>
+                      Target trimestrale contratti OK
+                      <input name="targetTrimestrale" type="number" min="0" step="1" required />
+                    </label>
+                    <label>
+                      Target annuale contratti OK
+                      <input name="targetAnnuale" type="number" min="0" step="1" required />
+                    </label>
+                  </div>
+                </section>
                 <p id="admin-agent-feedback" role="status"></p>
                 <div class="admin-actions">
                   <button class="primary-button" type="submit" id="admin-agent-submit">

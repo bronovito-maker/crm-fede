@@ -200,6 +200,7 @@ const adminState = {
   stats: null,
   agents: [],
   contracts: [],
+  editingAgentId: null,
   contractSearch: '',
   contractAgentId: 'all',
   contractStatus: 'all',
@@ -341,6 +342,15 @@ document.getElementById('login-form').addEventListener('submit', handleLogin);
 document.getElementById('logout-button').addEventListener('click', handleLogout);
 document.getElementById('admin-agent-form').addEventListener('submit', handleAdminAgentSubmit);
 document.getElementById('admin-agent-reset').addEventListener('click', resetAdminAgentForm);
+document.getElementById('admin-agent-mode-create').addEventListener('click', resetAdminAgentForm);
+document.getElementById('admin-agent-mode-edit').addEventListener('click', () => {
+  if (!adminState.editingAgentId) {
+    setAdminFeedback('error', 'Seleziona prima un agente dalla lista.');
+    document
+      .getElementById('admin-agent-list')
+      .scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+});
 
 [
   ['admin-contract-search', 'input', handleAdminFilterChange],
@@ -1268,7 +1278,7 @@ function renderAdminAgentList(stats, agents) {
       const row = statsByAgent.get(Number(agentRow.id)) || {};
       const roleLabel = agentRow.ruolo === 'admin' ? 'Admin' : 'Agente';
       return `
-        <article class="admin-agent-card compact">
+        <article class="admin-agent-card compact ${Number(adminState.editingAgentId) === Number(agentRow.id) ? 'is-selected' : ''}">
           <header>
             <div class="admin-agent-main">
               <h3>${escapeHtml(agentRow.nome)}</h3>
@@ -1288,7 +1298,7 @@ function renderAdminAgentList(stats, agents) {
             <div><span>CB validata</span><strong>${formatCurrency(row.cbValidata || 0)}</strong></div>
             <div><span>CB potenziale</span><strong>${formatCurrency(row.cbPotenziale || 0)}</strong></div>
           </div>
-          <button class="secondary-button compact-button" type="button" data-edit-agent="${agentRow.id}">Modifica agente</button>
+          <button class="secondary-button compact-button" type="button" data-edit-agent="${agentRow.id}">Apri modifica</button>
         </article>
       `;
     })
@@ -1615,6 +1625,11 @@ function fillAdminAgentForm(agentRow) {
   const editor = document.getElementById('admin-agent-editor');
   const submit = document.getElementById('admin-agent-submit');
   const reset = document.getElementById('admin-agent-reset');
+  const banner = document.getElementById('admin-editing-banner');
+  const createModeButton = document.getElementById('admin-agent-mode-create');
+  const editModeButton = document.getElementById('admin-agent-mode-edit');
+  const passwordHint = document.getElementById('admin-password-hint');
+  adminState.editingAgentId = Number(agentRow.id);
   form.elements.agentId.value = agentRow.id;
   form.elements.nome.value = agentRow.nome || '';
   form.elements.email.value = agentRow.email || '';
@@ -1628,8 +1643,18 @@ function fillAdminAgentForm(agentRow) {
   document.getElementById('admin-form-mode').textContent = 'modifica agente';
   document.getElementById('admin-form-copy').textContent =
     'Stai modificando un agente esistente. Salva le modifiche oppure annulla.';
+  document.getElementById('admin-editing-title').textContent = `Modifica: ${agentRow.nome}`;
+  document.getElementById('admin-editing-subtitle').textContent =
+    `${agentRow.email} · ${agentRow.ruolo === 'admin' ? 'Admin' : 'Agente'}`;
+  banner.hidden = false;
+  createModeButton.classList.remove('is-active');
+  createModeButton.setAttribute('aria-selected', 'false');
+  editModeButton.classList.add('is-active');
+  editModeButton.setAttribute('aria-selected', 'true');
+  passwordHint.textContent = 'Lascia vuoto per mantenere la password attuale.';
   submit.textContent = 'Salva modifiche';
-  reset.textContent = 'Annulla modifica';
+  reset.textContent = 'Torna a nuovo agente';
+  renderAdminAgentList(adminState.stats || { agents: [] }, adminState.agents);
   setActivePage('admin');
   editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
   window.setTimeout(() => {
@@ -1641,15 +1666,30 @@ function resetAdminAgentForm() {
   const form = document.getElementById('admin-agent-form');
   const submit = document.getElementById('admin-agent-submit');
   const reset = document.getElementById('admin-agent-reset');
+  const banner = document.getElementById('admin-editing-banner');
+  const createModeButton = document.getElementById('admin-agent-mode-create');
+  const editModeButton = document.getElementById('admin-agent-mode-edit');
+  const passwordHint = document.getElementById('admin-password-hint');
+  adminState.editingAgentId = null;
   form.reset();
   form.elements.agentId.value = '';
   form.elements.attivo.checked = true;
   document.getElementById('admin-form-mode').textContent = 'nuovo agente';
   document.getElementById('admin-form-copy').textContent =
     'Inserisci i dati per creare un nuovo agente.';
+  document.getElementById('admin-editing-title').textContent = 'Nuovo agente';
+  document.getElementById('admin-editing-subtitle').textContent =
+    'Inserisci i dati del nuovo account.';
+  banner.hidden = false;
+  createModeButton.classList.add('is-active');
+  createModeButton.setAttribute('aria-selected', 'true');
+  editModeButton.classList.remove('is-active');
+  editModeButton.setAttribute('aria-selected', 'false');
+  passwordHint.textContent = 'Imposta una password per il nuovo agente.';
   submit.textContent = 'Crea agente';
   reset.textContent = 'Pulisci campi';
   setAdminFeedback('', '');
+  renderAdminAgentList(adminState.stats || { agents: [] }, adminState.agents);
 }
 
 function adminAgentPayload(form) {
@@ -1687,6 +1727,9 @@ async function handleAdminAgentSubmit(event) {
       resetAdminAgentForm();
     }
     await renderAdminPage();
+    if (agentId) {
+      resetAdminAgentForm();
+    }
   } catch (error) {
     setAdminFeedback('error', error.message || 'Agente non salvato.');
   } finally {

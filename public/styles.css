@@ -1296,6 +1296,94 @@ td[colspan]::before {
   gap: 14px;
 }
 
+.panel-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-mode-switch {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mode-pill {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.mode-pill.is-active {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.admin-editing-banner {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  margin: 0 0 16px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+
+.admin-editing-banner strong {
+  color: #1d4ed8;
+  font-size: 0.96rem;
+}
+
+.admin-editing-banner span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.admin-form-section {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.admin-form-section-head {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-form-section-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.admin-form-section-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.admin-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.admin-form-grid small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .check-line {
   display: flex;
   align-items: center;
@@ -1340,6 +1428,11 @@ td[colspan]::before {
   background: #ffffff;
 }
 
+.admin-agent-card.is-selected {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 2px #dbeafe;
+}
+
 .admin-agent-card header {
   display: flex;
   justify-content: space-between;
@@ -1363,6 +1456,12 @@ td[colspan]::before {
   line-height: 1.45;
 }
 
+.admin-list-hint {
+  margin: 0 0 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .admin-agent-card.compact {
   gap: 14px;
 }
@@ -1376,6 +1475,12 @@ td[colspan]::before {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+}
+
+@media (min-width: 900px) {
+  .admin-form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .form-banner {
