@@ -1347,6 +1347,12 @@ td[colspan]::before {
   color: var(--muted);
 }
 
+.admin-form-copy {
+  margin: -6px 0 16px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .admin-agent-card.compact {
   gap: 14px;
 }

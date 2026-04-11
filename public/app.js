@@ -1237,16 +1237,17 @@ async function renderAdminPage() {
 }
 
 function renderAdminMetrics(stats) {
+  const activeAgents = stats.agents.filter((row) => row.attivo).length;
   renderMetrics('admin-metrics', [
-    { label: 'Contratti mese', value: stats.totals.contracts },
-    { label: 'Pratiche mese', value: stats.totals.practices || stats.totals.contracts },
-    { label: 'OK', value: stats.totals.ok },
-    { label: 'Caricati', value: stats.totals.caricati },
+    { label: 'Pratiche inserite mese', value: stats.totals.practices || stats.totals.contracts },
+    { label: 'Contratti conteggiati mese', value: stats.totals.contracts },
+    { label: 'Validati (OK)', value: stats.totals.ok },
+    { label: 'In attesa (Caricati)', value: stats.totals.caricati },
     { label: 'K.O.', value: stats.totals.ko },
     { label: 'Switch Out', value: stats.totals.switchOut },
-    { label: 'CB validata', value: formatCurrency(stats.totals.cbValidata) },
-    { label: 'CB potenziale', value: formatCurrency(stats.totals.cbPotenziale) },
-    { label: 'Agenti', value: stats.agents.length },
+    { label: 'CB validata mese', value: formatCurrency(stats.totals.cbValidata) },
+    { label: 'CB potenziale mese', value: formatCurrency(stats.totals.cbPotenziale) },
+    { label: 'Agenti attivi', value: activeAgents },
   ]);
 }
 
@@ -1378,7 +1379,8 @@ function renderAdminContracts(adminContracts, agents) {
               aria-label="Seleziona contratto ${escapeHtml(contract.ragioneSociale || 'Cliente')}"
             />
           </td>
-          <td data-label="Cliente"><strong>${escapeHtml(contract.ragioneSociale || 'Cliente')}</strong><small>${escapeHtml(contract.idContratto || 'ID non inserito')}</small></td>
+          <td data-label="Cliente"><strong>${escapeHtml(contract.ragioneSociale || 'Cliente')}</strong></td>
+          <td data-label="ID">${escapeHtml(contract.idContratto || 'ID non inserito')}</td>
           <td data-label="Agente">${escapeHtml(agentNames.get(Number(contract.agenteId)) || 'Non assegnato')}</td>
           <td data-label="Stato">${statusBadge(contract.statoContratto)}</td>
           <td data-label="Fornitura">${escapeHtml(capitalize(contract.tipoFornitura || 'Non inserita'))}</td>
@@ -1596,6 +1598,9 @@ function updateAdminBulkBar(rows) {
 
 function fillAdminAgentForm(agentRow) {
   const form = document.getElementById('admin-agent-form');
+  const editor = document.getElementById('admin-agent-editor');
+  const submit = document.getElementById('admin-agent-submit');
+  const reset = document.getElementById('admin-agent-reset');
   form.elements.agentId.value = agentRow.id;
   form.elements.nome.value = agentRow.nome || '';
   form.elements.email.value = agentRow.email || '';
@@ -1606,16 +1611,30 @@ function fillAdminAgentForm(agentRow) {
   form.elements.targetAnnuale.value = agentRow.targetAnnuale || 0;
   form.elements.ruolo.value = agentRow.ruolo || 'agente';
   form.elements.attivo.checked = Boolean(agentRow.attivo);
-  document.getElementById('admin-form-mode').textContent = 'modifica';
+  document.getElementById('admin-form-mode').textContent = 'modifica agente';
+  document.getElementById('admin-form-copy').textContent =
+    'Stai modificando un agente esistente. Salva le modifiche oppure annulla.';
+  submit.textContent = 'Salva modifiche';
+  reset.textContent = 'Annulla modifica';
   setActivePage('admin');
+  editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  window.setTimeout(() => {
+    form.elements.nome.focus();
+  }, 250);
 }
 
 function resetAdminAgentForm() {
   const form = document.getElementById('admin-agent-form');
+  const submit = document.getElementById('admin-agent-submit');
+  const reset = document.getElementById('admin-agent-reset');
   form.reset();
   form.elements.agentId.value = '';
   form.elements.attivo.checked = true;
-  document.getElementById('admin-form-mode').textContent = 'nuovo';
+  document.getElementById('admin-form-mode').textContent = 'nuovo agente';
+  document.getElementById('admin-form-copy').textContent =
+    'Inserisci i dati per creare un nuovo agente.';
+  submit.textContent = 'Crea agente';
+  reset.textContent = 'Pulisci campi';
   setAdminFeedback('', '');
 }
 
