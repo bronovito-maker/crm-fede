@@ -724,7 +724,7 @@ describe('HTTP routes', () => {
 
   it('GET /api/contracts restituisce solo i contratti dell agente loggato', async () => {
     const agentId = 7;
-    const token = createSession(agentId, 'agente@example.it');
+    const { token } = createSession(agentId, 'agente@example.it');
     const contractTableId = process.env.BASEROW_TABLE_CONTRATTI_ID;
 
     global.fetch = async (url) => {
@@ -776,7 +776,7 @@ describe('HTTP routes', () => {
 
   it('GET /api/admin/stats calcola statistiche aggregate con fetch Baserow mockato', async () => {
     const adminId = 1;
-    const token = createSession(adminId, 'admin@example.it');
+    const { token } = createSession(adminId, 'admin@example.it');
     const agentTableId = process.env.BASEROW_TABLE_AGENTI_ID;
     const contractTableId = process.env.BASEROW_TABLE_CONTRATTI_ID;
     const now = new Date();

@@ -371,6 +371,18 @@ document
   });
 })();
 document.getElementById('login-form').addEventListener('submit', handleLogin);
+
+// Toggle mostra/nascondi password (login + admin)
+document.querySelectorAll('.toggle-password').forEach((btn) => {
+  btn.addEventListener('click', function () {
+    const input = this.closest('.input-with-icon').querySelector('input');
+    const isPassword = input.type === 'password';
+    input.type = isPassword ? 'text' : 'password';
+    this.querySelector('.eye-open').hidden = !isPassword;
+    this.querySelector('.eye-closed').hidden = isPassword;
+    this.setAttribute('aria-label', isPassword ? 'Nascondi password' : 'Mostra password');
+  });
+});
 document.getElementById('logout-button').addEventListener('click', handleLogout);
 document.getElementById('admin-agent-form').addEventListener('submit', handleAdminAgentSubmit);
 document.getElementById('admin-agent-reset').addEventListener('click', resetAdminAgentForm);
@@ -1824,6 +1836,7 @@ async function handleLogin(event) {
     const session = await baserowClient.login({
       email: String(form.get('email')).trim(),
       password: String(form.get('password')).trim(),
+      rememberMe: !!form.get('rememberMe'),
     });
 
     agent = session.agent;

@@ -236,8 +236,10 @@ app.post('/api/login', loginLimiter, async (req, res) => {
       throw publicError(403, 'AGENT_DISABLED', 'Agente non attivo.');
     }
 
-    const token = createSession(agent.id, email);
-    setSessionCookie(res, token);
+    const rememberMe = Boolean(req.body.rememberMe);
+    const ttl = rememberMe ? REMEMBER_ME_TTL_MS : CONFIG.sessionTtlMs;
+    const { token } = createSession(agent.id, email, ttl);
+    setSessionCookie(res, token, ttl);
     res.json({ authenticated: true, agent: publicAgent(agent) });
   } catch (error) {
     handleApiError(res, error, 'LOGIN_FAILED', 'Accesso non riuscito.');
@@ -552,7 +554,11 @@ function attachSession(req, res, next) {
     return;
   }
 
-  const newExpiry = Date.now() + CONFIG.sessionTtlMs;
+  // Sliding expiry: se la sessione scade tra più di sessionTtlMs (= rememberMe),
+  // mantieni il TTL lungo; altrimenti usa il default
+  const remainingMs = session.expiresAt - Date.now();
+  const ttl = remainingMs > CONFIG.sessionTtlMs ? REMEMBER_ME_TTL_MS : CONFIG.sessionTtlMs;
+  const newExpiry = Date.now() + ttl;
   session.expiresAt = newExpiry;
   sessions.touch(token, newExpiry);
   req.session = session;
@@ -560,21 +566,25 @@ function attachSession(req, res, next) {
   next();
 }
 
-function createSession(agentId, email) {
+const REMEMBER_ME_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 giorni
+
+function createSession(agentId, email, ttlMs) {
+  const ttl = ttlMs || CONFIG.sessionTtlMs;
   const token = crypto.randomBytes(32).toString('hex');
   sessions.set(token, {
     agentId,
     email,
-    expiresAt: Date.now() + CONFIG.sessionTtlMs,
+    expiresAt: Date.now() + ttl,
   });
-  return token;
+  return { token, ttl };
 }
 
-function setSessionCookie(res, token) {
+function setSessionCookie(res, token, ttlMs) {
+  const maxAge = Math.floor((ttlMs || CONFIG.sessionTtlMs) / 1000);
   const secure = CONFIG.cookieSecure ? '; Secure' : '';
   res.setHeader(
     'Set-Cookie',
-    `${sessionCookieName}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(CONFIG.sessionTtlMs / 1000)}${secure}`
+    `${sessionCookieName}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${secure}`
   );
 }
 
