@@ -105,7 +105,10 @@
               <span>Database...</span>
             </div>
             <div class="agent-pill" aria-label="Agente collegato">
-              <span class="agent-dot"></span>
+              <svg class="agent-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="8" r="4"/>
+                <path d="M20 21a8 8 0 0 0-16 0"/>
+              </svg>
               <span id="agent-name">Marco Bianchi</span>
             </div>
             <button class="secondary-button logout-button" type="button" id="logout-button">
@@ -178,9 +181,6 @@
 
         <section class="page" id="new-contract">
           <form class="contract-form" id="contract-form">
-            <div class="form-head">
-              <span>Tempo obiettivo: meno di 1 minuto</span>
-            </div>
             <div id="new-contract-summary" class="form-banner" hidden>
               <span
                 >Ingresso in fornitura previsto il:
@@ -202,8 +202,11 @@
               </div>
             </div>
             <div class="form-grid">
+              <p class="req-legend" aria-label="I campi contrassegnati con asterisco sono obbligatori">
+                <span class="req" aria-hidden="true">*</span> Campi obbligatori
+              </p>
               <label>
-                Ragione sociale - Nome cliente
+                Ragione sociale - Nome cliente<span class="req" aria-hidden="true"> *</span>
                 <input
                   name="ragioneSociale"
                   type="text"
@@ -213,7 +216,7 @@
                 />
               </label>
               <label>
-                Cellulare
+                Cellulare<span class="req" aria-hidden="true"> *</span>
                 <input
                   name="cellulare"
                   type="tel"
@@ -224,7 +227,7 @@
                 />
               </label>
               <label>
-                Tipo cliente
+                Tipo cliente<span class="req" aria-hidden="true"> *</span>
                 <select name="tipoCliente" required>
                   <option value="">Seleziona</option>
                   <option>Business</option>
@@ -246,12 +249,12 @@
                 />
               </label>
               <label>
-                ID CONTRATTO
+                Id contratto
                 <input name="idContratto" type="text" placeholder="Es. 277543" autocomplete="off" />
               </label>
               <input name="statoContratto" type="hidden" value="Caricato" />
               <label>
-                Categoria cliente
+                Categoria cliente<span class="req" aria-hidden="true"> *</span>
                 <select name="categoriaCliente" required>
                   <option value="">Seleziona</option>
                   <option value="prospect">Prospect</option>
@@ -259,11 +262,11 @@
                 </select>
               </label>
               <label>
-                Fornitore
+                Fornitore<span class="req" aria-hidden="true"> *</span>
                 <input name="fornitore" type="text" placeholder="Es. Enel Energia" required />
               </label>
               <label>
-                Nome offerta
+                Nome offerta<span class="req" aria-hidden="true"> *</span>
                 <input
                   name="nomeOfferta"
                   type="text"
@@ -292,7 +295,7 @@
                 </div>
               </fieldset>
               <label>
-                Tipo fornitura
+                Tipo fornitura<span class="req" aria-hidden="true"> *</span>
                 <select name="tipoFornitura" id="tipo-fornitura" required>
                   <option value="">Seleziona</option>
                   <option value="luce">Luce</option>
@@ -309,7 +312,7 @@
                 <input name="pdr" type="text" placeholder="Numero PDR" />
               </label>
               <label>
-                Metodo pagamento
+                Metodo pagamento<span class="req" aria-hidden="true"> *</span>
                 <select name="metodoPagamento" id="metodo-pagamento" required>
                   <option value="">Seleziona</option>
                   <option value="bollettino">Bollettino</option>
@@ -332,11 +335,26 @@
                 Indirizzo fornitura
                 <input name="indirizzoFornitura" type="text" placeholder="Indirizzo di fornitura" />
               </label>
-              <label class="full-span">
-                <span class="field-with-counter">
-                  <span>Documenti contratto</span>
+              <div class="full-span">
+                <div class="field-with-counter" style="margin-bottom: 7px;">
+                  <label for="contract-files-input" style="font-weight: 650; color: #334155; margin: 0;">Documenti contratto</label>
                   <span class="counter-pill" id="contract-files-pill">Nessun documento</span>
-                </span>
+                </div>
+                <div
+                  class="file-drop-zone"
+                  id="contract-drop-zone"
+                  role="button"
+                  tabindex="0"
+                  aria-label="Clicca o trascina i file per caricare documenti contratto"
+                >
+                  <svg class="file-drop-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                  <strong class="file-drop-text">Clicca o trascina i file qui</strong>
+                  <span class="file-drop-hint">PDF, Word, Excel, immagini — max 15 MB per file</span>
+                </div>
                 <input
                   id="contract-files-input"
                   name="fileContratto"
@@ -345,10 +363,10 @@
                   multiple
                 />
                 <small id="contract-files-help"
-                  >Puoi aggiungere file in piu passaggi: l'elenco resta cumulativo fino al
+                  >Puoi aggiungere file in più passaggi: l'elenco resta cumulativo fino al
                   salvataggio.</small
                 >
-              </label>
+              </div>
               <div class="file-selection full-span" id="contract-files-selection" hidden>
                 <div class="file-selection-head">
                   <strong>Documenti selezionati</strong>
@@ -396,8 +414,8 @@
               <thead>
                 <tr>
                   <th>Cliente</th>
-                  <th>Data inst.</th>
-                  <th>Inizio forn.</th>
+                  <th title="Data inserimento">Data inst.</th>
+                  <th title="Inizio fornitura">Inizio forn.</th>
                   <th>Stato</th>
                   <th>Tipo</th>
                   <th>CB</th>

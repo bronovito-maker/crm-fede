@@ -318,6 +318,13 @@ body.auth-locked .app-shell {
   background: var(--green);
 }
 
+.agent-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
 .status-loading .status-dot {
   background: var(--yellow);
 }
@@ -392,6 +399,7 @@ body.auth-locked .app-shell {
 }
 
 /* Mobile: "Nuovo contratto" è già nel bottom nav, non serve nel topbar */
+/* Desktop: già nella sidebar verticale sempre visibile */
 .quick-action {
   display: none;
 }
@@ -612,15 +620,18 @@ body.auth-locked .app-shell {
   height: 12px;
   overflow: hidden;
   border-radius: 8px;
-  background: #edf1f6;
+  background: #d5dbe5;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .progress-track span {
   display: block;
   height: 100%;
   width: 0;
+  min-width: 0;
   border-radius: 8px;
   background: linear-gradient(90deg, var(--teal), var(--primary));
+  transition: width 0.4s ease;
 }
 
 .progress-track.compact {
@@ -921,9 +932,15 @@ textarea {
 }
 
 .admin-toolbar {
+  grid-template-columns: 1fr 1fr;
   background: #f8fafc;
   border: 1px solid var(--line);
   box-shadow: none;
+}
+
+/* Cerca occupa tutta la riga su mobile */
+.admin-toolbar > label:first-child {
+  grid-column: 1 / -1;
 }
 
 .admin-quick-filters {
@@ -957,8 +974,14 @@ textarea {
 
 .admin-bulk-actions {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.admin-bulk-actions .compact-button {
+  font-size: 0.82rem;
+  padding: 8px 6px;
+  text-align: center;
 }
 
 .admin-counter-card {
@@ -1102,7 +1125,7 @@ td:last-child {
 
 td small {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.82rem;
 }
 
 .admin-row-checkbox {
@@ -1127,12 +1150,17 @@ td[colspan]::before {
   display: none;
 }
 
+/* ---- Capitalizzazione nomi clienti in tabella ---- */
+td[data-label='Cliente'] strong {
+  text-transform: capitalize;
+}
+
 /* ---- Badge ---- */
 .badge {
   display: inline-flex;
   align-items: center;
-  min-height: 26px;
-  padding: 4px 9px;
+  min-height: 32px;
+  padding: 6px 10px;
   border-radius: 8px;
   font-size: 0.86rem;
   font-weight: 700;
@@ -1477,20 +1505,16 @@ td[colspan]::before {
   gap: 8px;
 }
 
-@media (min-width: 900px) {
-  .admin-form-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-}
+/* Admin form: 2 colonne dal breakpoint tablet standard (640px) */
 
 .form-banner {
   display: grid;
   gap: 8px;
   padding: 10px 14px;
-  border: 1px solid #bbf7d0;
+  border: 1px solid #bfdbfe;
   border-radius: 8px;
-  background: #f0fdf4;
-  color: var(--green);
+  background: #eff6ff;
+  color: #1d4ed8;
   font-size: 0.9rem;
   margin-bottom: 14px;
 }
@@ -1508,7 +1532,7 @@ td[colspan]::before {
 .summary-pill {
   display: grid;
   gap: 2px;
-  border: 1px solid #cdebd7;
+  border: 1px solid #93c5fd;
   border-radius: 8px;
   padding: 10px 12px;
   background: rgba(255, 255, 255, 0.82);
@@ -1516,7 +1540,7 @@ td[colspan]::before {
 
 .summary-pill small {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   font-weight: 700;
 }
 
@@ -1541,7 +1565,7 @@ td[colspan]::before {
 .admin-stat-grid span {
   display: block;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   font-weight: 700;
   margin-bottom: 2px;
 }
@@ -1556,7 +1580,7 @@ td[colspan]::before {
   display: block;
   margin-top: 2px;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   font-weight: 700;
 }
 
@@ -1564,6 +1588,80 @@ td[colspan]::before {
   min-height: 38px;
   padding: 8px 10px;
   font-size: 0.95rem;
+}
+
+/* ---- Required field indicator ---- */
+.req {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.req-legend {
+  grid-column: 1 / -1;
+  margin: 0 0 2px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+/* ---- File Drop Zone ---- */
+#contract-files-input {
+  /* Nascosto ma accessibile da JS e screen reader */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.file-drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px 16px;
+  border: 2px dashed var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: var(--muted);
+  cursor: pointer;
+  text-align: center;
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease;
+  user-select: none;
+}
+
+.file-drop-zone:hover,
+.file-drop-zone:focus-visible {
+  border-color: var(--primary);
+  background: #eff6ff;
+  color: var(--primary-strong);
+  outline: none;
+}
+
+.file-drop-zone.drag-over {
+  border-color: var(--primary);
+  background: #eff6ff;
+  color: var(--primary-strong);
+}
+
+.file-drop-icon {
+  width: 32px;
+  height: 32px;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.file-drop-text {
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.file-drop-hint {
+  font-size: 0.8rem;
 }
 
 /* =============================================
@@ -1608,6 +1706,7 @@ td[colspan]::before {
   .nav-item {
     flex: 0 0 auto;
     min-width: max-content;
+    min-height: 44px;
     text-align: left;
     padding: 10px 14px;
     font-size: 0.9rem;
@@ -1636,7 +1735,7 @@ td[colspan]::before {
     width: auto;
   }
 
-  /* Tablet: ripristina quick-action e label complete */
+  /* Tablet: ripristina quick-action solo su tablet (su desktop è ridondante con la sidebar) */
   .quick-action {
     display: inline-flex;
     width: auto;
@@ -1663,11 +1762,21 @@ td[colspan]::before {
     display: none;
   }
 
-  /* Metrics: 2 columns */
+  /* Metrics: 2 columns (dashboard: 3 col per evitare orfani con 9 card) */
   .metrics-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 14px;
     margin-bottom: 18px;
+  }
+
+  #dashboard-metrics,
+  #cb-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* CB: 7 card su 3 col = 3+3+1 → ultima piena se sola */
+  #cb-metrics .metric-card:last-child:nth-child(3n+1) {
+    grid-column: 1 / -1;
   }
 
   .metric-card {
@@ -1743,6 +1852,10 @@ td[colspan]::before {
     grid-template-columns: 1fr 1fr;
   }
 
+  .admin-form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .admin-toolbar {
     grid-template-columns: minmax(220px, 1.3fr) 180px 180px 180px auto;
     align-items: end;
@@ -1754,7 +1867,7 @@ td[colspan]::before {
   }
 
   .admin-contract-counters {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .admin-bulk-bar {
@@ -1768,7 +1881,7 @@ td[colspan]::before {
   }
 
   .admin-stat-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   }
 
   .contract-form {
@@ -1833,7 +1946,29 @@ td[colspan]::before {
   }
 
   tr:hover {
-    background: #f8fafc;
+    background: #eef4ff;
+  }
+
+  /* Freccia indicatore "cliccabile" sull'ultima cella */
+  tbody tr td:last-child {
+    position: relative;
+    padding-right: 28px;
+  }
+
+  tbody tr td:last-child::after {
+    content: '\203A';
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1.3rem;
+    color: var(--muted);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  tbody tr:hover td:last-child::after {
+    opacity: 1;
   }
 
   th,
@@ -1951,9 +2086,31 @@ td[colspan]::before {
     margin-bottom: 24px;
   }
 
-  /* Metrics: 4 columns */
+  /* Desktop: sidebar sempre visibile, "Nuovo contratto" nel topbar è ridondante */
+  .quick-action {
+    display: none;
+  }
+
+  /* Metrics: 4 columns (eccezione: dashboard usa 3 col → 9 card = 3×3 senza orfani) */
   .metrics-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  #dashboard-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  #cb-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* CB: 7 card su 3 col = 3+3+1 → ultima card piena se sola sulla riga */
+  #cb-metrics .metric-card:last-child:nth-child(3n+1) {
+    grid-column: 1 / -1;
+  }
+
+  #admin-metrics {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .metric-card strong {
@@ -2017,7 +2174,7 @@ td[colspan]::before {
   }
 
   .progress-focus {
-    min-height: 300px;
+    min-height: auto;
   }
 }
 

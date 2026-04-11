@@ -338,6 +338,38 @@ document
 document
   .getElementById('contract-files-input')
   .addEventListener('change', handleContractFilesSelection);
+
+// ---- File drop zone ----
+(function setupFileDropZone() {
+  const dropZone = document.getElementById('contract-drop-zone');
+  const fileInput = document.getElementById('contract-files-input');
+
+  // Click / keyboard → apri selettore file
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
+
+  // Drag events
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+  });
+  dropZone.addEventListener('dragleave', (e) => {
+    if (!dropZone.contains(e.relatedTarget)) {
+      dropZone.classList.remove('drag-over');
+    }
+  });
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length) addContractFiles(files);
+  });
+})();
 document.getElementById('login-form').addEventListener('submit', handleLogin);
 document.getElementById('logout-button').addEventListener('click', handleLogout);
 document.getElementById('admin-agent-form').addEventListener('submit', handleAdminAgentSubmit);
@@ -491,6 +523,12 @@ function setActivePage(pageId) {
     }
   });
   document.getElementById('page-title').textContent = pages[pageId];
+
+  // Nascondi "Nuovo contratto" quick-action nelle pagine dove è fuori contesto
+  const quickBtn = document.querySelector('.quick-action');
+  if (quickBtn) {
+    quickBtn.hidden = pageId === 'admin';
+  }
 }
 
 function currentMonthContracts() {
@@ -709,6 +747,21 @@ function renderContractsTable() {
   });
   tableWrap.hidden = filtered.length === 0;
   emptyState.hidden = filtered.length > 0;
+
+  // Empty state differenziato: zero contratti vs filtri senza risultati
+  if (filtered.length === 0) {
+    const hasFilters = search || month !== 'all' || status !== 'all';
+    const hasAnyContracts = contracts.length > 0;
+    if (!hasAnyContracts && !hasFilters) {
+      emptyState.querySelector('strong').textContent = 'Nessun contratto ancora';
+      emptyState.querySelector('p').textContent =
+        'Inizia subito inserendo il tuo primo contratto.';
+    } else {
+      emptyState.querySelector('strong').textContent = 'Nessun contratto trovato';
+      emptyState.querySelector('p').textContent =
+        'Controlla i filtri oppure inserisci subito un nuovo contratto.';
+    }
+  }
 }
 
 function contractRow(contract) {
@@ -718,8 +771,8 @@ function contractRow(contract) {
   return `
     <tr data-contract-id="${contract.id}" tabindex="0" aria-label="Apri dettaglio contratto ${escapeHtml(contract.ragioneSociale)}">
       <td data-label="Cliente"><strong>${escapeHtml(contract.ragioneSociale)}</strong></td>
-      <td data-label="Data">${formatDate.format(new Date(contract.dataInserimento))}</td>
-      <td data-label="Inizio forn.">${supplyDate}</td>
+      <td data-label="Data inserimento">${formatDate.format(new Date(contract.dataInserimento))}</td>
+      <td data-label="Inizio fornitura">${supplyDate}</td>
       <td data-label="Stato">${statusBadge(contract.statoContratto)}</td>
       <td data-label="Tipo">${escapeHtml(contract.tipoCliente)}</td>
       <td data-label="CB">${formatCurrency(contractCommissionValue(contract))}</td>
@@ -1079,12 +1132,15 @@ function validateContractDraft(draft) {
   return '';
 }
 
+function addContractFiles(files) {
+  if (!files.length) return;
+  selectedContractFiles = mergeContractFiles(selectedContractFiles, files);
+  renderSelectedContractFiles();
+}
+
 function handleContractFilesSelection(event) {
   const incomingFiles = Array.from(event.target.files || []);
-  if (!incomingFiles.length) return;
-
-  selectedContractFiles = mergeContractFiles(selectedContractFiles, incomingFiles);
-  renderSelectedContractFiles();
+  addContractFiles(incomingFiles);
   event.target.value = '';
 }
 
@@ -1281,7 +1337,7 @@ function renderAdminAgentList(stats, agents) {
         <article class="admin-agent-card compact ${Number(adminState.editingAgentId) === Number(agentRow.id) ? 'is-selected' : ''}">
           <header>
             <div class="admin-agent-main">
-              <h3>${escapeHtml(agentRow.nome)}</h3>
+              <h3>${escapeHtml(titleCase(agentRow.nome))}</h3>
               <p>${escapeHtml(agentRow.email)}</p>
             </div>
             <div class="admin-agent-badges">
@@ -1883,6 +1939,12 @@ function range(start, end, step) {
 
 function capitalize(value) {
   return String(value).charAt(0).toUpperCase() + String(value).slice(1);
+}
+
+function titleCase(value) {
+  return String(value)
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function escapeHtml(value) {
