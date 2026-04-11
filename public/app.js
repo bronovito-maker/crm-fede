@@ -903,7 +903,7 @@ function renderCbPage() {
   table.innerHTML = summary.monthly
     .map(
       (contract) => `
-        <tr>
+        <tr data-contract-id="${contract.id}" tabindex="0" aria-label="Apri dettaglio contratto ${escapeHtml(contract.ragioneSociale)}">
           <td data-label="Cliente"><strong>${escapeHtml(contract.ragioneSociale)}</strong></td>
           <td data-label="Stato">${statusBadge(contract.statoContratto)}</td>
           <td data-label="CB">${formatCurrency(contractCommissionValue(contract))}</td>
@@ -912,6 +912,17 @@ function renderCbPage() {
       `
     )
     .join('');
+
+  table.querySelectorAll('[data-contract-id]').forEach((row) => {
+    row.addEventListener('click', () => openContractModal(Number(row.dataset.contractId)));
+    row.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openContractModal(Number(row.dataset.contractId));
+      }
+    });
+  });
+
   tableWrap.hidden = summary.monthly.length === 0;
   emptyState.hidden = summary.monthly.length > 0;
 }
