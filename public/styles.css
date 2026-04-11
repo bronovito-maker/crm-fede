@@ -997,6 +997,11 @@ textarea {
   background: #fffbeb;
 }
 
+.admin-counter-card.neutral {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
 .admin-toggle {
   align-self: end;
   min-height: 46px;
@@ -1141,6 +1146,11 @@ td[colspan]::before {
 .badge.caricato {
   color: var(--yellow);
   background: #fef3c7;
+}
+
+.badge.inviato {
+  color: #1d4ed8;
+  background: #dbeafe;
 }
 
 .badge.ko {

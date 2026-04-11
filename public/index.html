@@ -321,33 +321,16 @@
                 <input name="iban" type="text" placeholder="IT60X..." autocomplete="off" />
               </label>
               <label>
-                Indirizzo
-                <input
-                  name="indirizzo"
-                  type="text"
-                  placeholder="Via Roma 12, Milano"
-                  autocomplete="street-address"
-                />
-              </label>
-              <label>
                 Agente assegnato
                 <input name="agente" type="text" value="Marco Bianchi" readonly />
               </label>
               <label>
                 Indirizzo fatturazione
-                <input
-                  name="indirizzoFatturazione"
-                  type="text"
-                  placeholder="Se diverso da indirizzo"
-                />
+                <input name="indirizzoFatturazione" type="text" placeholder="Es. Via Roma 12" />
               </label>
               <label>
                 Indirizzo fornitura
-                <input
-                  name="indirizzoFornitura"
-                  type="text"
-                  placeholder="POD/PDR o indirizzo fornitura"
-                />
+                <input name="indirizzoFornitura" type="text" placeholder="Indirizzo di fornitura" />
               </label>
               <label class="full-span">
                 <span class="field-with-counter">
@@ -399,6 +382,7 @@
               <option value="all">Tutti gli stati</option>
               <option value="OK">OK</option>
               <option value="Caricato">Caricato</option>
+              <option value="Inviato">Inviato</option>
               <option value="K.O.">K.O.</option>
               <option value="Switch - Out">Switch - Out</option>
             </select>
@@ -532,6 +516,7 @@
                     <option value="all">Tutti gli stati</option>
                     <option value="OK">OK</option>
                     <option value="Caricato">Caricato</option>
+                    <option value="Inviato">Inviato</option>
                     <option value="K.O.">K.O.</option>
                     <option value="Switch - Out">Switch - Out</option>
                   </select>
@@ -540,48 +525,20 @@
                   Ordina
                   <select id="admin-contract-sort">
                     <option value="recent">Più recenti</option>
-                    <option value="unsent">Non inviati prima</option>
+                    <option value="unsent">Da inviare prima</option>
                     <option value="oldest">Meno recenti</option>
+                    <option value="only-caricato">Solo Caricato</option>
+                    <option value="reset">Reset filtri</option>
                   </select>
                 </label>
                 <label>
-                  Invio
+                  Vista
                   <select id="admin-contract-sent-filter">
                     <option value="all">Tutti i contratti</option>
-                    <option value="unsent">Non inviati</option>
+                    <option value="pending">Da inviare</option>
                     <option value="sent">Inviati</option>
                   </select>
                 </label>
-              </div>
-              <div class="admin-quick-filters" aria-label="Filtri rapidi contratti">
-                <button
-                  class="secondary-button compact-button"
-                  type="button"
-                  data-admin-quick-filter="recent"
-                >
-                  Più recenti
-                </button>
-                <button
-                  class="secondary-button compact-button"
-                  type="button"
-                  data-admin-quick-filter="unsent"
-                >
-                  Non inviati prima
-                </button>
-                <button
-                  class="secondary-button compact-button"
-                  type="button"
-                  data-admin-quick-filter="caricato"
-                >
-                  Solo Caricato
-                </button>
-                <button
-                  class="secondary-button compact-button"
-                  type="button"
-                  data-admin-quick-filter="reset"
-                >
-                  Reset
-                </button>
               </div>
               <div
                 class="admin-contract-counters"
@@ -623,8 +580,6 @@
                       <th>Agente</th>
                       <th>Stato</th>
                       <th>Fornitura</th>
-                      <th>Invio</th>
-                      <th>Data invio</th>
                       <th>Azione</th>
                     </tr>
                   </thead>
@@ -633,7 +588,7 @@
               </div>
               <div class="empty-state compact" id="admin-contracts-empty" hidden>
                 <strong>Nessun contratto trovato</strong>
-                <p>Prova a cambiare i filtri oppure togli “solo non inviati”.</p>
+                <p>Prova a cambiare i filtri oppure passa a “Tutti i contratti”.</p>
               </div>
             </article>
 

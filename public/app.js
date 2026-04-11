@@ -27,7 +27,6 @@ const defaultContracts = [
     pdr: '',
     metodoPagamento: 'rid',
     iban: 'IT60X0542811101000000123456',
-    indirizzo: 'Via Roma 12, Milano',
     indirizzoFatturazione: 'Via Roma 12, Milano',
     indirizzoFornitura: 'Via Industria 7, Milano',
     descrizione: 'Cliente business con doppia fornitura.',
@@ -54,7 +53,6 @@ const defaultContracts = [
     pdr: '12345678901234',
     metodoPagamento: 'bollettino',
     iban: '',
-    indirizzo: 'Corso Italia 41, Torino',
     indirizzoFatturazione: 'Corso Italia 41, Torino',
     indirizzoFornitura: 'Corso Italia 41, Torino',
     descrizione: '',
@@ -81,7 +79,6 @@ const defaultContracts = [
     pdr: '99887766554433',
     metodoPagamento: 'rid',
     iban: 'IT60X0542811101000000654321',
-    indirizzo: 'Via Manzoni 8, Pavia',
     indirizzoFatturazione: 'Via Manzoni 8, Pavia',
     indirizzoFornitura: 'Via Manzoni 8, Pavia',
     descrizione: '',
@@ -108,7 +105,6 @@ const defaultContracts = [
     pdr: '',
     metodoPagamento: 'bollettino',
     iban: '',
-    indirizzo: 'Via Piave 22, Monza',
     indirizzoFatturazione: 'Via Piave 22, Monza',
     indirizzoFornitura: 'Via Piave 22, Monza',
     descrizione: 'Documenti incompleti.',
@@ -135,7 +131,6 @@ const defaultContracts = [
     pdr: '11223344556677',
     metodoPagamento: 'rid',
     iban: 'IT60X0542811101000000112233',
-    indirizzo: 'Piazza Garibaldi 3, Novara',
     indirizzoFatturazione: 'Piazza Garibaldi 3, Novara',
     indirizzoFornitura: 'Piazza Garibaldi 3, Novara',
     descrizione: '',
@@ -162,7 +157,6 @@ const defaultContracts = [
     pdr: '',
     metodoPagamento: 'bollettino',
     iban: '',
-    indirizzo: 'Via Dante 14, Como',
     indirizzoFatturazione: 'Via Dante 14, Como',
     indirizzoFornitura: 'Via Dante 14, Como',
     descrizione: '',
@@ -189,7 +183,6 @@ const defaultContracts = [
     pdr: '22334455667788',
     metodoPagamento: 'rid',
     iban: 'IT60X0542811101000000998877',
-    indirizzo: 'Via Milano 90, Lecco',
     indirizzoFatturazione: 'Via Milano 90, Lecco',
     indirizzoFornitura: 'Via Milano 90, Lecco',
     descrizione: '',
@@ -210,7 +203,7 @@ const adminState = {
   contractSearch: '',
   contractAgentId: 'all',
   contractStatus: 'all',
-  contractSentFilter: 'unsent',
+  contractSentFilter: 'pending',
   contractSort: 'recent',
   selectedContractIds: [],
   agentSearch: '',
@@ -230,6 +223,7 @@ const pages = {
 const statusColors = {
   OK: '#15803d',
   Caricato: '#b7791f',
+  Inviato: '#2563eb',
   'K.O.': '#c2410c',
   'Switch - Out': '#dc2626',
 };
@@ -359,10 +353,6 @@ document.getElementById('admin-agent-reset').addEventListener('click', resetAdmi
   ['admin-agent-state-filter', 'change', handleAdminFilterChange],
 ].forEach(([id, eventName, handler]) => {
   document.getElementById(id).addEventListener(eventName, handler);
-});
-
-document.querySelectorAll('[data-admin-quick-filter]').forEach((button) => {
-  button.addEventListener('click', () => applyAdminQuickFilter(button.dataset.adminQuickFilter));
 });
 document
   .getElementById('admin-select-visible')
@@ -501,6 +491,7 @@ function getSummary() {
   const monthly = currentMonthContracts();
   const ok = monthly.filter((contract) => contract.statoContratto === 'OK');
   const caricati = monthly.filter((contract) => contract.statoContratto === 'Caricato');
+  const inviati = monthly.filter((contract) => contract.statoContratto === 'Inviato');
   const ko = monthly.filter((contract) => contract.statoContratto === 'K.O.');
   const switchOut = monthly.filter((contract) => contract.statoContratto === 'Switch - Out');
   const scartati = monthly.filter(
@@ -509,11 +500,12 @@ function getSummary() {
   const monthlyUnits = sumContractUnits(monthly);
   const okUnits = sumContractUnits(ok);
   const caricatiUnits = sumContractUnits(caricati);
+  const inviatiUnits = sumContractUnits(inviati);
   const koUnits = sumContractUnits(ko);
   const switchOutUnits = sumContractUnits(switchOut);
   const scartatiUnits = sumContractUnits(scartati);
   const cbValidata = sumContractCommissions(ok);
-  const cbPotenziale = sumContractCommissions([...ok, ...caricati]);
+  const cbPotenziale = sumContractCommissions([...ok, ...caricati, ...inviati]);
   const mancanti = Math.max(agent.targetMensile - okUnits, 0);
   const targetPercent = percent(okUnits, agent.targetMensile);
 
@@ -521,12 +513,14 @@ function getSummary() {
     monthly,
     ok,
     caricati,
+    inviati,
     ko,
     switchOut,
     scartati,
     monthlyUnits,
     okUnits,
     caricatiUnits,
+    inviatiUnits,
     koUnits,
     switchOutUnits,
     scartatiUnits,
@@ -555,12 +549,16 @@ function renderDashboard() {
   renderMetrics('dashboard-metrics', [
     { label: 'Contratti inseriti', value: summary.monthlyUnits },
     { label: 'Contratti OK', value: summary.okUnits },
+    { label: 'Contratti inviati', value: summary.inviatiUnits },
     { label: 'Contratti scartati (K.O.)', value: summary.scartatiUnits },
     { label: 'CB maturata', value: formatCurrency(summary.cbValidata) },
     { label: 'CB potenziale', value: formatCurrency(summary.cbPotenziale) },
     { label: 'Target mensile', value: agent.targetMensile },
     { label: 'Manca al target', value: summary.mancanti },
-    { label: 'In attesa (Caricati)', value: summary.caricatiUnits },
+    {
+      label: 'In attesa (Caricati + Inviati)',
+      value: summary.caricatiUnits + summary.inviatiUnits,
+    },
   ]);
 
   renderDonut(summary);
@@ -580,13 +578,15 @@ function renderDonut(summary) {
   const total = Math.max(summary.monthlyUnits, 1);
   const okEnd = (summary.okUnits / total) * 100;
   const caricatiEnd = okEnd + (summary.caricatiUnits / total) * 100;
+  const inviatiEnd = caricatiEnd + (summary.inviatiUnits / total) * 100;
 
   document.getElementById('donut-chart').style.background =
-    `conic-gradient(${statusColors.OK} 0 ${okEnd}%, ${statusColors.Caricato} ${okEnd}% ${caricatiEnd}%, ${statusColors['K.O.']} ${caricatiEnd}% 100%)`;
+    `conic-gradient(${statusColors.OK} 0 ${okEnd}%, ${statusColors.Caricato} ${okEnd}% ${caricatiEnd}%, ${statusColors.Inviato} ${caricatiEnd}% ${inviatiEnd}%, ${statusColors['K.O.']} ${inviatiEnd}% 100%)`;
 
   document.getElementById('status-legend').innerHTML = [
     ['OK', summary.okUnits, statusColors.OK],
     ['Caricati', summary.caricatiUnits, statusColors.Caricato],
+    ['Inviati', summary.inviatiUnits, statusColors.Inviato],
     ['Scartati / Out', summary.scartatiUnits, statusColors['K.O.']],
   ]
     .map(
@@ -728,11 +728,6 @@ function openContractModal(contractId) {
     detailItem('Cliente', contract.ragioneSociale),
     detailItem('ID contratto', contract.idContratto || 'Non inserito'),
     detailItem('Stato', capitalize(contract.statoContratto)),
-    detailItem('Invio', contract.inviato ? 'Inviato' : 'Non inviato'),
-    detailItem(
-      'Data invio',
-      contract.dataInvio ? formatDate.format(new Date(contract.dataInvio)) : 'Non inserita'
-    ),
     detailItem('Data inserimento', formatDate.format(new Date(contract.dataInserimento))),
     detailItem(
       'Inizio fornitura',
@@ -756,7 +751,6 @@ function openContractModal(contractId) {
     detailItem('Cellulare', contract.cellulare),
     detailItem('Email', contract.email || 'Non inserita'),
     detailItem('P.IVA / Cod. fiscale', contract.piva || 'Non inserita'),
-    detailItem('Indirizzo', contract.indirizzo || 'Non inserito', true),
     detailItem('Indirizzo fatturazione', contract.indirizzoFatturazione || 'Non inserito', true),
     detailItem('Indirizzo fornitura', contract.indirizzoFornitura || 'Non inserito', true),
     detailItem('Note', contract.descrizione || 'Nessuna nota', true),
@@ -829,9 +823,13 @@ function renderCbPage() {
   renderMetrics('cb-metrics', [
     { label: 'CB del mese', value: formatCurrency(summary.cbPotenziale) },
     { label: 'CB validata (OK)', value: formatCurrency(summary.cbValidata) },
-    { label: 'CB in attesa', value: formatCurrency(sumContractCommissions(summary.caricati)) },
+    {
+      label: 'CB in attesa',
+      value: formatCurrency(sumContractCommissions([...summary.caricati, ...summary.inviati])),
+    },
     { label: 'OK', value: summary.okUnits },
     { label: 'Caricati', value: summary.caricatiUnits },
+    { label: 'Inviati', value: summary.inviatiUnits },
     { label: 'K.O.', value: summary.koUnits },
   ]);
 
@@ -959,7 +957,6 @@ function buildContractDraft(form) {
     iban: String(form.get('iban')).trim(),
     piva: String(form.get('piva')).trim(),
     email: String(form.get('email')).trim(),
-    indirizzo: String(form.get('indirizzo')).trim(),
     indirizzoFatturazione: String(form.get('indirizzoFatturazione')).trim(),
     indirizzoFornitura: String(form.get('indirizzoFornitura')).trim(),
     descrizione: String(form.get('descrizione')).trim(),
@@ -987,7 +984,6 @@ function buildContractFormData(draft) {
     'iban',
     'piva',
     'email',
-    'indirizzo',
     'indirizzoFatturazione',
     'indirizzoFornitura',
     'descrizione',
@@ -1242,7 +1238,8 @@ function renderAdminMetrics(stats) {
     { label: 'Pratiche inserite mese', value: stats.totals.practices || stats.totals.contracts },
     { label: 'Contratti conteggiati mese', value: stats.totals.contracts },
     { label: 'Validati (OK)', value: stats.totals.ok },
-    { label: 'In attesa (Caricati)', value: stats.totals.caricati },
+    { label: 'Caricati', value: stats.totals.caricati },
+    { label: 'Inviati', value: stats.totals.inviati },
     { label: 'K.O.', value: stats.totals.ko },
     { label: 'Switch Out', value: stats.totals.switchOut },
     { label: 'CB validata mese', value: formatCurrency(stats.totals.cbValidata) },
@@ -1312,34 +1309,42 @@ function renderAdminContracts(adminContracts, agents) {
   const selectedIds = new Set(adminState.selectedContractIds.map(Number));
   const agentNames = new Map(agents.map((item) => [Number(item.id), item.nome]));
   const query = adminState.contractSearch.trim().toLowerCase();
+  const hasSearchQuery = Boolean(query);
   const filteredRows = adminContracts.slice().filter((contract) => {
     const matchesQuery =
       !query ||
-      [
-        contract.ragioneSociale,
-        contract.idContratto,
-        contract.email,
-        contract.cellulare,
-        contract.fornitore,
-      ]
-        .join(' ')
-        .toLowerCase()
-        .includes(query);
+      matchesSmartSearch(
+        [
+          contract.ragioneSociale,
+          contract.idContratto,
+          contract.email,
+          contract.cellulare,
+          contract.fornitore,
+          agentNames.get(Number(contract.agenteId)) || '',
+          contract.statoContratto,
+        ],
+        query
+      );
     const matchesAgent =
       adminState.contractAgentId === 'all' ||
       Number(contract.agenteId) === Number(adminState.contractAgentId);
     const matchesStatus =
-      adminState.contractStatus === 'all' || contract.statoContratto === adminState.contractStatus;
+      hasSearchQuery ||
+      adminState.contractStatus === 'all' ||
+      contract.statoContratto === adminState.contractStatus;
     const matchesSent =
+      hasSearchQuery ||
       adminState.contractSentFilter === 'all' ||
-      (adminState.contractSentFilter === 'unsent' && !contract.inviato) ||
-      (adminState.contractSentFilter === 'sent' && contract.inviato);
+      (adminState.contractSentFilter === 'pending' && contract.statoContratto !== 'Inviato') ||
+      (adminState.contractSentFilter === 'sent' && contract.statoContratto === 'Inviato');
     return matchesQuery && matchesAgent && matchesStatus && matchesSent;
   });
   const rows = filteredRows.slice().sort((left, right) => {
     if (adminState.contractSort === 'unsent') {
-      if (Boolean(left.inviato) !== Boolean(right.inviato)) {
-        return Number(left.inviato) - Number(right.inviato);
+      if ((left.statoContratto === 'Inviato') !== (right.statoContratto === 'Inviato')) {
+        return (
+          Number(left.statoContratto === 'Inviato') - Number(right.statoContratto === 'Inviato')
+        );
       }
       return String(right.dataInserimento).localeCompare(String(left.dataInserimento));
     }
@@ -1351,18 +1356,18 @@ function renderAdminContracts(adminContracts, agents) {
     return String(right.dataInserimento).localeCompare(String(left.dataInserimento));
   });
 
-  const okNonInviati = filteredRows.filter(
-    (contract) => !contract.inviato && contract.statoContratto === 'OK'
+  const okDaInviare = filteredRows.filter((contract) => contract.statoContratto === 'OK').length;
+  const caricatiDaGestire = filteredRows.filter(
+    (contract) => contract.statoContratto === 'Caricato'
   ).length;
-  const caricatiNonInviati = filteredRows.filter(
-    (contract) => !contract.inviato && contract.statoContratto === 'Caricato'
-  ).length;
-  const daInviareOra = okNonInviati + caricatiNonInviati;
+  const inviati = filteredRows.filter((contract) => contract.statoContratto === 'Inviato').length;
+  const daInviareOra = okDaInviare + caricatiDaGestire;
 
   counters.innerHTML = [
     adminCounterCard('Da inviare ora', daInviareOra, 'urgent'),
-    adminCounterCard('OK non inviati', okNonInviati, 'attention'),
-    adminCounterCard('Caricati non inviati', caricatiNonInviati, 'warning'),
+    adminCounterCard('OK da inviare', okDaInviare, 'attention'),
+    adminCounterCard('Caricati da gestire', caricatiDaGestire, 'warning'),
+    adminCounterCard('Già inviati', inviati, 'neutral'),
   ].join('');
 
   adminState.selectedContractIds = adminState.selectedContractIds
@@ -1387,11 +1392,9 @@ function renderAdminContracts(adminContracts, agents) {
           <td data-label="Agente">${escapeHtml(agentNames.get(Number(contract.agenteId)) || 'Non assegnato')}</td>
           <td data-label="Stato">${statusBadge(contract.statoContratto)}</td>
           <td data-label="Fornitura">${escapeHtml(capitalize(contract.tipoFornitura || 'Non inserita'))}</td>
-          <td data-label="Invio">${sentBadge(contract.inviato)}</td>
-          <td data-label="Data invio">${contract.dataInvio ? escapeHtml(formatDate.format(new Date(contract.dataInvio))) : '—'}</td>
           <td data-label="Azione">
-            <button class="secondary-button compact-button" type="button" data-admin-contract-sent="${contract.id}" data-admin-contract-next="${contract.inviato ? 'false' : 'true'}">
-              ${contract.inviato ? 'Annulla invio' : 'Segna inviato'}
+            <button class="secondary-button compact-button" type="button" data-admin-contract-sent="${contract.id}" data-admin-contract-next="${contract.statoContratto === 'Inviato' ? 'false' : 'true'}">
+              ${contract.statoContratto === 'Inviato' ? 'Riporta a Caricato' : 'Segna inviato'}
             </button>
           </td>
         </tr>
@@ -1413,7 +1416,7 @@ function renderAdminContracts(adminContracts, agents) {
         await loadAndRenderContracts({ silent: true, force: true });
         await renderAdminPage();
       } catch (error) {
-        setAdminFeedback('error', error.message || 'Invio contratto non aggiornato.');
+        setAdminFeedback('error', error.message || 'Stato contratto non aggiornato.');
       } finally {
         button.disabled = false;
       }
@@ -1454,8 +1457,8 @@ function adminCounterCard(label, value, tone) {
 function adminContractRowClass(contract) {
   const status = String(contract.statoContratto || '');
   if (status === 'K.O.') return 'admin-contract-row is-muted';
-  if (!contract.inviato && status === 'Caricato') return 'admin-contract-row is-urgent';
-  if (!contract.inviato && status === 'OK') return 'admin-contract-row is-attention';
+  if (status === 'Caricato') return 'admin-contract-row is-urgent';
+  if (status === 'OK') return 'admin-contract-row is-attention';
   return 'admin-contract-row';
 }
 
@@ -1494,6 +1497,11 @@ function handleAdminFilterChange() {
   adminState.agentRole = document.getElementById('admin-agent-role-filter').value;
   adminState.agentState = document.getElementById('admin-agent-state-filter').value;
 
+  if (['only-caricato', 'reset'].includes(adminState.contractSort)) {
+    applyAdminQuickFilter(adminState.contractSort);
+    return;
+  }
+
   if (adminState.stats) {
     renderAdminAgentList(adminState.stats, adminState.agents);
     renderAdminContracts(adminState.contracts, adminState.agents);
@@ -1505,8 +1513,8 @@ function applyAdminQuickFilter(mode) {
     adminState.contractSort = 'recent';
   } else if (mode === 'unsent') {
     adminState.contractSort = 'unsent';
-    adminState.contractSentFilter = 'unsent';
-  } else if (mode === 'caricato') {
+    adminState.contractSentFilter = 'pending';
+  } else if (mode === 'caricato' || mode === 'only-caricato') {
     adminState.contractStatus = 'Caricato';
     adminState.contractSort = 'recent';
   } else if (mode === 'reset') {
@@ -1514,7 +1522,7 @@ function applyAdminQuickFilter(mode) {
     adminState.contractAgentId = 'all';
     adminState.contractStatus = 'all';
     adminState.contractSort = 'recent';
-    adminState.contractSentFilter = 'unsent';
+    adminState.contractSentFilter = 'pending';
   }
 
   syncAdminFilterControls();
@@ -1553,11 +1561,13 @@ async function bulkMarkSelectedSent() {
   const ids = adminState.selectedContractIds
     .map(Number)
     .filter((id) =>
-      adminState.contracts.some((contract) => Number(contract.id) === id && !contract.inviato)
+      adminState.contracts.some(
+        (contract) => Number(contract.id) === id && contract.statoContratto !== 'Inviato'
+      )
     );
 
   if (!ids.length) {
-    setAdminFeedback('error', 'Seleziona almeno un contratto non inviato.');
+    setAdminFeedback('error', 'Seleziona almeno un contratto da inviare.');
     return;
   }
 
@@ -1589,7 +1599,8 @@ function updateAdminBulkBar(rows) {
   const totalSelected = adminState.selectedContractIds.length;
   const actionableSelected = adminState.contracts.filter(
     (contract) =>
-      adminState.selectedContractIds.map(Number).includes(Number(contract.id)) && !contract.inviato
+      adminState.selectedContractIds.map(Number).includes(Number(contract.id)) &&
+      contract.statoContratto !== 'Inviato'
   ).length;
 
   bar.hidden = rows.length === 0;
@@ -1687,10 +1698,6 @@ function setAdminFeedback(type, message) {
   const feedback = document.getElementById('admin-agent-feedback');
   feedback.className = type ? `is-${type}` : '';
   feedback.textContent = message;
-}
-
-function sentBadge(sent) {
-  return `<span class="badge ${sent ? 'ok' : 'caricato'}">${sent ? 'Inviato' : 'Non inviato'}</span>`;
 }
 
 async function handleLogin(event) {
@@ -1819,7 +1826,7 @@ function percent(done, target) {
 
 function normalizeStatus(value) {
   const status = String(value).trim();
-  const valid = ['OK', 'Caricato', 'K.O.', 'Switch - Out'];
+  const valid = ['OK', 'Caricato', 'Inviato', 'K.O.', 'Switch - Out'];
   return valid.includes(status) ? status : 'Caricato';
 }
 
@@ -1846,6 +1853,20 @@ function escapeHtml(value) {
     };
     return entities[char];
   });
+}
+
+function normalizeSearchText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function matchesSmartSearch(values, query) {
+  const haystack = normalizeSearchText(values.filter(Boolean).join(' '));
+  const terms = normalizeSearchText(query).split(/\s+/).filter(Boolean);
+  return terms.every((term) => haystack.includes(term));
 }
 
 function sanitizeUrl(value) {

@@ -25,7 +25,7 @@ const CONFIG = {
 
 const allowedClientTypes = new Set(['Business', 'Privato', 'Condominio']);
 const allowedCustomerCategories = new Set(['prospect', 'switch ricorrente']);
-const allowedStatuses = new Set(['Caricato', 'OK', 'K.O.', 'Switch - Out']);
+const allowedStatuses = new Set(['Caricato', 'Inviato', 'OK', 'K.O.', 'Switch - Out']);
 const allowedOperations = new Set(['switch', 'switch + voltura', 'cambio listino', 'subentro']);
 const allowedSupplyTypes = new Set(['luce', 'gas', 'dual']);
 const allowedPaymentMethods = new Set(['bollettino', 'rid']);
@@ -301,7 +301,6 @@ app.post(
         iban: contract.iban,
         piva: contract.piva,
         email: contract.email,
-        indirizzo: contract.indirizzo,
         indirizzo_fatturazione: contract.indirizzoFatturazione,
         indirizzo_fornitura: contract.indirizzoFornitura,
         descrizione: contract.descrizione,
@@ -424,13 +423,12 @@ app.patch('/api/admin/contracts/:id/sent', requireAdmin, async (req, res) => {
     }
 
     const updated = await updateBaserowContract(contractId, {
-      inviato: sent,
-      data_invio: sent ? todayIsoDate() : '',
+      stato_contratto: sent ? 'Inviato' : 'Caricato',
     });
     invalidateAdminStatsCache();
     res.json(normalizeContract(updated));
   } catch (error) {
-    handleApiError(res, error, 'ADMIN_CONTRACT_NOT_UPDATED', 'Invio contratto non aggiornato.');
+    handleApiError(res, error, 'ADMIN_CONTRACT_NOT_UPDATED', 'Stato contratto non aggiornato.');
   }
 });
 
@@ -874,7 +872,6 @@ function sanitizeContractInput(input) {
     iban: cleanText(input.iban).replace(/\s+/g, '').toUpperCase(),
     piva: cleanText(input.piva),
     email: cleanText(input.email).toLowerCase(),
-    indirizzo: cleanText(input.indirizzo),
     indirizzoFatturazione: cleanText(input.indirizzoFatturazione),
     indirizzoFornitura: cleanText(input.indirizzoFornitura),
     descrizione: cleanText(input.descrizione),
@@ -1071,13 +1068,10 @@ function normalizeContract(row) {
     fileContratto: fileValue(row.file_contratto),
     piva: row.piva || '',
     email: row.email || '',
-    indirizzo: row.indirizzo || '',
     indirizzoFatturazione: row.indirizzo_fatturazione || '',
     indirizzoFornitura: row.indirizzo_fornitura || '',
     descrizione: row.descrizione || '',
     statoContratto: status,
-    inviato: row.inviato !== undefined ? Boolean(row.inviato) : false,
-    dataInvio: row.data_invio || '',
     cbUnitariaSnapshot: cbSnapshot,
     cbMaturata,
     dataInizioFornitura: row.data_inizio_fornitura || '',
@@ -1137,6 +1131,7 @@ function buildAdminStats(agents, contracts) {
     );
     const okAnno = agentYearContracts.filter((contract) => contract.statoContratto === 'OK');
     const caricati = agentContracts.filter((contract) => contract.statoContratto === 'Caricato');
+    const inviati = agentContracts.filter((contract) => contract.statoContratto === 'Inviato');
     const ko = agentContracts.filter((contract) => contract.statoContratto === 'K.O.');
     const switchOut = agentContracts.filter(
       (contract) => contract.statoContratto === 'Switch - Out'
@@ -1146,10 +1141,11 @@ function buildAdminStats(agents, contracts) {
     const okTrimestreUnits = sumContractUnits(okTrimestre);
     const okAnnoUnits = sumContractUnits(okAnno);
     const caricatiUnits = sumContractUnits(caricati);
+    const inviatiUnits = sumContractUnits(inviati);
     const koUnits = sumContractUnits(ko);
     const switchOutUnits = sumContractUnits(switchOut);
     const cbValidata = sumContractCommissions(ok);
-    const cbPotenziale = sumContractCommissions([...ok, ...caricati]);
+    const cbPotenziale = sumContractCommissions([...ok, ...caricati, ...inviati]);
 
     return {
       id: agent.id,
@@ -1166,6 +1162,7 @@ function buildAdminStats(agents, contracts) {
       okTrimestre: okTrimestreUnits,
       okAnno: okAnnoUnits,
       caricati: caricatiUnits,
+      inviati: inviatiUnits,
       ko: koUnits,
       switchOut: switchOutUnits,
       cbValidata,
@@ -1187,6 +1184,9 @@ function buildAdminStats(agents, contracts) {
       caricati: sumContractUnits(
         monthlyContracts.filter((contract) => contract.statoContratto === 'Caricato')
       ),
+      inviati: sumContractUnits(
+        monthlyContracts.filter((contract) => contract.statoContratto === 'Inviato')
+      ),
       ko: sumContractUnits(
         monthlyContracts.filter((contract) => contract.statoContratto === 'K.O.')
       ),
@@ -1197,7 +1197,7 @@ function buildAdminStats(agents, contracts) {
         .filter((contract) => contract.statoContratto === 'OK')
         .reduce((sum, contract) => sum + contractCommissionValue(contract), 0),
       cbPotenziale: monthlyContracts
-        .filter((contract) => ['OK', 'Caricato'].includes(contract.statoContratto))
+        .filter((contract) => ['OK', 'Caricato', 'Inviato'].includes(contract.statoContratto))
         .reduce((sum, contract) => sum + contractCommissionValue(contract), 0),
     },
     agents: agentRows,
@@ -1305,6 +1305,7 @@ function normalizeStatus(value) {
 
   const map = {
     validato: 'OK',
+    inviato: 'Inviato',
     'in attesa': 'Caricato',
     scartato: 'K.O.',
   };

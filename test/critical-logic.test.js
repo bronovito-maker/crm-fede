@@ -528,7 +528,6 @@ describe('helper coverage', () => {
       ],
       piva: '03849270121',
       email: 'info@example.it',
-      indirizzo: 'Via Roma',
       indirizzo_fatturazione: 'Via Milano',
       indirizzo_fornitura: 'Via Torino',
       descrizione: 'Note',
@@ -552,18 +551,15 @@ describe('helper coverage', () => {
     const normalized = normalizeContract({
       id: 8,
       agente: { id: 4 },
-      stato_contratto: { value: 'K.O.' },
+      stato_contratto: { value: 'Inviato' },
       cb_unitaria_snapshot: '85',
       tipo_fornitura: { value: 'gas' },
       categoria_cliente: { value: 'switch ricorrente' },
-      inviato: true,
-      data_invio: '2026-04-11',
     });
 
-    assert.equal(normalized.cbMaturata, 0);
-    assert.equal(normalized.commissionValue, 0);
-    assert.equal(normalized.inviato, true);
-    assert.equal(normalized.dataInvio, '2026-04-11');
+    assert.equal(normalized.statoContratto, 'Inviato');
+    assert.equal(normalized.cbMaturata, 85);
+    assert.equal(normalized.commissionValue, 85);
   });
 
   it('isAllowedContractFile accetta pdf e immagini note', () => {
@@ -642,7 +638,9 @@ describe('helper coverage', () => {
 
   it('normalizeStatus mappa i vecchi stati e defaulta a Caricato', () => {
     assert.equal(normalizeStatus('OK'), 'OK');
+    assert.equal(normalizeStatus('Inviato'), 'Inviato');
     assert.equal(normalizeStatus('validato'), 'OK');
+    assert.equal(normalizeStatus('inviato'), 'Inviato');
     assert.equal(normalizeStatus('in attesa'), 'Caricato');
     assert.equal(normalizeStatus('scartato'), 'K.O.');
     assert.equal(normalizeStatus('qualcosa'), 'Caricato');
@@ -961,7 +959,6 @@ describe('HTTP routes', () => {
           iban: 'IT60X0542811101000000123456',
           piva: '03849270121',
           email: 'info@rossi.it',
-          indirizzo: 'Via Roma 1',
           indirizzo_fatturazione: 'Via Roma 1',
           indirizzo_fornitura: 'Via Milano 2',
           descrizione: 'Nuovo inserimento',
@@ -992,7 +989,6 @@ describe('HTTP routes', () => {
         iban: 'it60x0542811101000000123456',
         piva: '03849270121',
         email: 'INFO@ROSSI.IT',
-        indirizzo: 'Via Roma 1',
         indirizzoFatturazione: 'Via Roma 1',
         indirizzoFornitura: 'Via Milano 2',
         descrizione: 'Nuovo inserimento',
@@ -1153,7 +1149,7 @@ describe('HTTP routes', () => {
     assert.equal(payloads.length, 1);
   });
 
-  it('PATCH /api/admin/contracts/:id/sent aggiorna inviato e data invio', async () => {
+  it('PATCH /api/admin/contracts/:id/sent aggiorna lo stato a Inviato', async () => {
     const adminId = 1;
     const agentTableId = process.env.BASEROW_TABLE_AGENTI_ID;
     const contractTableId = process.env.BASEROW_TABLE_CONTRATTI_ID;
@@ -1178,20 +1174,17 @@ describe('HTTP routes', () => {
       if (parsed.pathname === `/api/database/rows/table/${contractTableId}/15/`) {
         assert.equal(options.method, 'PATCH');
         const payload = JSON.parse(options.body);
-        assert.equal(payload.inviato, true);
-        assert.match(payload.data_invio, /^\d{4}-\d{2}-\d{2}$/);
+        assert.equal(payload.stato_contratto, 'Inviato');
 
         return mockJsonResponse({
           id: 15,
           agente: [{ id: 7 }],
           ragione_sociale: 'Cliente Test',
-          stato_contratto: { value: 'Caricato' },
+          stato_contratto: { value: 'Inviato' },
           tipo_fornitura: { value: 'luce' },
           categoria_cliente: { value: 'prospect' },
           cb_unitaria_snapshot: '85',
           cb_maturata: '85',
-          inviato: true,
-          data_invio: payload.data_invio,
         });
       }
 
@@ -1205,8 +1198,59 @@ describe('HTTP routes', () => {
     });
 
     assert.equal(response.status, 200);
-    assert.equal(response.body.inviato, true);
-    assert.match(response.body.dataInvio, /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(response.body.statoContratto, 'Inviato');
+  });
+
+  it('PATCH /api/admin/contracts/:id/sent riporta lo stato a Caricato quando annulli', async () => {
+    const adminId = 1;
+    const agentTableId = process.env.BASEROW_TABLE_AGENTI_ID;
+    const contractTableId = process.env.BASEROW_TABLE_CONTRATTI_ID;
+
+    global.fetch = async (url, options = {}) => {
+      const parsed = new URL(url);
+
+      if (parsed.pathname === `/api/database/rows/table/${agentTableId}/${adminId}/`) {
+        return mockJsonResponse({
+          id: adminId,
+          nome: 'Admin Uno',
+          email: 'admin@example.it',
+          ruolo: { value: 'admin' },
+          attivo: true,
+          cb_unitaria: '90',
+          target_mensile: '5',
+          target_trimestrale: '12',
+          target_annuale: '48',
+        });
+      }
+
+      if (parsed.pathname === `/api/database/rows/table/${contractTableId}/16/`) {
+        assert.equal(options.method, 'PATCH');
+        const payload = JSON.parse(options.body);
+        assert.equal(payload.stato_contratto, 'Caricato');
+
+        return mockJsonResponse({
+          id: 16,
+          agente: [{ id: 7 }],
+          ragione_sociale: 'Cliente Test 2',
+          stato_contratto: { value: 'Caricato' },
+          tipo_fornitura: { value: 'luce' },
+          categoria_cliente: { value: 'prospect' },
+          cb_unitaria_snapshot: '85',
+          cb_maturata: '85',
+        });
+      }
+
+      return mockJsonResponse({ detail: 'not found' }, { status: 404 });
+    };
+
+    const response = await invokeRouteJson(app, '/api/admin/contracts/:id/sent', 'patch', {
+      session: { agentId: adminId },
+      params: { id: '16' },
+      body: { sent: false },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.statoContratto, 'Caricato');
   });
 });
 

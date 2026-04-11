@@ -226,11 +226,10 @@ MVP admin:
 | `file_contratto`         | File            | Allegati multipli: PDF, Word, Excel, PowerPoint, OpenDocument, JPG, PNG, WebP, HEIC/HEIF |
 | `piva`                   | Testo           | Opzionale                                                                                |
 | `email`                  | Email           | Opzionale                                                                                |
-| `indirizzo`              | Long text       | Indirizzo principale                                                                     |
 | `indirizzo_fatturazione` | Long text       | Opzionale                                                                                |
 | `indirizzo_fornitura`    | Long text       | Opzionale                                                                                |
 | `descrizione`            | Long text       | Note                                                                                     |
-| `stato_contratto`        | Single select   | `Caricato`, `OK`, `K.O.`, `Switch - Out`                                                 |
+| `stato_contratto`        | Single select   | `Caricato`, `Inviato`, `OK`, `K.O.`, `Switch - Out`                                      |
 | `cb_maturata`            | Formula/Numero  | `0` se `K.O.` o `Switch - Out`, altrimenti valore CB                                     |
 | `mese_riferimento`       | Formula         | `YYYY-MM` da `data_inserimento`                                                          |
 | `trimestre_riferimento`  | Formula         | `YYYY-Qn`                                                                                |

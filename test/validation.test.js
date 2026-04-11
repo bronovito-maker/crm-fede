@@ -20,7 +20,6 @@ const validContract = {
   iban: 'IT60X0542811101000000123456',
   piva: '03849270121',
   email: 'info@rossi.it',
-  indirizzo: 'Via Roma 12, Milano',
   indirizzoFatturazione: '',
   indirizzoFornitura: '',
   descrizione: '',
