@@ -47,6 +47,10 @@ const baserowClient = {
     return fetchJson('/api/admin/agents');
   },
 
+  async listAdminContracts() {
+    return fetchJson('/api/admin/contracts');
+  },
+
   async createAdminAgent(agent) {
     return fetchJson('/api/admin/agents', {
       method: 'POST',
@@ -58,6 +62,13 @@ const baserowClient = {
     return fetchJson(`/api/admin/agents/${agentId}`, {
       method: 'PATCH',
       body: JSON.stringify(agent),
+    });
+  },
+
+  async updateAdminContractSent(contractId, sent) {
+    return fetchJson(`/api/admin/contracts/${contractId}/sent`, {
+      method: 'PATCH',
+      body: JSON.stringify({ sent }),
     });
   },
 

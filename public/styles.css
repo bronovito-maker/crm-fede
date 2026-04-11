@@ -915,6 +915,94 @@ textarea {
   margin-bottom: 14px;
 }
 
+.admin-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-toolbar {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+
+.admin-quick-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.admin-contract-counters {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.admin-bulk-bar {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  margin: 0 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.admin-bulk-bar strong {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.admin-bulk-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.admin-counter-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.admin-counter-card span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.admin-counter-card strong {
+  color: var(--text);
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.admin-counter-card.urgent {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.admin-counter-card.attention {
+  border-color: #22c55e;
+  background: #f0fdf4;
+}
+
+.admin-counter-card.warning {
+  border-color: #fbbf24;
+  background: #fffbeb;
+}
+
+.admin-toggle {
+  align-self: end;
+  min-height: 46px;
+  padding: 0 4px;
+}
+
 /* ---- Tables (mobile: card layout) ---- */
 .table-wrap {
   overflow: visible;
@@ -963,6 +1051,34 @@ tr:last-child {
   margin-bottom: 0;
 }
 
+.admin-contract-row {
+  position: relative;
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.admin-contract-row.is-urgent {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.admin-contract-row.is-attention {
+  border-color: #22c55e;
+  background: #f0fdf4;
+}
+
+.admin-contract-row.is-muted {
+  border-color: #d7dee8;
+  background: #f8fafc;
+}
+
+.admin-contract-row.is-muted strong,
+.admin-contract-row.is-muted td:not([data-label='Stato']) {
+  color: #64748b;
+}
+
 td {
   display: grid;
   grid-template-columns: minmax(90px, 0.4fr) minmax(0, 1fr);
@@ -977,6 +1093,17 @@ td {
 
 td:last-child {
   border-bottom: 0;
+}
+
+td small {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.admin-row-checkbox {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
 }
 
 td::before {
@@ -1220,6 +1347,21 @@ td[colspan]::before {
   color: var(--muted);
 }
 
+.admin-agent-card.compact {
+  gap: 14px;
+}
+
+.admin-agent-main {
+  min-width: 0;
+}
+
+.admin-agent-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .form-banner {
   display: grid;
   gap: 8px;
@@ -1287,6 +1429,20 @@ td[colspan]::before {
   display: block;
   font-size: 0.9rem;
   color: var(--text);
+}
+
+.admin-stat-grid small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.compact-button {
+  min-height: 38px;
+  padding: 8px 10px;
+  font-size: 0.95rem;
 }
 
 /* =============================================
@@ -1464,6 +1620,30 @@ td[colspan]::before {
 
   .admin-actions {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .admin-toolbar {
+    grid-template-columns: minmax(220px, 1.3fr) 180px 180px 180px auto;
+    align-items: end;
+  }
+
+  .admin-quick-filters {
+    grid-template-columns: repeat(4, max-content);
+    justify-content: flex-start;
+  }
+
+  .admin-contract-counters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .admin-bulk-bar {
+    grid-template-columns: auto 1fr;
+    align-items: center;
+  }
+
+  .admin-bulk-actions {
+    grid-template-columns: repeat(3, max-content);
+    justify-content: end;
   }
 
   .admin-stat-grid {

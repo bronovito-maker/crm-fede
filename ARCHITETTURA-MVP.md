@@ -86,7 +86,7 @@ Pagina più importante. Layout a 2 colonne desktop, 1 colonna mobile. Campi rido
 - ID contratto
 - Cellulare
 - Tipo cliente
-- Categoria cliente: prospect, CB o ex CB
+- Categoria cliente: prospect o switch ricorrente
 - P.IVA
 - Email
 - Fornitore
@@ -105,7 +105,7 @@ Pagina più importante. Layout a 2 colonne desktop, 1 colonna mobile. Campi rido
 
 Scelta UX: il valore predefinito di `stato_contratto` è `Caricato`. L'agente inserisce, la validazione avviene dopo.
 
-Nel form agente lo stato non deve essere modificabile ne visibile: viene salvato automaticamente come `Caricato`. Al suo posto l'agente sceglie la categoria cliente: `prospect`, `cb` o `ex cb`.
+Nel form agente lo stato non deve essere modificabile ne visibile: viene salvato automaticamente come `Caricato`. Al suo posto l'agente sceglie la categoria cliente: `prospect` o `switch ricorrente`.
 
 ### Contratti
 
@@ -214,7 +214,7 @@ MVP admin:
 | `ragione_sociale`        | Testo           | Cliente o azienda                                                                        |
 | `cellulare`              | Testo           | Meglio testo, non numero                                                                 |
 | `tipo_cliente`           | Single select   | `Business`, `Privato`, `Condominio`                                                      |
-| `categoria_cliente`      | Single select   | `prospect`, `cb`, `ex cb`                                                                |
+| `categoria_cliente`      | Single select   | `prospect`, `switch ricorrente`                                                          |
 | `fornitore`              | Testo           | Nome fornitore                                                                           |
 | `nome_offerta`           | Testo           | Nome offerta venduta                                                                     |
 | `tipo_operazione`        | Multiple select | `switch`, `switch + voltura`, `cambio listino`, `subentro`                               |
@@ -268,7 +268,7 @@ Per stabilita contabile, in produzione conviene salvare anche `cb_unitaria_snaps
 - I contratti `K.O.` e `Switch - Out` valgono `0`.
 - Il target si misura sui contratti `OK`, non sugli inseriti.
 - Le statistiche e i target usano il conteggio ponderato: `tipo_fornitura = dual` e `categoria_cliente = prospect` vale `2` contratti.
-- Tutti gli altri casi valgono `1` contratto, inclusi dual con `categoria_cliente = cb` o `ex cb`.
+- Tutti gli altri casi valgono `1` contratto, inclusi dual con `categoria_cliente = switch ricorrente`.
 - La riga Baserow resta sempre una sola pratica: il doppio conteggio e una regola statistica/economica applicata dall'app.
 - L'agente vede solo i propri contratti.
 

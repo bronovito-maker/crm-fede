@@ -7,7 +7,7 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <title>Volt CRM</title>
+    <title>CRM - Energia</title>
     <link rel="icon" type="image/svg+xml" href="volt-logo.svg" />
     <link rel="preconnect" href="https://images.unsplash.com" />
     <link rel="stylesheet" href="styles.css" />
@@ -17,9 +17,9 @@
     <section class="login-screen" id="login-screen" aria-labelledby="login-title">
       <form class="login-card" id="login-form">
         <div class="brand login-brand">
-          <img src="volt-logo.svg" alt="Logo Volt CRM" />
+          <img src="volt-logo.svg" alt="Logo CRM - Energia" />
           <div>
-            <strong>Volt CRM</strong>
+            <strong>CRM - Energia</strong>
             <span>Area commerciale</span>
           </div>
         </div>
@@ -56,9 +56,9 @@
     <div class="app-shell">
       <aside class="sidebar" aria-label="Navigazione principale">
         <div class="brand">
-          <img src="volt-logo.svg" alt="Logo Volt CRM" />
+          <img src="volt-logo.svg" alt="Logo CRM - Energia" />
           <div>
-            <strong>Volt CRM</strong>
+            <strong>CRM - Energia</strong>
             <span>Area commerciale</span>
           </div>
         </div>
@@ -255,8 +255,7 @@
                 <select name="categoriaCliente" required>
                   <option value="">Seleziona</option>
                   <option value="prospect">Prospect</option>
-                  <option value="cb">CB</option>
-                  <option value="ex cb">Ex CB</option>
+                  <option value="switch ricorrente">Switch ricorrente</option>
                 </select>
               </label>
               <label>
@@ -507,7 +506,167 @@
         <section class="page" id="admin">
           <div class="metrics-grid" id="admin-metrics"></div>
 
-          <div class="content-grid">
+          <div class="admin-stack">
+            <article class="panel">
+              <div class="panel-heading">
+                <h2>Tutti i contratti</h2>
+                <span>gestione admin</span>
+              </div>
+              <div class="filters admin-toolbar">
+                <label>
+                  Cerca
+                  <input
+                    id="admin-contract-search"
+                    type="search"
+                    placeholder="Cliente, ID contratto, email, telefono"
+                  />
+                </label>
+                <label>
+                  Agente
+                  <select id="admin-contract-agent-filter">
+                    <option value="all">Tutti gli agenti</option>
+                  </select>
+                </label>
+                <label>
+                  Stato
+                  <select id="admin-contract-status-filter">
+                    <option value="all">Tutti gli stati</option>
+                    <option value="OK">OK</option>
+                    <option value="Caricato">Caricato</option>
+                    <option value="K.O.">K.O.</option>
+                    <option value="Switch - Out">Switch - Out</option>
+                  </select>
+                </label>
+                <label>
+                  Ordina
+                  <select id="admin-contract-sort">
+                    <option value="recent">Più recenti</option>
+                    <option value="unsent">Non inviati prima</option>
+                    <option value="oldest">Meno recenti</option>
+                  </select>
+                </label>
+                <label class="check-line admin-toggle">
+                  <input id="admin-contract-only-unsent" type="checkbox" />
+                  Solo non inviati
+                </label>
+              </div>
+              <div class="admin-quick-filters" aria-label="Filtri rapidi contratti">
+                <button
+                  class="secondary-button compact-button"
+                  type="button"
+                  data-admin-quick-filter="recent"
+                >
+                  Più recenti
+                </button>
+                <button
+                  class="secondary-button compact-button"
+                  type="button"
+                  data-admin-quick-filter="unsent"
+                >
+                  Non inviati prima
+                </button>
+                <button
+                  class="secondary-button compact-button"
+                  type="button"
+                  data-admin-quick-filter="caricato"
+                >
+                  Solo Caricato
+                </button>
+                <button
+                  class="secondary-button compact-button"
+                  type="button"
+                  data-admin-quick-filter="reset"
+                >
+                  Reset
+                </button>
+              </div>
+              <div
+                class="admin-contract-counters"
+                id="admin-contract-counters"
+                aria-label="Contatori operativi contratti"
+              ></div>
+              <div class="admin-bulk-bar" id="admin-bulk-bar" hidden>
+                <strong id="admin-bulk-count">0 selezionati</strong>
+                <div class="admin-bulk-actions">
+                  <button
+                    class="secondary-button compact-button"
+                    type="button"
+                    id="admin-select-visible"
+                  >
+                    Seleziona visibili
+                  </button>
+                  <button
+                    class="secondary-button compact-button"
+                    type="button"
+                    id="admin-clear-selection"
+                  >
+                    Pulisci selezione
+                  </button>
+                  <button class="primary-button compact-button" type="button" id="admin-bulk-send">
+                    Segna inviati
+                  </button>
+                </div>
+              </div>
+              <div class="table-wrap flat">
+                <table>
+                  <caption class="sr-only">
+                    Tutti i contratti del CRM
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th>Sel.</th>
+                      <th>Cliente</th>
+                      <th>Agente</th>
+                      <th>Stato</th>
+                      <th>Fornitura</th>
+                      <th>Invio</th>
+                      <th>Data invio</th>
+                      <th>Azione</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-contracts-table"></tbody>
+                </table>
+              </div>
+              <div class="empty-state compact" id="admin-contracts-empty" hidden>
+                <strong>Nessun contratto trovato</strong>
+                <p>Prova a cambiare i filtri oppure togli “solo non inviati”.</p>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <h2>Agenti</h2>
+                <span>rete commerciale</span>
+              </div>
+              <div class="filters admin-toolbar">
+                <label>
+                  Cerca agente
+                  <input id="admin-agent-search" type="search" placeholder="Nome o email" />
+                </label>
+                <label>
+                  Ruolo
+                  <select id="admin-agent-role-filter">
+                    <option value="all">Tutti i ruoli</option>
+                    <option value="agente">Agente</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </label>
+                <label>
+                  Stato account
+                  <select id="admin-agent-state-filter">
+                    <option value="all">Tutti</option>
+                    <option value="active">Attivi</option>
+                    <option value="inactive">Disattivi</option>
+                  </select>
+                </label>
+              </div>
+              <div class="admin-agent-list" id="admin-agent-list"></div>
+              <div class="empty-state compact" id="admin-agent-empty" hidden>
+                <strong>Nessun agente trovato</strong>
+                <p>Prova a cambiare i filtri oppure crea un nuovo agente.</p>
+              </div>
+            </article>
+
             <article class="panel">
               <div class="panel-heading">
                 <h2>Agente</h2>
@@ -566,14 +725,6 @@
                   </button>
                 </div>
               </form>
-            </article>
-
-            <article class="panel">
-              <div class="panel-heading">
-                <h2>Statistiche agenti</h2>
-                <span>mese corrente</span>
-              </div>
-              <div class="admin-agent-list" id="admin-agent-list"></div>
             </article>
           </div>
         </section>

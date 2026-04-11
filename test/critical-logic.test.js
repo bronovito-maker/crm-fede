@@ -43,8 +43,11 @@ describe('contractUnitCount', () => {
     assert.equal(contractUnitCount({ tipoFornitura: 'dual', categoriaCliente: 'prospect' }), 2);
   });
 
-  it('conta 1 per dual + cb', () => {
-    assert.equal(contractUnitCount({ tipoFornitura: 'dual', categoriaCliente: 'cb' }), 1);
+  it('conta 1 per dual + switch ricorrente', () => {
+    assert.equal(
+      contractUnitCount({ tipoFornitura: 'dual', categoriaCliente: 'switch ricorrente' }),
+      1
+    );
   });
 
   it('conta 1 per luce + prospect', () => {
@@ -53,7 +56,11 @@ describe('contractUnitCount', () => {
 
   it('usa unitCount pre-calcolato se presente', () => {
     assert.equal(
-      contractUnitCount({ unitCount: 2, tipoFornitura: 'luce', categoriaCliente: 'cb' }),
+      contractUnitCount({
+        unitCount: 2,
+        tipoFornitura: 'luce',
+        categoriaCliente: 'switch ricorrente',
+      }),
       2
     );
   });
@@ -77,7 +84,7 @@ describe('contractCommissionValue', () => {
         commissionValue: 170,
         cbMaturata: 85,
         tipoFornitura: 'luce',
-        categoriaCliente: 'cb',
+        categoriaCliente: 'switch ricorrente',
       }),
       170
     );
@@ -132,7 +139,7 @@ describe('buildAdminStats', () => {
         annoRiferimento: year,
         statoContratto: 'K.O.',
         tipoFornitura: 'gas',
-        categoriaCliente: 'cb',
+        categoriaCliente: 'switch ricorrente',
         cbMaturata: 0,
       },
     ];
@@ -201,7 +208,7 @@ describe('buildAdminStats', () => {
         annoRiferimento: year,
         statoContratto: 'OK',
         tipoFornitura: 'gas',
-        categoriaCliente: 'cb',
+        categoriaCliente: 'switch ricorrente',
         cbMaturata: 85,
       },
       {
@@ -211,7 +218,7 @@ describe('buildAdminStats', () => {
         annoRiferimento: year,
         statoContratto: 'Switch - Out',
         tipoFornitura: 'luce',
-        categoriaCliente: 'cb',
+        categoriaCliente: 'switch ricorrente',
         cbMaturata: 0,
       },
     ];
@@ -548,11 +555,15 @@ describe('helper coverage', () => {
       stato_contratto: { value: 'K.O.' },
       cb_unitaria_snapshot: '85',
       tipo_fornitura: { value: 'gas' },
-      categoria_cliente: { value: 'cb' },
+      categoria_cliente: { value: 'switch ricorrente' },
+      inviato: true,
+      data_invio: '2026-04-11',
     });
 
     assert.equal(normalized.cbMaturata, 0);
     assert.equal(normalized.commissionValue, 0);
+    assert.equal(normalized.inviato, true);
+    assert.equal(normalized.dataInvio, '2026-04-11');
   });
 
   it('isAllowedContractFile accetta pdf e immagini note', () => {
@@ -860,7 +871,7 @@ describe('HTTP routes', () => {
               anno_riferimento: year,
               stato_contratto: { value: 'K.O.' },
               tipo_fornitura: { value: 'gas' },
-              categoria_cliente: { value: 'cb' },
+              categoria_cliente: { value: 'switch ricorrente' },
               cb_unitaria_snapshot: '85',
               cb_maturata: '0',
             },
@@ -1140,6 +1151,62 @@ describe('HTTP routes', () => {
     assert.equal(response.body.nome, 'Laura Verdi');
     assert.equal(response.body.targetMensile, 8);
     assert.equal(payloads.length, 1);
+  });
+
+  it('PATCH /api/admin/contracts/:id/sent aggiorna inviato e data invio', async () => {
+    const adminId = 1;
+    const agentTableId = process.env.BASEROW_TABLE_AGENTI_ID;
+    const contractTableId = process.env.BASEROW_TABLE_CONTRATTI_ID;
+
+    global.fetch = async (url, options = {}) => {
+      const parsed = new URL(url);
+
+      if (parsed.pathname === `/api/database/rows/table/${agentTableId}/${adminId}/`) {
+        return mockJsonResponse({
+          id: adminId,
+          nome: 'Admin Uno',
+          email: 'admin@example.it',
+          ruolo: { value: 'admin' },
+          attivo: true,
+          cb_unitaria: '90',
+          target_mensile: '5',
+          target_trimestrale: '12',
+          target_annuale: '48',
+        });
+      }
+
+      if (parsed.pathname === `/api/database/rows/table/${contractTableId}/15/`) {
+        assert.equal(options.method, 'PATCH');
+        const payload = JSON.parse(options.body);
+        assert.equal(payload.inviato, true);
+        assert.match(payload.data_invio, /^\d{4}-\d{2}-\d{2}$/);
+
+        return mockJsonResponse({
+          id: 15,
+          agente: [{ id: 7 }],
+          ragione_sociale: 'Cliente Test',
+          stato_contratto: { value: 'Caricato' },
+          tipo_fornitura: { value: 'luce' },
+          categoria_cliente: { value: 'prospect' },
+          cb_unitaria_snapshot: '85',
+          cb_maturata: '85',
+          inviato: true,
+          data_invio: payload.data_invio,
+        });
+      }
+
+      return mockJsonResponse({ detail: 'not found' }, { status: 404 });
+    };
+
+    const response = await invokeRouteJson(app, '/api/admin/contracts/:id/sent', 'patch', {
+      session: { agentId: adminId },
+      params: { id: '15' },
+      body: { sent: true },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.inviato, true);
+    assert.match(response.body.dataInvio, /^\d{4}-\d{2}-\d{2}$/);
   });
 });
 

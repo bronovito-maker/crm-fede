@@ -16,7 +16,7 @@ const defaultContracts = [
     ragioneSociale: 'Rossi Impianti SRL',
     cellulare: '+39 333 120 4501',
     tipoCliente: 'Business',
-    categoriaCliente: 'cb',
+    categoriaCliente: 'switch ricorrente',
     piva: '03849270121',
     email: 'info@rossiimpianti.it',
     fornitore: 'Enel Energia',
@@ -70,7 +70,7 @@ const defaultContracts = [
     ragioneSociale: 'Laura Neri',
     cellulare: '+39 347 221 0034',
     tipoCliente: 'Privato',
-    categoriaCliente: 'ex cb',
+    categoriaCliente: 'switch ricorrente',
     piva: '',
     email: 'laura.neri@email.it',
     fornitore: 'Edison',
@@ -124,7 +124,7 @@ const defaultContracts = [
     ragioneSociale: 'Market Sole SNC',
     cellulare: '+39 331 771 4540',
     tipoCliente: 'Business',
-    categoriaCliente: 'cb',
+    categoriaCliente: 'switch ricorrente',
     piva: '02900341209',
     email: 'marketsole@email.it',
     fornitore: 'Plenitude',
@@ -178,7 +178,7 @@ const defaultContracts = [
     ragioneSociale: 'Bar Centrale',
     cellulare: '+39 331 440 9021',
     tipoCliente: 'Business',
-    categoriaCliente: 'ex cb',
+    categoriaCliente: 'switch ricorrente',
     piva: '08111230963',
     email: 'barcentrale@email.it',
     fornitore: 'A2A Energia',
@@ -203,12 +203,26 @@ const storageKey = 'energia-crm-contracts';
 let contracts = [];
 let selectedContractFiles = [];
 let contractsRefreshInFlight = false;
+const adminState = {
+  stats: null,
+  agents: [],
+  contracts: [],
+  contractSearch: '',
+  contractAgentId: 'all',
+  contractStatus: 'all',
+  contractOnlyUnsent: true,
+  contractSort: 'recent',
+  selectedContractIds: [],
+  agentSearch: '',
+  agentRole: 'all',
+  agentState: 'all',
+};
 
 const pages = {
   dashboard: 'Dashboard',
   'new-contract': 'Nuovo contratto',
   contracts: 'Contratti',
-  cb: 'CB',
+  'switch ricorrente': 'Switch ricorrente',
   progress: 'Avanzamento',
   admin: 'Admin',
 };
@@ -333,6 +347,30 @@ document.getElementById('login-form').addEventListener('submit', handleLogin);
 document.getElementById('logout-button').addEventListener('click', handleLogout);
 document.getElementById('admin-agent-form').addEventListener('submit', handleAdminAgentSubmit);
 document.getElementById('admin-agent-reset').addEventListener('click', resetAdminAgentForm);
+
+[
+  ['admin-contract-search', 'input', handleAdminFilterChange],
+  ['admin-contract-agent-filter', 'change', handleAdminFilterChange],
+  ['admin-contract-status-filter', 'change', handleAdminFilterChange],
+  ['admin-contract-sort', 'change', handleAdminFilterChange],
+  ['admin-contract-only-unsent', 'change', handleAdminFilterChange],
+  ['admin-agent-search', 'input', handleAdminFilterChange],
+  ['admin-agent-role-filter', 'change', handleAdminFilterChange],
+  ['admin-agent-state-filter', 'change', handleAdminFilterChange],
+].forEach(([id, eventName, handler]) => {
+  document.getElementById(id).addEventListener(eventName, handler);
+});
+
+document.querySelectorAll('[data-admin-quick-filter]').forEach((button) => {
+  button.addEventListener('click', () => applyAdminQuickFilter(button.dataset.adminQuickFilter));
+});
+document
+  .getElementById('admin-select-visible')
+  .addEventListener('click', () => bulkSelectVisibleAdminContracts());
+document
+  .getElementById('admin-clear-selection')
+  .addEventListener('click', () => clearAdminContractSelection());
+document.getElementById('admin-bulk-send').addEventListener('click', () => bulkMarkSelectedSent());
 
 document.getElementById('close-contract-modal').addEventListener('click', closeContractModal);
 document.getElementById('contract-modal').addEventListener('click', (event) => {
@@ -690,6 +728,11 @@ function openContractModal(contractId) {
     detailItem('Cliente', contract.ragioneSociale),
     detailItem('ID contratto', contract.idContratto || 'Non inserito'),
     detailItem('Stato', capitalize(contract.statoContratto)),
+    detailItem('Invio', contract.inviato ? 'Inviato' : 'Non inviato'),
+    detailItem(
+      'Data invio',
+      contract.dataInvio ? formatDate.format(new Date(contract.dataInvio)) : 'Non inserita'
+    ),
     detailItem('Data inserimento', formatDate.format(new Date(contract.dataInserimento))),
     detailItem(
       'Inizio fornitura',
@@ -970,7 +1013,7 @@ function validateContractDraft(draft) {
   }
 
   if (!draft.categoriaCliente) {
-    return 'Seleziona prospect, CB o ex CB.';
+    return 'Seleziona Prospect o Switch ricorrente.';
   }
 
   if (!draft.fornitore || !draft.nomeOfferta) {
@@ -1167,12 +1210,19 @@ function updateAdminVisibility() {
 
 async function renderAdminPage() {
   try {
-    const [stats, agents] = await Promise.all([
+    const [stats, agents, adminContracts] = await Promise.all([
       baserowClient.getAdminStats(),
       baserowClient.listAdminAgents(),
+      baserowClient.listAdminContracts(),
     ]);
+    adminState.stats = stats;
+    adminState.agents = agents;
+    adminState.contracts = adminContracts;
+    syncAdminFilterControls();
     renderAdminMetrics(stats);
+    populateAdminFilterOptions(agents);
     renderAdminAgentList(stats, agents);
+    renderAdminContracts(adminContracts, agents);
   } catch (error) {
     document.getElementById('admin-agent-list').innerHTML = `
       <div class="empty-state compact">
@@ -1180,6 +1230,9 @@ async function renderAdminPage() {
         <p>${escapeHtml(error.message || 'Statistiche non caricate.')}</p>
       </div>
     `;
+    document.getElementById('admin-agent-empty').hidden = true;
+    document.getElementById('admin-contracts-table').innerHTML = '';
+    document.getElementById('admin-contracts-empty').hidden = false;
   }
 }
 
@@ -1199,29 +1252,45 @@ function renderAdminMetrics(stats) {
 
 function renderAdminAgentList(stats, agents) {
   const statsByAgent = new Map(stats.agents.map((row) => [Number(row.id), row]));
-  document.getElementById('admin-agent-list').innerHTML = agents
+  const query = adminState.agentSearch.trim().toLowerCase();
+  const filteredAgents = agents.filter((agentRow) => {
+    const matchesQuery =
+      !query || `${agentRow.nome} ${agentRow.email}`.toLowerCase().includes(query);
+    const matchesRole = adminState.agentRole === 'all' || agentRow.ruolo === adminState.agentRole;
+    const matchesState =
+      adminState.agentState === 'all' ||
+      (adminState.agentState === 'active' && agentRow.attivo) ||
+      (adminState.agentState === 'inactive' && !agentRow.attivo);
+    return matchesQuery && matchesRole && matchesState;
+  });
+
+  document.getElementById('admin-agent-empty').hidden = filteredAgents.length > 0;
+  document.getElementById('admin-agent-list').innerHTML = filteredAgents
     .map((agentRow) => {
       const row = statsByAgent.get(Number(agentRow.id)) || {};
+      const roleLabel = agentRow.ruolo === 'admin' ? 'Admin' : 'Agente';
       return `
-        <article class="admin-agent-card">
+        <article class="admin-agent-card compact">
           <header>
-            <div>
+            <div class="admin-agent-main">
               <h3>${escapeHtml(agentRow.nome)}</h3>
               <p>${escapeHtml(agentRow.email)}</p>
             </div>
-            <span class="badge ${agentRow.attivo ? 'ok' : 'switch-out'}">${agentRow.attivo ? 'Attivo' : 'Disattivo'}</span>
+            <div class="admin-agent-badges">
+              <span class="badge ${agentRow.ruolo === 'admin' ? 'caricato' : 'ok'}">${roleLabel}</span>
+              <span class="badge ${agentRow.attivo ? 'ok' : 'switch-out'}">${agentRow.attivo ? 'Attivo' : 'Disattivo'}</span>
+            </div>
           </header>
           <div class="admin-stat-grid">
-            <div><span>Ruolo</span><strong>${escapeHtml(agentRow.ruolo)}</strong></div>
             <div><span>Contratti</span><strong>${row.contratti || 0}</strong></div>
             <div><span>Pratiche</span><strong>${row.pratiche || row.contratti || 0}</strong></div>
-            <div><span>Mese</span><strong>${row.ok || 0}/${agentRow.targetMensile || 0} · ${row.percentualeTargetMensile || 0}%</strong></div>
-            <div><span>Trimestre</span><strong>${row.okTrimestre || 0}/${agentRow.targetTrimestrale || 0} · ${row.percentualeTargetTrimestrale || 0}%</strong></div>
-            <div><span>Anno</span><strong>${row.okAnno || 0}/${agentRow.targetAnnuale || 0} · ${row.percentualeTargetAnnuale || 0}%</strong></div>
+            <div><span>Mese</span><strong>${row.ok || 0}/${agentRow.targetMensile || 0}</strong><small>${row.percentualeTargetMensile || 0}%</small></div>
+            <div><span>Trimestre</span><strong>${row.okTrimestre || 0}/${agentRow.targetTrimestrale || 0}</strong><small>${row.percentualeTargetTrimestrale || 0}%</small></div>
+            <div><span>Anno</span><strong>${row.okAnno || 0}/${agentRow.targetAnnuale || 0}</strong><small>${row.percentualeTargetAnnuale || 0}%</small></div>
             <div><span>CB validata</span><strong>${formatCurrency(row.cbValidata || 0)}</strong></div>
             <div><span>CB potenziale</span><strong>${formatCurrency(row.cbPotenziale || 0)}</strong></div>
           </div>
-          <button class="secondary-button" type="button" data-edit-agent="${agentRow.id}">Modifica</button>
+          <button class="secondary-button compact-button" type="button" data-edit-agent="${agentRow.id}">Modifica agente</button>
         </article>
       `;
     })
@@ -1233,6 +1302,296 @@ function renderAdminAgentList(stats, agents) {
       if (selected) fillAdminAgentForm(selected);
     });
   });
+}
+
+function renderAdminContracts(adminContracts, agents) {
+  const table = document.getElementById('admin-contracts-table');
+  const emptyState = document.getElementById('admin-contracts-empty');
+  const counters = document.getElementById('admin-contract-counters');
+  const selectedIds = new Set(adminState.selectedContractIds.map(Number));
+  const agentNames = new Map(agents.map((item) => [Number(item.id), item.nome]));
+  const query = adminState.contractSearch.trim().toLowerCase();
+  const filteredRows = adminContracts.slice().filter((contract) => {
+    const matchesQuery =
+      !query ||
+      [
+        contract.ragioneSociale,
+        contract.idContratto,
+        contract.email,
+        contract.cellulare,
+        contract.fornitore,
+      ]
+        .join(' ')
+        .toLowerCase()
+        .includes(query);
+    const matchesAgent =
+      adminState.contractAgentId === 'all' ||
+      Number(contract.agenteId) === Number(adminState.contractAgentId);
+    const matchesStatus =
+      adminState.contractStatus === 'all' || contract.statoContratto === adminState.contractStatus;
+    const matchesSent = !adminState.contractOnlyUnsent || !contract.inviato;
+    return matchesQuery && matchesAgent && matchesStatus && matchesSent;
+  });
+  const rows = filteredRows.slice().sort((left, right) => {
+    if (adminState.contractSort === 'unsent') {
+      if (Boolean(left.inviato) !== Boolean(right.inviato)) {
+        return Number(left.inviato) - Number(right.inviato);
+      }
+      return String(right.dataInserimento).localeCompare(String(left.dataInserimento));
+    }
+
+    if (adminState.contractSort === 'oldest') {
+      return String(left.dataInserimento).localeCompare(String(right.dataInserimento));
+    }
+
+    return String(right.dataInserimento).localeCompare(String(left.dataInserimento));
+  });
+
+  const okNonInviati = filteredRows.filter(
+    (contract) => !contract.inviato && contract.statoContratto === 'OK'
+  ).length;
+  const caricatiNonInviati = filteredRows.filter(
+    (contract) => !contract.inviato && contract.statoContratto === 'Caricato'
+  ).length;
+  const daInviareOra = okNonInviati + caricatiNonInviati;
+
+  counters.innerHTML = [
+    adminCounterCard('Da inviare ora', daInviareOra, 'urgent'),
+    adminCounterCard('OK non inviati', okNonInviati, 'attention'),
+    adminCounterCard('Caricati non inviati', caricatiNonInviati, 'warning'),
+  ].join('');
+
+  adminState.selectedContractIds = adminState.selectedContractIds
+    .map(Number)
+    .filter((id) => adminContracts.some((contract) => Number(contract.id) === Number(id)));
+
+  table.innerHTML = rows
+    .map(
+      (contract) => `
+        <tr class="${adminContractRowClass(contract)}" data-admin-contract-view="${contract.id}">
+          <td data-label="Sel.">
+            <input
+              class="admin-row-checkbox"
+              type="checkbox"
+              data-admin-contract-select="${contract.id}"
+              ${selectedIds.has(Number(contract.id)) ? 'checked' : ''}
+              aria-label="Seleziona contratto ${escapeHtml(contract.ragioneSociale || 'Cliente')}"
+            />
+          </td>
+          <td data-label="Cliente"><strong>${escapeHtml(contract.ragioneSociale || 'Cliente')}</strong><small>${escapeHtml(contract.idContratto || 'ID non inserito')}</small></td>
+          <td data-label="Agente">${escapeHtml(agentNames.get(Number(contract.agenteId)) || 'Non assegnato')}</td>
+          <td data-label="Stato">${statusBadge(contract.statoContratto)}</td>
+          <td data-label="Fornitura">${escapeHtml(capitalize(contract.tipoFornitura || 'Non inserita'))}</td>
+          <td data-label="Invio">${sentBadge(contract.inviato)}</td>
+          <td data-label="Data invio">${contract.dataInvio ? escapeHtml(formatDate.format(new Date(contract.dataInvio))) : '—'}</td>
+          <td data-label="Azione">
+            <button class="secondary-button compact-button" type="button" data-admin-contract-sent="${contract.id}" data-admin-contract-next="${contract.inviato ? 'false' : 'true'}">
+              ${contract.inviato ? 'Annulla invio' : 'Segna inviato'}
+            </button>
+          </td>
+        </tr>
+      `
+    )
+    .join('');
+
+  emptyState.hidden = rows.length > 0;
+
+  table.querySelectorAll('[data-admin-contract-sent]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const contractId = Number(button.dataset.adminContractSent);
+      const nextValue = button.dataset.adminContractNext === 'true';
+      button.disabled = true;
+      button.textContent = 'Aggiorno...';
+
+      try {
+        await baserowClient.updateAdminContractSent(contractId, nextValue);
+        await loadAndRenderContracts({ silent: true, force: true });
+        await renderAdminPage();
+      } catch (error) {
+        setAdminFeedback('error', error.message || 'Invio contratto non aggiornato.');
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+
+  table.querySelectorAll('[data-admin-contract-select]').forEach((checkbox) => {
+    checkbox.addEventListener('click', (event) => event.stopPropagation());
+    checkbox.addEventListener('change', () => {
+      const contractId = Number(checkbox.dataset.adminContractSelect);
+      toggleAdminContractSelection(contractId, checkbox.checked);
+      updateAdminBulkBar(rows);
+    });
+  });
+
+  table.querySelectorAll('[data-admin-contract-view]').forEach((row) => {
+    row.addEventListener('click', (event) => {
+      if (event.target.closest('button') || event.target.closest('input[type="checkbox"]')) return;
+      const contract = adminContracts.find(
+        (item) => Number(item.id) === Number(row.dataset.adminContractView)
+      );
+      if (contract) openContractModal(contract);
+    });
+  });
+
+  updateAdminBulkBar(rows);
+}
+
+function adminCounterCard(label, value, tone) {
+  return `
+    <article class="admin-counter-card ${tone}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(String(value))}</strong>
+    </article>
+  `;
+}
+
+function adminContractRowClass(contract) {
+  const status = String(contract.statoContratto || '');
+  if (status === 'K.O.') return 'admin-contract-row is-muted';
+  if (!contract.inviato && status === 'Caricato') return 'admin-contract-row is-urgent';
+  if (!contract.inviato && status === 'OK') return 'admin-contract-row is-attention';
+  return 'admin-contract-row';
+}
+
+function populateAdminFilterOptions(agents) {
+  const select = document.getElementById('admin-contract-agent-filter');
+  const current = adminState.contractAgentId;
+  select.innerHTML = [
+    '<option value="all">Tutti gli agenti</option>',
+    ...agents
+      .slice()
+      .sort((left, right) => left.nome.localeCompare(right.nome, 'it'))
+      .map((agentRow) => `<option value="${agentRow.id}">${escapeHtml(agentRow.nome)}</option>`),
+  ].join('');
+  select.value = agents.some((agentRow) => String(agentRow.id) === String(current))
+    ? String(current)
+    : 'all';
+}
+
+function syncAdminFilterControls() {
+  document.getElementById('admin-contract-search').value = adminState.contractSearch;
+  document.getElementById('admin-contract-status-filter').value = adminState.contractStatus;
+  document.getElementById('admin-contract-sort').value = adminState.contractSort;
+  document.getElementById('admin-contract-only-unsent').checked = adminState.contractOnlyUnsent;
+  document.getElementById('admin-agent-search').value = adminState.agentSearch;
+  document.getElementById('admin-agent-role-filter').value = adminState.agentRole;
+  document.getElementById('admin-agent-state-filter').value = adminState.agentState;
+}
+
+function handleAdminFilterChange() {
+  adminState.contractSearch = document.getElementById('admin-contract-search').value;
+  adminState.contractAgentId = document.getElementById('admin-contract-agent-filter').value;
+  adminState.contractStatus = document.getElementById('admin-contract-status-filter').value;
+  adminState.contractSort = document.getElementById('admin-contract-sort').value;
+  adminState.contractOnlyUnsent = document.getElementById('admin-contract-only-unsent').checked;
+  adminState.agentSearch = document.getElementById('admin-agent-search').value;
+  adminState.agentRole = document.getElementById('admin-agent-role-filter').value;
+  adminState.agentState = document.getElementById('admin-agent-state-filter').value;
+
+  if (adminState.stats) {
+    renderAdminAgentList(adminState.stats, adminState.agents);
+    renderAdminContracts(adminState.contracts, adminState.agents);
+  }
+}
+
+function applyAdminQuickFilter(mode) {
+  if (mode === 'recent') {
+    adminState.contractSort = 'recent';
+  } else if (mode === 'unsent') {
+    adminState.contractSort = 'unsent';
+    adminState.contractOnlyUnsent = true;
+  } else if (mode === 'caricato') {
+    adminState.contractStatus = 'Caricato';
+    adminState.contractSort = 'recent';
+  } else if (mode === 'reset') {
+    adminState.contractSearch = '';
+    adminState.contractAgentId = 'all';
+    adminState.contractStatus = 'all';
+    adminState.contractSort = 'recent';
+    adminState.contractOnlyUnsent = true;
+  }
+
+  syncAdminFilterControls();
+  if (adminState.stats) {
+    renderAdminContracts(adminState.contracts, adminState.agents);
+  }
+}
+
+function toggleAdminContractSelection(contractId, isSelected) {
+  const ids = new Set(adminState.selectedContractIds.map(Number));
+  if (isSelected) ids.add(Number(contractId));
+  else ids.delete(Number(contractId));
+  adminState.selectedContractIds = Array.from(ids);
+}
+
+function clearAdminContractSelection() {
+  adminState.selectedContractIds = [];
+  if (adminState.stats) {
+    renderAdminContracts(adminState.contracts, adminState.agents);
+  }
+}
+
+function bulkSelectVisibleAdminContracts() {
+  const visibleIds = Array.from(document.querySelectorAll('[data-admin-contract-view]')).map(
+    (row) => Number(row.dataset.adminContractView)
+  );
+  adminState.selectedContractIds = Array.from(
+    new Set([...adminState.selectedContractIds.map(Number), ...visibleIds])
+  );
+  if (adminState.stats) {
+    renderAdminContracts(adminState.contracts, adminState.agents);
+  }
+}
+
+async function bulkMarkSelectedSent() {
+  const ids = adminState.selectedContractIds
+    .map(Number)
+    .filter((id) =>
+      adminState.contracts.some((contract) => Number(contract.id) === id && !contract.inviato)
+    );
+
+  if (!ids.length) {
+    setAdminFeedback('error', 'Seleziona almeno un contratto non inviato.');
+    return;
+  }
+
+  const button = document.getElementById('admin-bulk-send');
+  button.disabled = true;
+  button.textContent = 'Aggiorno...';
+
+  try {
+    await Promise.all(ids.map((id) => baserowClient.updateAdminContractSent(id, true)));
+    adminState.selectedContractIds = [];
+    await loadAndRenderContracts({ silent: true, force: true });
+    await renderAdminPage();
+    setAdminFeedback('success', `${ids.length} contratti segnati come inviati.`);
+  } catch (error) {
+    setAdminFeedback('error', error.message || 'Aggiornamento multiplo non riuscito.');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Segna inviati';
+  }
+}
+
+function updateAdminBulkBar(rows) {
+  const bar = document.getElementById('admin-bulk-bar');
+  const count = document.getElementById('admin-bulk-count');
+  const sendButton = document.getElementById('admin-bulk-send');
+  const selectedVisibleIds = rows
+    .map((contract) => Number(contract.id))
+    .filter((id) => adminState.selectedContractIds.map(Number).includes(id));
+  const totalSelected = adminState.selectedContractIds.length;
+  const actionableSelected = adminState.contracts.filter(
+    (contract) =>
+      adminState.selectedContractIds.map(Number).includes(Number(contract.id)) && !contract.inviato
+  ).length;
+
+  bar.hidden = rows.length === 0;
+  count.textContent = totalSelected === 1 ? '1 selezionato' : `${totalSelected} selezionati`;
+  sendButton.disabled = actionableSelected === 0;
+  document.getElementById('admin-select-visible').disabled =
+    rows.length > 0 && selectedVisibleIds.length === rows.length;
 }
 
 function fillAdminAgentForm(agentRow) {
@@ -1306,6 +1665,10 @@ function setAdminFeedback(type, message) {
   const feedback = document.getElementById('admin-agent-feedback');
   feedback.className = type ? `is-${type}` : '';
   feedback.textContent = message;
+}
+
+function sentBadge(sent) {
+  return `<span class="badge ${sent ? 'ok' : 'caricato'}">${sent ? 'Inviato' : 'Non inviato'}</span>`;
 }
 
 async function handleLogin(event) {

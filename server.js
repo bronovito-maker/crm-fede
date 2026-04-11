@@ -24,7 +24,7 @@ const CONFIG = {
 };
 
 const allowedClientTypes = new Set(['Business', 'Privato', 'Condominio']);
-const allowedCustomerCategories = new Set(['prospect', 'cb', 'ex cb']);
+const allowedCustomerCategories = new Set(['prospect', 'switch ricorrente']);
 const allowedStatuses = new Set(['Caricato', 'OK', 'K.O.', 'Switch - Out']);
 const allowedOperations = new Set(['switch', 'switch + voltura', 'cambio listino', 'subentro']);
 const allowedSupplyTypes = new Set(['luce', 'gas', 'dual']);
@@ -369,6 +369,21 @@ app.get('/api/admin/agents', apiReadLimiter, requireAdmin, async (req, res) => {
   }
 });
 
+app.get('/api/admin/contracts', apiReadLimiter, requireAdmin, async (req, res) => {
+  try {
+    ensureConfigured();
+    const contracts = await listAllContracts();
+    res.json(contracts);
+  } catch (error) {
+    handleApiError(
+      res,
+      error,
+      'ADMIN_CONTRACTS_LOAD_FAILED',
+      'Impossibile caricare i contratti admin.'
+    );
+  }
+});
+
 app.post('/api/admin/agents', requireAdmin, async (req, res) => {
   try {
     ensureConfigured();
@@ -395,6 +410,27 @@ app.patch('/api/admin/agents/:id', requireAdmin, async (req, res) => {
     res.json(publicAgent(normalizeAgent(updated)));
   } catch (error) {
     handleApiError(res, error, 'ADMIN_AGENT_NOT_UPDATED', 'Agente non aggiornato.');
+  }
+});
+
+app.patch('/api/admin/contracts/:id/sent', requireAdmin, async (req, res) => {
+  try {
+    ensureConfigured();
+    const contractId = Number(req.params.id);
+    const sent = Boolean(req.body.sent);
+
+    if (!Number.isInteger(contractId) || contractId <= 0) {
+      throw publicError(400, 'INVALID_CONTRACT_ID', 'Contratto non valido.');
+    }
+
+    const updated = await updateBaserowContract(contractId, {
+      inviato: sent,
+      data_invio: sent ? todayIsoDate() : '',
+    });
+    invalidateAdminStatsCache();
+    res.json(normalizeContract(updated));
+  } catch (error) {
+    handleApiError(res, error, 'ADMIN_CONTRACT_NOT_UPDATED', 'Invio contratto non aggiornato.');
   }
 });
 
@@ -1040,6 +1076,8 @@ function normalizeContract(row) {
     indirizzoFornitura: row.indirizzo_fornitura || '',
     descrizione: row.descrizione || '',
     statoContratto: status,
+    inviato: row.inviato !== undefined ? Boolean(row.inviato) : false,
+    dataInvio: row.data_invio || '',
     cbUnitariaSnapshot: cbSnapshot,
     cbMaturata,
     dataInizioFornitura: row.data_inizio_fornitura || '',
