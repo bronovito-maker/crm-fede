@@ -1032,10 +1032,7 @@ function buildContractDraft(form) {
     categoriaCliente: String(form.get('categoriaCliente')).trim().toLowerCase(),
     fornitore: String(form.get('fornitore')).trim(),
     nomeOfferta: String(form.get('nomeOfferta')).trim(),
-    tipoOperazione: form
-      .getAll('tipoOperazione')
-      .map((value) => String(value).trim())
-      .filter(Boolean),
+    tipoOperazione: [String(form.get('tipoOperazione') || '').trim()].filter(Boolean),
     tipoFornitura: String(form.get('tipoFornitura')).trim(),
     pod: String(form.get('pod')).trim(),
     pdr: String(form.get('pdr')).trim(),
@@ -1103,7 +1100,7 @@ function validateContractDraft(draft) {
   }
 
   if (!draft.tipoOperazione.length) {
-    return 'Seleziona almeno un tipo operazione.';
+    return 'Seleziona un tipo operazione.';
   }
 
   if (!draft.tipoFornitura) {
