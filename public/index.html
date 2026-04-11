@@ -544,9 +544,13 @@
                     <option value="oldest">Meno recenti</option>
                   </select>
                 </label>
-                <label class="check-line admin-toggle">
-                  <input id="admin-contract-only-unsent" type="checkbox" />
-                  Solo non inviati
+                <label>
+                  Invio
+                  <select id="admin-contract-sent-filter">
+                    <option value="all">Tutti i contratti</option>
+                    <option value="unsent">Non inviati</option>
+                    <option value="sent">Inviati</option>
+                  </select>
                 </label>
               </div>
               <div class="admin-quick-filters" aria-label="Filtri rapidi contratti">

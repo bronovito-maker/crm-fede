@@ -210,7 +210,7 @@ const adminState = {
   contractSearch: '',
   contractAgentId: 'all',
   contractStatus: 'all',
-  contractOnlyUnsent: true,
+  contractSentFilter: 'unsent',
   contractSort: 'recent',
   selectedContractIds: [],
   agentSearch: '',
@@ -353,7 +353,7 @@ document.getElementById('admin-agent-reset').addEventListener('click', resetAdmi
   ['admin-contract-agent-filter', 'change', handleAdminFilterChange],
   ['admin-contract-status-filter', 'change', handleAdminFilterChange],
   ['admin-contract-sort', 'change', handleAdminFilterChange],
-  ['admin-contract-only-unsent', 'change', handleAdminFilterChange],
+  ['admin-contract-sent-filter', 'change', handleAdminFilterChange],
   ['admin-agent-search', 'input', handleAdminFilterChange],
   ['admin-agent-role-filter', 'change', handleAdminFilterChange],
   ['admin-agent-state-filter', 'change', handleAdminFilterChange],
@@ -1330,7 +1330,10 @@ function renderAdminContracts(adminContracts, agents) {
       Number(contract.agenteId) === Number(adminState.contractAgentId);
     const matchesStatus =
       adminState.contractStatus === 'all' || contract.statoContratto === adminState.contractStatus;
-    const matchesSent = !adminState.contractOnlyUnsent || !contract.inviato;
+    const matchesSent =
+      adminState.contractSentFilter === 'all' ||
+      (adminState.contractSentFilter === 'unsent' && !contract.inviato) ||
+      (adminState.contractSentFilter === 'sent' && contract.inviato);
     return matchesQuery && matchesAgent && matchesStatus && matchesSent;
   });
   const rows = filteredRows.slice().sort((left, right) => {
@@ -1475,7 +1478,7 @@ function syncAdminFilterControls() {
   document.getElementById('admin-contract-search').value = adminState.contractSearch;
   document.getElementById('admin-contract-status-filter').value = adminState.contractStatus;
   document.getElementById('admin-contract-sort').value = adminState.contractSort;
-  document.getElementById('admin-contract-only-unsent').checked = adminState.contractOnlyUnsent;
+  document.getElementById('admin-contract-sent-filter').value = adminState.contractSentFilter;
   document.getElementById('admin-agent-search').value = adminState.agentSearch;
   document.getElementById('admin-agent-role-filter').value = adminState.agentRole;
   document.getElementById('admin-agent-state-filter').value = adminState.agentState;
@@ -1486,7 +1489,7 @@ function handleAdminFilterChange() {
   adminState.contractAgentId = document.getElementById('admin-contract-agent-filter').value;
   adminState.contractStatus = document.getElementById('admin-contract-status-filter').value;
   adminState.contractSort = document.getElementById('admin-contract-sort').value;
-  adminState.contractOnlyUnsent = document.getElementById('admin-contract-only-unsent').checked;
+  adminState.contractSentFilter = document.getElementById('admin-contract-sent-filter').value;
   adminState.agentSearch = document.getElementById('admin-agent-search').value;
   adminState.agentRole = document.getElementById('admin-agent-role-filter').value;
   adminState.agentState = document.getElementById('admin-agent-state-filter').value;
@@ -1502,7 +1505,7 @@ function applyAdminQuickFilter(mode) {
     adminState.contractSort = 'recent';
   } else if (mode === 'unsent') {
     adminState.contractSort = 'unsent';
-    adminState.contractOnlyUnsent = true;
+    adminState.contractSentFilter = 'unsent';
   } else if (mode === 'caricato') {
     adminState.contractStatus = 'Caricato';
     adminState.contractSort = 'recent';
@@ -1511,7 +1514,7 @@ function applyAdminQuickFilter(mode) {
     adminState.contractAgentId = 'all';
     adminState.contractStatus = 'all';
     adminState.contractSort = 'recent';
-    adminState.contractOnlyUnsent = true;
+    adminState.contractSentFilter = 'unsent';
   }
 
   syncAdminFilterControls();
