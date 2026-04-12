@@ -226,6 +226,7 @@ const pages = {
   dashboard: 'Dashboard',
   'new-contract': 'Nuovo contratto',
   contracts: 'Contratti',
+  cb: 'Client Base',
   'switch ricorrente': 'Switch ricorrente',
   progress: 'Avanzamento',
   admin: 'Admin',
@@ -395,7 +396,9 @@ document.querySelectorAll('.toggle-password').forEach((btn) => {
     this.setAttribute('aria-label', isPassword ? 'Nascondi password' : 'Mostra password');
   });
 });
-document.getElementById('logout-button').addEventListener('click', handleLogout);
+document.querySelectorAll('.logout-button').forEach((button) => {
+  button.addEventListener('click', handleLogout);
+});
 document.getElementById('refresh-motivation').addEventListener('click', () => {
   updateMotivationCard(true);
 });
@@ -602,7 +605,7 @@ function setActivePage(pageId) {
   // Saluto personalizzato nel titolo della dashboard
   if (pageId === 'dashboard' && agent && agent.nome) {
     const hour = new Date().getHours();
-    const greeting = hour < 13 ? 'Buongiorno' : hour < 18 ? 'Buon pomeriggio' : 'Buonasera';
+    const greeting = hour < 18 ? 'Buongiorno' : 'Buonasera';
     const firstName = titleCase(agent.nome.split(' ')[0]);
     document.getElementById('page-title').textContent = `${greeting}, ${firstName}`;
   }
@@ -686,14 +689,54 @@ function renderMetrics(containerId, metrics) {
 function renderDashboard() {
   const summary = getSummary();
   renderMetrics('dashboard-metrics', [
-    { label: 'Contatori inseriti', value: summary.monthlyUnits, accent: 'blue', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>' },
-    { label: 'Contatori OK', value: summary.okUnits, accent: 'green', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>' },
-    { label: 'Pratiche inviate', value: summary.inviati.length, accent: 'blue', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>' },
-    { label: 'Contatori K.O.', value: summary.scartatiUnits, accent: 'red', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>' },
-    { label: 'CB maturata', value: formatCurrency(summary.cbValidata), accent: 'green', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' },
-    { label: 'CB potenziale', value: formatCurrency(summary.cbPotenziale), accent: 'amber', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' },
-    { label: 'Target mensile', value: agent.targetMensile, accent: 'blue', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>' },
-    { label: 'Manca al target', value: summary.mancanti, accent: summary.mancanti === 0 ? 'green' : 'amber', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>' },
+    {
+      label: 'Contatori inseriti',
+      value: summary.monthlyUnits,
+      accent: 'blue',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>',
+    },
+    {
+      label: 'Contatori OK',
+      value: summary.okUnits,
+      accent: 'green',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>',
+    },
+    {
+      label: 'Pratiche inviate',
+      value: summary.inviati.length,
+      accent: 'blue',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>',
+    },
+    {
+      label: 'Contatori K.O.',
+      value: summary.scartatiUnits,
+      accent: 'red',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>',
+    },
+    {
+      label: 'CB maturata',
+      value: formatCurrency(summary.cbValidata),
+      accent: 'green',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+    },
+    {
+      label: 'CB potenziale',
+      value: formatCurrency(summary.cbPotenziale),
+      accent: 'amber',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+    },
+    {
+      label: 'Target mensile',
+      value: agent.targetMensile,
+      accent: 'blue',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
+    },
+    {
+      label: 'Manca al target',
+      value: summary.mancanti,
+      accent: summary.mancanti === 0 ? 'green' : 'amber',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>',
+    },
     {
       label: 'In attesa (Caricati + Inviati)',
       value: summary.caricatiUnits + summary.inviatiUnits,
@@ -1000,7 +1043,12 @@ function renderCbPage() {
       accent: 'blue',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
     },
-    { label: 'CB validata (OK)', value: formatCurrency(sumContractCommissions(filteredOk)), accent: 'green', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>' },
+    {
+      label: 'CB validata (OK)',
+      value: formatCurrency(sumContractCommissions(filteredOk)),
+      accent: 'green',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>',
+    },
     {
       label: 'CB in attesa',
       value: formatCurrency(sumContractCommissions([...filteredCaricati, ...filteredInviati])),
@@ -1766,9 +1814,24 @@ function renderAdminMetrics(stats) {
     { label: 'Switch Out', value: stats.totals.switchOut, accent: 'red' },
   ]);
   renderMetrics('admin-metrics-summary', [
-    { label: 'CB validata mese', value: formatCurrency(stats.totals.cbValidata), accent: 'green', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' },
-    { label: 'CB potenziale mese', value: formatCurrency(stats.totals.cbPotenziale), accent: 'amber', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' },
-    { label: 'Agenti attivi', value: activeAgents, accent: 'blue', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
+    {
+      label: 'CB validata mese',
+      value: formatCurrency(stats.totals.cbValidata),
+      accent: 'green',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+    },
+    {
+      label: 'CB potenziale mese',
+      value: formatCurrency(stats.totals.cbPotenziale),
+      accent: 'amber',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+    },
+    {
+      label: 'Agenti attivi',
+      value: activeAgents,
+      accent: 'blue',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+    },
   ]);
 }
 
