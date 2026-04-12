@@ -596,14 +596,15 @@ function setActivePage(pageId) {
   });
   document.getElementById('page-title').textContent = pages[pageId];
 
-  // Saluto personalizzato nella dashboard
-  const eyebrow = document.getElementById('current-period');
+  // Eyebrow sempre con il mese corrente
+  document.getElementById('current-period').textContent = capitalize(formatMonth.format(today));
+
+  // Saluto personalizzato nel titolo della dashboard
   if (pageId === 'dashboard' && agent && agent.nome) {
     const hour = new Date().getHours();
     const greeting = hour < 13 ? 'Buongiorno' : hour < 18 ? 'Buon pomeriggio' : 'Buonasera';
-    eyebrow.textContent = `${greeting}, ${titleCase(agent.nome)}`;
-  } else {
-    eyebrow.textContent = capitalize(formatMonth.format(today));
+    const firstName = titleCase(agent.nome.split(' ')[0]);
+    document.getElementById('page-title').textContent = `${greeting}, ${firstName}`;
   }
 
   // Nascondi "Nuovo contratto" quick-action nelle pagine dove è fuori contesto
