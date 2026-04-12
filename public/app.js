@@ -596,6 +596,16 @@ function setActivePage(pageId) {
   });
   document.getElementById('page-title').textContent = pages[pageId];
 
+  // Saluto personalizzato nella dashboard
+  const eyebrow = document.getElementById('current-period');
+  if (pageId === 'dashboard' && agent && agent.nome) {
+    const hour = new Date().getHours();
+    const greeting = hour < 13 ? 'Buongiorno' : hour < 18 ? 'Buon pomeriggio' : 'Buonasera';
+    eyebrow.textContent = `${greeting}, ${titleCase(agent.nome)}`;
+  } else {
+    eyebrow.textContent = capitalize(formatMonth.format(today));
+  }
+
   // Nascondi "Nuovo contratto" quick-action nelle pagine dove è fuori contesto
   const quickBtn = document.querySelector('.quick-action');
   if (quickBtn) {
@@ -662,7 +672,8 @@ function renderMetrics(containerId, metrics) {
   document.getElementById(containerId).innerHTML = metrics
     .map(
       (metric) => `
-        <article class="metric-card">
+        <article class="metric-card${metric.accent ? ` accent-${metric.accent}` : ''}">
+          ${metric.icon ? `<span class="metric-icon">${metric.icon}</span>` : ''}
           <span>${escapeHtml(metric.label)}</span>
           <strong>${escapeHtml(metric.value)}</strong>
         </article>
@@ -674,17 +685,19 @@ function renderMetrics(containerId, metrics) {
 function renderDashboard() {
   const summary = getSummary();
   renderMetrics('dashboard-metrics', [
-    { label: 'Contatori inseriti', value: summary.monthlyUnits },
-    { label: 'Contatori OK', value: summary.okUnits },
-    { label: 'Pratiche inviate', value: summary.inviati.length },
-    { label: 'Contatori K.O.', value: summary.scartatiUnits },
-    { label: 'CB maturata', value: formatCurrency(summary.cbValidata) },
-    { label: 'CB potenziale', value: formatCurrency(summary.cbPotenziale) },
-    { label: 'Target mensile', value: agent.targetMensile },
-    { label: 'Manca al target', value: summary.mancanti },
+    { label: 'Contatori inseriti', value: summary.monthlyUnits, accent: 'blue', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>' },
+    { label: 'Contatori OK', value: summary.okUnits, accent: 'green', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>' },
+    { label: 'Pratiche inviate', value: summary.inviati.length, accent: 'blue', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>' },
+    { label: 'Contatori K.O.', value: summary.scartatiUnits, accent: 'red', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>' },
+    { label: 'CB maturata', value: formatCurrency(summary.cbValidata), accent: 'green', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' },
+    { label: 'CB potenziale', value: formatCurrency(summary.cbPotenziale), accent: 'amber', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' },
+    { label: 'Target mensile', value: agent.targetMensile, accent: 'blue', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>' },
+    { label: 'Manca al target', value: summary.mancanti, accent: summary.mancanti === 0 ? 'green' : 'amber', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>' },
     {
       label: 'In attesa (Caricati + Inviati)',
       value: summary.caricatiUnits + summary.inviatiUnits,
+      accent: 'blue',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
     },
   ]);
 
