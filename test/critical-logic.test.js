@@ -239,6 +239,40 @@ describe('buildAdminStats', () => {
     assert.equal(laura.contratti, 0);
     assert.equal(laura.percentualeTargetMensile, 0);
   });
+
+  it('ignora le bozze nei conteggi e nelle statistiche admin', () => {
+    const contracts = [
+      {
+        agenteId: 1,
+        dataInserimento: `${month}-02`,
+        trimestreRiferimento: quarter,
+        annoRiferimento: year,
+        statoContratto: 'Bozza',
+        tipoFornitura: 'dual',
+        categoriaCliente: 'prospect',
+        cbMaturata: 85,
+      },
+      {
+        agenteId: 1,
+        dataInserimento: `${month}-03`,
+        trimestreRiferimento: quarter,
+        annoRiferimento: year,
+        statoContratto: 'Caricato',
+        tipoFornitura: 'luce',
+        categoriaCliente: 'prospect',
+        cbMaturata: 85,
+      },
+    ];
+
+    const result = buildAdminStats(agents, contracts);
+
+    assert.equal(result.totals.practices, 1);
+    assert.equal(result.totals.contracts, 1);
+    assert.equal(result.totals.caricati, 1);
+    assert.equal(result.totals.cbPotenziale, 85);
+    assert.equal(result.agents[0].pratiche, 1);
+    assert.equal(result.agents[0].contratti, 1);
+  });
 });
 
 describe('SqliteSessionStore', () => {
@@ -637,8 +671,10 @@ describe('helper coverage', () => {
   });
 
   it('normalizeStatus mappa i vecchi stati e defaulta a Caricato', () => {
+    assert.equal(normalizeStatus('Bozza'), 'Bozza');
     assert.equal(normalizeStatus('OK'), 'OK');
     assert.equal(normalizeStatus('Inviato'), 'Inviato');
+    assert.equal(normalizeStatus('bozza'), 'Bozza');
     assert.equal(normalizeStatus('validato'), 'OK');
     assert.equal(normalizeStatus('inviato'), 'Inviato');
     assert.equal(normalizeStatus('in attesa'), 'Caricato');
@@ -1000,7 +1036,67 @@ describe('HTTP routes', () => {
     assert.equal(response.body.id, 501);
     assert.equal(response.body.unitCount, 2);
     assert.equal(response.body.commissionValue, 170);
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 3);
+  });
+
+  it('POST /api/contracts salva una bozza con validazione morbida', async () => {
+    const agentId = 7;
+    const agentTableId = process.env.BASEROW_TABLE_AGENTI_ID;
+    const contractTableId = process.env.BASEROW_TABLE_CONTRATTI_ID;
+
+    global.fetch = async (url, options = {}) => {
+      const parsed = new URL(url);
+
+      if (parsed.pathname === `/api/database/rows/table/${agentTableId}/${agentId}/`) {
+        return mockJsonResponse({
+          id: agentId,
+          nome: 'Agente Test',
+          email: 'agente@example.it',
+          ruolo: { value: 'agente' },
+          attivo: true,
+          cb_unitaria: '85',
+          target_mensile: '5',
+          target_trimestrale: '12',
+          target_annuale: '48',
+        });
+      }
+
+      if (parsed.pathname === `/api/database/rows/table/${contractTableId}/`) {
+        assert.equal(options.method, 'POST');
+        const payload = JSON.parse(options.body);
+        assert.equal(payload.ragione_sociale, 'Rossi SRL');
+        assert.equal(payload.stato_contratto, 'Bozza');
+        assert.equal(payload.cellulare, '');
+        assert.equal(payload.nome_offerta, '');
+
+        return mockJsonResponse({
+          id: 777,
+          agente: [{ id: agentId }],
+          data_inserimento: '2026-04-12',
+          ragione_sociale: 'Rossi SRL',
+          stato_contratto: { value: 'Bozza' },
+          tipo_fornitura: null,
+          categoria_cliente: null,
+          cb_unitaria_snapshot: '85',
+          cb_maturata: '0',
+        });
+      }
+
+      return mockJsonResponse({ detail: 'not found' }, { status: 404 });
+    };
+
+    const response = await invokeRouteJson(app, '/api/contracts', 'post', {
+      session: { agentId },
+      body: {
+        saveMode: 'draft',
+        ragioneSociale: 'Rossi SRL',
+      },
+      files: [],
+    });
+
+    assert.equal(response.status, 201);
+    assert.equal(response.body.statoContratto, 'Bozza');
+    assert.equal(response.body.cbMaturata, 0);
   });
 
   it('PATCH /api/contracts/:id/status aggiorna lo stato solo se il contratto appartiene all agente', async () => {
@@ -1073,6 +1169,130 @@ describe('HTTP routes', () => {
     assert.equal(patchSeen, true);
     assert.equal(forbiddenResponse.status, 403);
     assert.equal(forbiddenResponse.body.error, 'CONTRACT_FORBIDDEN');
+  });
+
+  it('PATCH /api/contracts/:id aggiorna anagrafica e mantiene lo stato operativo', async () => {
+    const agentId = 7;
+    const agentTableId = process.env.BASEROW_TABLE_AGENTI_ID;
+    const contractTableId = process.env.BASEROW_TABLE_CONTRATTI_ID;
+
+    global.fetch = async (url, options = {}) => {
+      const parsed = new URL(url);
+
+      if (parsed.pathname === `/api/database/rows/table/${agentTableId}/${agentId}/`) {
+        return mockJsonResponse({
+          id: agentId,
+          nome: 'Agente Test',
+          email: 'agente@example.it',
+          ruolo: { value: 'agente' },
+          attivo: true,
+          cb_unitaria: '85',
+          target_mensile: '5',
+          target_trimestrale: '12',
+          target_annuale: '48',
+        });
+      }
+
+      if (parsed.pathname === `/api/database/rows/table/${contractTableId}/910/`) {
+        if ((options.method || 'GET') === 'PATCH') {
+          const payload = JSON.parse(options.body);
+          assert.equal(payload.ragione_sociale, 'Rossi SRL Aggiornata');
+          assert.equal(payload.indirizzo_fornitura, 'Via Nuova 44');
+          assert.equal(payload.stato_contratto, 'OK');
+          assert.deepEqual(payload.file_contratto, [
+            { name: 'doc-esistente.pdf', visible_name: 'Doc esistente.pdf' },
+          ]);
+
+          return mockJsonResponse({
+            id: 910,
+            agente: [{ id: agentId }],
+            data_inserimento: '2026-04-10',
+            ragione_sociale: 'Rossi SRL Aggiornata',
+            stato_contratto: { value: 'OK' },
+            tipo_fornitura: { value: 'luce' },
+            categoria_cliente: { value: 'prospect' },
+            cb_unitaria_snapshot: '85',
+            cb_maturata: '85',
+            file_contratto: [
+              {
+                name: 'doc-esistente.pdf',
+                visible_name: 'Doc esistente.pdf',
+                url: 'https://example.com/doc-esistente.pdf',
+                mime_type: 'application/pdf',
+                size: '1024',
+              },
+            ],
+          });
+        }
+
+        return mockJsonResponse({
+          id: 910,
+          agente: [{ id: agentId }],
+          data_inserimento: '2026-04-10',
+          ragione_sociale: 'Rossi SRL',
+          cellulare: '3331234567',
+          tipo_cliente: { value: 'Business' },
+          categoria_cliente: { value: 'prospect' },
+          fornitore: 'Enel Energia',
+          nome_offerta: 'Dual Fix',
+          tipo_operazione: [{ value: 'switch' }],
+          tipo_fornitura: { value: 'luce' },
+          pod: 'IT001E12345678',
+          pdr: '',
+          metodo_pagamento: { value: 'bollettino' },
+          iban: '',
+          piva: '03849270121',
+          email: 'info@rossi.it',
+          indirizzo_fatturazione: 'Via Roma 1',
+          indirizzo_fornitura: 'Via Milano 2',
+          descrizione: 'Note',
+          stato_contratto: { value: 'OK' },
+          cb_unitaria_snapshot: '85',
+          cb_maturata: '85',
+          file_contratto: [
+            {
+              name: 'doc-esistente.pdf',
+              visible_name: 'Doc esistente.pdf',
+              url: 'https://example.com/doc-esistente.pdf',
+              mime_type: 'application/pdf',
+              size: '1024',
+            },
+          ],
+        });
+      }
+
+      return mockJsonResponse({ detail: 'not found' }, { status: 404 });
+    };
+
+    const response = await invokeRouteJson(app, '/api/contracts/:id', 'patch', {
+      session: { agentId },
+      params: { id: '910' },
+      body: {
+        ragioneSociale: 'Rossi SRL Aggiornata',
+        cellulare: '3331234567',
+        tipoCliente: 'Business',
+        categoriaCliente: 'prospect',
+        fornitore: 'Enel Energia',
+        nomeOfferta: 'Dual Fix',
+        tipoOperazione: ['switch'],
+        tipoFornitura: 'luce',
+        pod: 'IT001E12345678',
+        pdr: '',
+        metodoPagamento: 'bollettino',
+        iban: '',
+        piva: '03849270121',
+        email: 'info@rossi.it',
+        indirizzoFatturazione: 'Via Roma 1',
+        indirizzoFornitura: 'Via Nuova 44',
+        descrizione: 'Note aggiornate',
+        retainedFileName: ['doc-esistente.pdf'],
+      },
+      files: [],
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ragioneSociale, 'Rossi SRL Aggiornata');
+    assert.equal(response.body.statoContratto, 'OK');
   });
 
   it('PATCH /api/admin/agents/:id aggiorna target e dati agente con permessi admin', async () => {
@@ -1251,6 +1471,64 @@ describe('HTTP routes', () => {
 
     assert.equal(response.status, 200);
     assert.equal(response.body.statoContratto, 'Caricato');
+  });
+
+  it('DELETE /api/contracts/:id elimina il contratto se accessibile', async () => {
+    const agentId = 7;
+    const agentTableId = process.env.BASEROW_TABLE_AGENTI_ID;
+    const contractTableId = process.env.BASEROW_TABLE_CONTRATTI_ID;
+    let deleteSeen = false;
+
+    global.fetch = async (url, options = {}) => {
+      const parsed = new URL(url);
+
+      if (parsed.pathname === `/api/database/rows/table/${agentTableId}/${agentId}/`) {
+        return mockJsonResponse({
+          id: agentId,
+          nome: 'Agente Test',
+          email: 'agente@example.it',
+          ruolo: { value: 'agente' },
+          attivo: true,
+          cb_unitaria: '85',
+          target_mensile: '5',
+          target_trimestrale: '12',
+          target_annuale: '48',
+        });
+      }
+
+      if (parsed.pathname === `/api/database/rows/table/${contractTableId}/930/`) {
+        if ((options.method || 'GET') === 'DELETE') {
+          deleteSeen = true;
+          return {
+            ok: true,
+            status: 204,
+            text: async () => '',
+          };
+        }
+
+        return mockJsonResponse({
+          id: 930,
+          agente: [{ id: agentId }],
+          stato_contratto: { value: 'Caricato' },
+          tipo_fornitura: { value: 'luce' },
+          categoria_cliente: { value: 'prospect' },
+          cb_unitaria_snapshot: '85',
+          cb_maturata: '85',
+        });
+      }
+
+      return mockJsonResponse({ detail: 'not found' }, { status: 404 });
+    };
+
+    const response = await invokeRouteJson(app, '/api/contracts/:id', 'delete', {
+      session: { agentId },
+      params: { id: '930' },
+      body: {},
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    assert.equal(deleteSeen, true);
   });
 });
 

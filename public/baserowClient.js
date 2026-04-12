@@ -36,6 +36,19 @@ const baserowClient = {
     });
   },
 
+  async updateContract(contractId, contract) {
+    return fetchJson(`/api/contracts/${contractId}`, {
+      method: 'PATCH',
+      body: contract,
+    });
+  },
+
+  async deleteContract(contractId) {
+    return fetchJson(`/api/contracts/${contractId}`, {
+      method: 'DELETE',
+    });
+  },
+
   async updateContractStatus(contractId, status) {
     return fetchJson(`/api/contracts/${contractId}/status`, {
       method: 'PATCH',

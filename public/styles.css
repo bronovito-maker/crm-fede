@@ -222,7 +222,9 @@ body.auth-locked .app-shell {
   gap: 8px;
   font-size: 1rem;
   border-radius: 10px;
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
 }
 
 .login-submit:active {
@@ -251,7 +253,7 @@ body.auth-locked .app-shell {
   -webkit-user-select: none;
 }
 
-.remember-me input[type="checkbox"] {
+.remember-me input[type='checkbox'] {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -270,7 +272,7 @@ body.auth-locked .app-shell {
 }
 
 .remember-me-toggle::after {
-  content: "";
+  content: '';
   position: absolute;
   top: 3px;
   left: 3px;
@@ -564,6 +566,40 @@ body.auth-locked .app-shell {
   background: #eff6ff;
 }
 
+.danger-button {
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  min-height: 40px;
+  padding: 8px 14px;
+  color: #b91c1c;
+  background: #fef2f2;
+  cursor: pointer;
+  font-weight: 700;
+  width: 100%;
+}
+
+.danger-button:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+
+.form-action-buttons {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.form-action-buttons .secondary-button[data-save-mode='draft'] {
+  border-color: #fcd34d;
+  color: #a16207;
+  background: #fef3c7;
+}
+
+.form-action-buttons .secondary-button[data-save-mode='draft']:hover {
+  border-color: #f59e0b;
+  background: #fde68a;
+}
+
 /* Mobile: "Nuovo contratto" è già nel bottom nav, non serve nel topbar */
 /* Desktop: già nella sidebar verticale sempre visibile */
 .quick-action {
@@ -844,6 +880,28 @@ body.auth-locked .app-shell {
   padding: 16px;
 }
 
+.form-mode-banner {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 14px;
+  background: #eff6ff;
+}
+
+.form-mode-banner strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--primary-strong);
+}
+
+.form-mode-banner p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.45;
+}
+
 .form-head {
   display: flex;
   flex-direction: column;
@@ -1047,6 +1105,10 @@ textarea {
   border-radius: 8px;
   padding: 10px 12px;
   background: #ffffff;
+}
+
+.file-chip.existing {
+  background: #f8fafc;
 }
 
 .file-chip-name {
@@ -1351,6 +1413,11 @@ td[data-label='Cliente'] strong {
   background: #fef3c7;
 }
 
+.badge.bozza {
+  color: #475569;
+  background: #e2e8f0;
+}
+
 .badge.inviato {
   color: #1d4ed8;
   background: #dbeafe;
@@ -1460,6 +1527,12 @@ td[data-label='Cliente'] strong {
   grid-template-columns: 1fr;
   gap: 10px;
   padding: 14px;
+}
+
+.modal-actions {
+  display: grid;
+  gap: 10px;
+  padding: 0 14px 14px;
 }
 
 .detail-item {
@@ -1928,6 +2001,15 @@ td[data-label='Cliente'] strong {
     width: auto;
   }
 
+  .form-action-buttons {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    justify-content: flex-end;
+  }
+
+  .modal-actions {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
   /* Tablet+: mostra label complete, nascondi quelle corte */
   .nav-full {
     display: inline;
@@ -1950,7 +2032,7 @@ td[data-label='Cliente'] strong {
   }
 
   /* CB: 7 card su 3 col = 3+3+1 → ultima piena se sola */
-  #cb-metrics .metric-card:last-child:nth-child(3n+1) {
+  #cb-metrics .metric-card:last-child:nth-child(3n + 1) {
     grid-column: 1 / -1;
   }
 
@@ -2280,7 +2362,7 @@ td[data-label='Cliente'] strong {
   }
 
   /* CB: 7 card su 3 col = 3+3+1 → ultima card piena se sola sulla riga */
-  #cb-metrics .metric-card:last-child:nth-child(3n+1) {
+  #cb-metrics .metric-card:last-child:nth-child(3n + 1) {
     grid-column: 1 / -1;
   }
 

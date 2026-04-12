@@ -195,7 +195,12 @@ const defaultContracts = [
 const storageKey = 'energia-crm-contracts';
 let contracts = [];
 let selectedContractFiles = [];
+let existingContractFiles = [];
 let contractsRefreshInFlight = false;
+const contractEditorState = {
+  editingId: null,
+  originalStatus: 'Caricato',
+};
 const adminState = {
   stats: null,
   agents: [],
@@ -222,6 +227,7 @@ const pages = {
 };
 
 const statusColors = {
+  Bozza: '#64748b',
   OK: '#15803d',
   Caricato: '#b7791f',
   Inviato: '#2563eb',
@@ -420,6 +426,13 @@ document.getElementById('close-contract-modal').addEventListener('click', closeC
 document.getElementById('contract-modal').addEventListener('click', (event) => {
   if (event.target.id === 'contract-modal') closeContractModal();
 });
+document
+  .getElementById('edit-contract-button')
+  .addEventListener('click', () => startEditingCurrentContract());
+document
+  .getElementById('delete-contract-button')
+  .addEventListener('click', () => handleDeleteCurrentContract());
+document.getElementById('cancel-contract-edit').addEventListener('click', resetContractEditor);
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') closeContractModal();
 });
@@ -434,10 +447,12 @@ document.getElementById('contract-form').addEventListener('submit', async (event
   event.preventDefault();
   const formElement = event.currentTarget;
   const form = new FormData(formElement);
-  const draft = buildContractDraft(form);
-  const submitBtn = formElement.querySelector('button[type="submit"]');
+  const saveMode = event.submitter?.dataset.saveMode === 'draft' ? 'draft' : 'submit';
+  const draft = buildContractDraft(form, saveMode);
+  const submitBtn = event.submitter || formElement.querySelector('button[type="submit"]');
+  const isEditing = Boolean(contractEditorState.editingId);
 
-  const validationMessage = validateContractDraft(draft);
+  const validationMessage = validateContractDraft(draft, saveMode);
   if (validationMessage) {
     setFormFeedback('error', validationMessage);
     return;
@@ -448,9 +463,23 @@ document.getElementById('contract-form').addEventListener('submit', async (event
 
   if (typeof baserowClient !== 'undefined' && baserowClient.isConfigured()) {
     try {
-      await baserowClient.createContract(buildContractFormData(draft));
+      const payload = buildContractFormData(draft);
+      if (isEditing) {
+        await baserowClient.updateContract(contractEditorState.editingId, payload);
+      } else {
+        await baserowClient.createContract(payload);
+      }
       await loadAndRenderContracts({ silent: true, force: true });
-      setFormFeedback('success', 'Contratto salvato nel database.');
+      setFormFeedback(
+        'success',
+        isEditing
+          ? saveMode === 'draft'
+            ? 'Bozza aggiornata nel database.'
+            : 'Contratto aggiornato nel database.'
+          : saveMode === 'draft'
+            ? 'Bozza salvata nel database.'
+            : 'Contratto salvato nel database.'
+      );
     } catch (err) {
       console.error(err);
       submitBtn.disabled = false;
@@ -458,9 +487,37 @@ document.getElementById('contract-form').addEventListener('submit', async (event
       return;
     }
   } else if (demoFallbackEnabled) {
-    contracts.unshift(draft);
+    if (isEditing) {
+      contracts = contracts.map((contract) =>
+        Number(contract.id) === Number(contractEditorState.editingId)
+          ? {
+              ...contract,
+              ...draft,
+              id: contract.id,
+              fileContratto: [...draft.existingFileContratto, ...draft.fileContratto],
+              statoContratto:
+                saveMode === 'draft'
+                  ? 'Bozza'
+                  : contract.statoContratto === 'Bozza'
+                    ? 'Caricato'
+                    : contract.statoContratto,
+            }
+          : contract
+      );
+    } else {
+      contracts.unshift(draft);
+    }
     saveContracts();
-    setFormFeedback('success', 'Contratto salvato in modalità demo.');
+    setFormFeedback(
+      'success',
+      isEditing
+        ? saveMode === 'draft'
+          ? 'Bozza aggiornata in modalità demo.'
+          : 'Contratto aggiornato in modalità demo.'
+        : saveMode === 'draft'
+          ? 'Bozza salvata in modalità demo.'
+          : 'Contratto salvato in modalità demo.'
+    );
   } else {
     submitBtn.disabled = false;
     setFormFeedback('error', 'Connessione non disponibile. Contratto non salvato.');
@@ -468,13 +525,7 @@ document.getElementById('contract-form').addEventListener('submit', async (event
   }
 
   submitBtn.disabled = false;
-  formElement.reset();
-  selectedContractFiles = [];
-  renderSelectedContractFiles();
-  formElement.elements.agente.value = agent.nome;
-  formElement.elements.statoContratto.value = 'Caricato';
-  updateConditionalFields();
-  updateNewContractSummary();
+  resetContractEditor({ keepFeedback: true });
   renderAll();
   setTimeout(() => setActivePage('contracts'), 350);
 });
@@ -541,10 +592,17 @@ function setActivePage(pageId) {
   if (quickBtn) {
     quickBtn.hidden = pageId === 'admin';
   }
+
+  if (pageId === 'new-contract') {
+    syncContractEditorUi();
+  }
 }
 
 function currentMonthContracts() {
-  return contracts.filter((contract) => contract.dataInserimento.startsWith(currentMonthKey));
+  return contracts.filter(
+    (contract) =>
+      contract.dataInserimento.startsWith(currentMonthKey) && contract.statoContratto !== 'Bozza'
+  );
 }
 
 function getSummary() {
@@ -607,7 +665,7 @@ function renderMetrics(containerId, metrics) {
 function renderDashboard() {
   const summary = getSummary();
   renderMetrics('dashboard-metrics', [
-    { label: 'Contratti inseriti', value: summary.monthlyUnits },
+    { label: 'Contatori inseriti', value: summary.monthlyUnits },
     { label: 'Contratti OK', value: summary.okUnits },
     { label: 'Contratti inviati', value: summary.inviatiUnits },
     { label: 'Contratti scartati (K.O.)', value: summary.scartatiUnits },
@@ -766,8 +824,7 @@ function renderContractsTable() {
     const hasAnyContracts = contracts.length > 0;
     if (!hasAnyContracts && !hasFilters) {
       emptyState.querySelector('strong').textContent = 'Nessun contratto ancora';
-      emptyState.querySelector('p').textContent =
-        'Inizia subito inserendo il tuo primo contratto.';
+      emptyState.querySelector('p').textContent = 'Inizia subito inserendo il tuo primo contratto.';
     } else {
       emptyState.querySelector('strong').textContent = 'Nessun contratto trovato';
       emptyState.querySelector('p').textContent =
@@ -793,8 +850,8 @@ function contractRow(contract) {
   `;
 }
 
-function openContractModal(contractId) {
-  const contract = contracts.find((item) => item.id === contractId);
+function openContractModal(contractLike) {
+  const contract = findContractById(contractLike);
   if (!contract) return;
 
   document.getElementById('contract-detail-title').textContent =
@@ -831,6 +888,8 @@ function openContractModal(contractId) {
     detailItem('Note', contract.descrizione || 'Nessuna nota', true),
   ].join('');
 
+  document.getElementById('edit-contract-button').dataset.contractId = String(contract.id);
+  document.getElementById('delete-contract-button').dataset.contractId = String(contract.id);
   document.getElementById('contract-modal').hidden = false;
   document.getElementById('close-contract-modal').focus();
 }
@@ -1011,18 +1070,176 @@ function renderAll() {
   renderCbPage();
   renderProgressPage();
   updateAdminVisibility();
+  syncContractEditorUi();
   if (agent.ruolo === 'admin') {
     renderAdminPage();
   }
 }
 
-function buildContractDraft(form) {
-  const stato = normalizeStatus(form.get('statoContratto'));
+function allKnownContracts() {
+  return [...contracts, ...adminState.contracts].filter(Boolean);
+}
+
+function findContractById(contractLike) {
+  if (contractLike && typeof contractLike === 'object') return contractLike;
+  return allKnownContracts().find((item) => Number(item.id) === Number(contractLike));
+}
+
+function syncContractEditorUi() {
+  const banner = document.getElementById('contract-edit-banner');
+  const title = document.getElementById('contract-edit-title');
+  const copy = document.getElementById('contract-edit-copy');
+  const submitButton = document.getElementById('contract-submit-button');
+  const help = document.getElementById('contract-files-help');
+  const isEditing = Boolean(contractEditorState.editingId);
+
+  banner.hidden = !isEditing;
+  title.textContent = isEditing ? 'Modifica contratto' : 'Nuovo contratto';
+  copy.textContent = isEditing
+    ? 'Stai modificando un contratto esistente. I documenti gia caricati restano salvati e qui puoi aggiungerne altri.'
+    : '';
+  submitButton.textContent = isEditing ? 'Salva modifiche' : 'Salva contratto';
+  help.textContent = isEditing
+    ? 'I documenti gia caricati restano collegati al contratto. Qui puoi aggiungerne altri.'
+    : "Puoi aggiungere file in più passaggi: l'elenco resta cumulativo fino al salvataggio.";
+  if (document.getElementById('new-contract').classList.contains('active')) {
+    document.getElementById('page-title').textContent = isEditing
+      ? 'Modifica contratto'
+      : 'Nuovo contratto';
+  }
+}
+
+function populateContractForm(contract) {
+  const form = document.getElementById('contract-form');
+  form.elements.ragioneSociale.value = contract.ragioneSociale || '';
+  form.elements.cellulare.value = contract.cellulare || '';
+  form.elements.tipoCliente.value = contract.tipoCliente || '';
+  form.elements.piva.value = contract.piva || '';
+  form.elements.email.value = contract.email || '';
+  form.elements.idContratto.value = contract.idContratto || '';
+  form.elements.categoriaCliente.value = contract.categoriaCliente || '';
+  form.elements.fornitore.value = contract.fornitore || '';
+  form.elements.nomeOfferta.value = contract.nomeOfferta || '';
+  form.elements.tipoFornitura.value = contract.tipoFornitura || '';
+  form.elements.pod.value = contract.pod || '';
+  form.elements.pdr.value = contract.pdr || '';
+  form.elements.metodoPagamento.value = contract.metodoPagamento || '';
+  form.elements.iban.value = contract.iban || '';
+  form.elements.indirizzoFatturazione.value = contract.indirizzoFatturazione || '';
+  form.elements.indirizzoFornitura.value = contract.indirizzoFornitura || '';
+  form.elements.descrizione.value = contract.descrizione || '';
+  form.elements.statoContratto.value = contract.statoContratto || 'Caricato';
+
+  document.querySelectorAll('input[name="tipoOperazione"]').forEach((input) => {
+    input.checked = Array.isArray(contract.tipoOperazione)
+      ? contract.tipoOperazione.includes(input.value)
+      : false;
+  });
+
+  if (agent.ruolo === 'admin' && form.elements.agenteId) {
+    form.elements.agenteId.value = contract.agenteId ? String(contract.agenteId) : String(agent.id);
+  }
+
+  selectedContractFiles = [];
+  existingContractFiles = Array.isArray(contract.fileContratto)
+    ? contract.fileContratto.slice()
+    : [];
+  renderSelectedContractFiles();
+  updateConditionalFields();
+  updateNewContractSummary();
+}
+
+function resetContractEditor({ keepFeedback = false } = {}) {
+  const form = document.getElementById('contract-form');
+  contractEditorState.editingId = null;
+  contractEditorState.originalStatus = 'Caricato';
+  form.reset();
+  selectedContractFiles = [];
+  existingContractFiles = [];
+  renderSelectedContractFiles();
+  if (agent.ruolo === 'admin' && form.elements.agenteId) {
+    form.elements.agenteId.value = String(agent.id);
+  }
+  form.elements.statoContratto.value = 'Caricato';
+  updateConditionalFields();
+  updateNewContractSummary();
+  syncContractEditorUi();
+  if (!keepFeedback) {
+    setFormFeedback('', '');
+  }
+}
+
+function startEditingContract(contractLike) {
+  const contract = findContractById(contractLike);
+  if (!contract) return;
+
+  contractEditorState.editingId = Number(contract.id);
+  contractEditorState.originalStatus = contract.statoContratto || 'Caricato';
+  populateContractForm(contract);
+  syncContractEditorUi();
+  closeContractModal();
+  setActivePage('new-contract');
+  document
+    .getElementById('contract-edit-banner')
+    .scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function startEditingCurrentContract() {
+  const contractId = Number(document.getElementById('edit-contract-button').dataset.contractId);
+  if (!contractId) return;
+  startEditingContract(contractId);
+}
+
+async function handleDeleteCurrentContract() {
+  const contractId = Number(document.getElementById('delete-contract-button').dataset.contractId);
+  if (!contractId) return;
+
+  const contract = findContractById(contractId);
+  const label = contract?.ragioneSociale || 'questo contratto';
+  const confirmed = window.confirm(`Vuoi eliminare definitivamente ${label}?`);
+  if (!confirmed) return;
+
+  const deleteButton = document.getElementById('delete-contract-button');
+  deleteButton.disabled = true;
+  deleteButton.textContent = 'Elimino...';
+
+  try {
+    if (typeof baserowClient !== 'undefined' && baserowClient.isConfigured()) {
+      await baserowClient.deleteContract(contractId);
+      await loadAndRenderContracts({ silent: true, force: true });
+    } else if (demoFallbackEnabled) {
+      contracts = contracts.filter((item) => Number(item.id) !== contractId);
+      saveContracts();
+      renderAll();
+    } else {
+      throw new Error('Connessione non disponibile. Contratto non eliminato.');
+    }
+
+    if (Number(contractEditorState.editingId) === contractId) {
+      resetContractEditor();
+    }
+    closeContractModal();
+    setFormFeedback('success', 'Contratto eliminato.');
+  } catch (error) {
+    setFormFeedback('error', error.message || 'Contratto non eliminato.');
+  } finally {
+    deleteButton.disabled = false;
+    deleteButton.textContent = 'Elimina contratto';
+  }
+}
+
+function buildContractDraft(form, saveMode = 'submit') {
+  const stato = saveMode === 'draft' ? 'Bozza' : normalizeStatus(form.get('statoContratto'));
   const dateInserimento = toInputDate(today);
+  const assignedAgentId =
+    agent.ruolo === 'admin'
+      ? Number.parseInt(String(form.get('agenteId') || ''), 10) || agent.id
+      : agent.id;
 
   return {
     id: Date.now(),
-    agenteId: agent.id,
+    saveMode,
+    agenteId: assignedAgentId,
     dataInserimento: dateInserimento,
     dataInizioFornitura: calculateSupplyStartDate(dateInserimento),
     idContratto: String(form.get('idContratto')).trim(),
@@ -1044,15 +1261,19 @@ function buildContractDraft(form) {
     indirizzoFornitura: String(form.get('indirizzoFornitura')).trim(),
     descrizione: String(form.get('descrizione')).trim(),
     fileContratto: selectedContractFiles.slice(),
+    existingFileContratto: existingContractFiles.slice(),
     statoContratto: stato,
     cbUnitariaSnapshot: agent.cbUnitaria,
-    cbMaturata: stato === 'K.O.' || stato === 'Switch - Out' ? 0 : agent.cbUnitaria,
+    cbMaturata:
+      stato === 'Bozza' || stato === 'K.O.' || stato === 'Switch - Out' ? 0 : agent.cbUnitaria,
   };
 }
 
 function buildContractFormData(draft) {
   const formData = new FormData();
   [
+    'saveMode',
+    'agenteId',
     'ragioneSociale',
     'cellulare',
     'tipoCliente',
@@ -1079,6 +1300,10 @@ function buildContractFormData(draft) {
     formData.append('tipoOperazione', operation);
   });
 
+  draft.existingFileContratto.forEach((file) => {
+    formData.append('retainedFileName', file.name || '');
+  });
+
   draft.fileContratto.forEach((file) => {
     formData.append('fileContratto', file);
   });
@@ -1086,7 +1311,41 @@ function buildContractFormData(draft) {
   return formData;
 }
 
-function validateContractDraft(draft) {
+function validateContractDraft(draft, saveMode = 'submit') {
+  if (saveMode === 'draft') {
+    if (!draft.ragioneSociale && !draft.cellulare && !draft.email && !draft.piva) {
+      return 'Per salvare una bozza inserisci almeno cliente, cellulare, email o P.IVA.';
+    }
+
+    if (draft.email && !EMAIL_RE.test(draft.email)) {
+      return 'Email non valida.';
+    }
+
+    if (draft.piva && !isValidVatOrFiscalCode(draft.piva)) {
+      return 'Inserisci una P.IVA di 11 cifre o un codice fiscale valido.';
+    }
+
+    if (draft.iban && !IBAN_RE.test(draft.iban.replace(/\s+/g, '').toUpperCase())) {
+      return 'IBAN non valido.';
+    }
+
+    if (draft.fileContratto.length + draft.existingFileContratto.length > maxContractFiles) {
+      return `Puoi caricare al massimo ${maxContractFiles} documenti.`;
+    }
+
+    for (const file of draft.fileContratto) {
+      if (!isAllowedContractFile(file)) {
+        return 'Carica solo PDF, Word, Excel, PowerPoint, OpenDocument o immagini.';
+      }
+
+      if (file.size > maxContractFileSize) {
+        return 'Ogni documento deve essere al massimo di 15 MB.';
+      }
+    }
+
+    return '';
+  }
+
   if (!draft.ragioneSociale || !draft.cellulare || !draft.tipoCliente) {
     return 'Compila cliente, cellulare e tipo cliente.';
   }
@@ -1135,7 +1394,7 @@ function validateContractDraft(draft) {
     return 'Inserisci una P.IVA di 11 cifre o un codice fiscale valido.';
   }
 
-  if (draft.fileContratto.length > maxContractFiles) {
+  if (draft.fileContratto.length + draft.existingFileContratto.length > maxContractFiles) {
     return `Puoi caricare al massimo ${maxContractFiles} documenti.`;
   }
 
@@ -1188,21 +1447,40 @@ function renderSelectedContractFiles() {
   const list = document.getElementById('contract-files-list');
   const counter = document.getElementById('contract-files-count');
   const pill = document.getElementById('contract-files-pill');
+  const totalFiles = existingContractFiles.length + selectedContractFiles.length;
 
-  container.hidden = selectedContractFiles.length === 0;
-  counter.textContent = contractFilesCounterLabel(selectedContractFiles.length, true);
-  pill.textContent = contractFilesCounterLabel(selectedContractFiles.length, false);
+  container.hidden = totalFiles === 0;
+  counter.textContent = contractFilesCounterLabel(totalFiles, true);
+  pill.textContent = contractFilesCounterLabel(totalFiles, false);
 
-  list.innerHTML = selectedContractFiles
-    .map(
+  list.innerHTML = [
+    ...existingContractFiles.map(
+      (file, index) => `
+        <div class="file-chip existing">
+          <span class="file-chip-name">
+            ${escapeHtml(file.visibleName || file.name || 'Documento')}
+            <small>(gia caricato)</small>
+          </span>
+          <button type="button" data-remove-existing-contract-file="${index}">Rimuovi</button>
+        </div>
+      `
+    ),
+    ...selectedContractFiles.map(
       (file, index) => `
         <div class="file-chip">
           <span class="file-chip-name">${escapeHtml(file.name)} <small>(${formatFileSize(file.size)})</small></span>
           <button type="button" data-remove-contract-file="${index}">Rimuovi</button>
         </div>
       `
-    )
-    .join('');
+    ),
+  ].join('');
+
+  list.querySelectorAll('[data-remove-existing-contract-file]').forEach((button) => {
+    button.addEventListener('click', () => {
+      existingContractFiles.splice(Number(button.dataset.removeExistingContractFile), 1);
+      renderSelectedContractFiles();
+    });
+  });
 
   list.querySelectorAll('[data-remove-contract-file]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -1241,11 +1519,8 @@ function updateNewContractSummary() {
   const tipoFornitura = document.querySelector('select[name="tipoFornitura"]').value;
   const categoriaCliente = document.querySelector('select[name="categoriaCliente"]').value;
   const weightedUnits = contractUnitCount({ tipoFornitura, categoriaCliente });
-  const predictedCommission = agent.cbUnitaria * weightedUnits;
 
-  document.getElementById('summary-practices').textContent = '1';
   document.getElementById('summary-units').textContent = String(weightedUnits);
-  document.getElementById('summary-commission').textContent = formatCurrency(predictedCommission);
 }
 
 function toggleField(id, isVisible) {
@@ -1288,6 +1563,34 @@ function updateAdminVisibility() {
   document.querySelectorAll('.admin-only').forEach((element) => {
     element.hidden = agent.ruolo !== 'admin';
   });
+  populateContractAgentOptions();
+}
+
+function populateContractAgentOptions() {
+  const select = document.getElementById('contract-agent-select');
+  if (!select) return;
+
+  if (agent.ruolo !== 'admin') {
+    select.innerHTML = '';
+    select.required = false;
+    return;
+  }
+
+  const options = (adminState.agents.length ? adminState.agents : [agent])
+    .slice()
+    .sort((left, right) => left.nome.localeCompare(right.nome, 'it'));
+
+  select.innerHTML = [
+    '<option value="">Seleziona agente</option>',
+    ...options.map(
+      (agentRow) =>
+        `<option value="${agentRow.id}">${escapeHtml(agentRow.nome)}${
+          agentRow.attivo === false ? ' (disattivo)' : ''
+        }</option>`
+    ),
+  ].join('');
+  select.required = true;
+  select.value = String(agent.id);
 }
 
 async function renderAdminPage() {
@@ -1303,6 +1606,7 @@ async function renderAdminPage() {
     syncAdminFilterControls();
     renderAdminMetrics(stats);
     populateAdminFilterOptions(agents);
+    populateContractAgentOptions();
     renderAdminAgentList(stats, agents);
     renderAdminContracts(adminContracts, agents);
   } catch (error) {
@@ -1321,8 +1625,7 @@ async function renderAdminPage() {
 function renderAdminMetrics(stats) {
   const activeAgents = stats.agents.filter((row) => row.attivo).length;
   renderMetrics('admin-metrics', [
-    { label: 'Pratiche inserite mese', value: stats.totals.practices || stats.totals.contracts },
-    { label: 'Contratti conteggiati mese', value: stats.totals.contracts },
+    { label: 'Contatori mese', value: stats.totals.contracts },
     { label: 'Validati (OK)', value: stats.totals.ok },
     { label: 'Caricati', value: stats.totals.caricati },
     { label: 'Inviati', value: stats.totals.inviati },
@@ -1367,7 +1670,7 @@ function renderAdminAgentList(stats, agents) {
           </header>
           <div class="admin-stat-grid">
             <div><span>Contratti</span><strong>${row.contratti || 0}</strong></div>
-            <div><span>Pratiche</span><strong>${row.pratiche || row.contratti || 0}</strong></div>
+            <div><span>Contatori</span><strong>${row.pratiche || row.contratti || 0}</strong></div>
             <div><span>Mese</span><strong>${row.ok || 0}/${agentRow.targetMensile || 0}</strong><small>${row.percentualeTargetMensile || 0}%</small></div>
             <div><span>Trimestre</span><strong>${row.okTrimestre || 0}/${agentRow.targetTrimestrale || 0}</strong><small>${row.percentualeTargetTrimestrale || 0}%</small></div>
             <div><span>Anno</span><strong>${row.okAnno || 0}/${agentRow.targetAnnuale || 0}</strong><small>${row.percentualeTargetAnnuale || 0}%</small></div>
@@ -1421,7 +1724,9 @@ function renderAdminContracts(adminContracts, agents) {
     const matchesSent =
       hasSearchQuery ||
       adminState.contractSentFilter === 'all' ||
-      (adminState.contractSentFilter === 'pending' && contract.statoContratto !== 'Inviato') ||
+      (adminState.contractSentFilter === 'pending' &&
+        contract.statoContratto !== 'Inviato' &&
+        contract.statoContratto !== 'Bozza') ||
       (adminState.contractSentFilter === 'sent' && contract.statoContratto === 'Inviato');
     return matchesQuery && matchesAgent && matchesStatus && matchesSent;
   });
@@ -1542,6 +1847,7 @@ function adminCounterCard(label, value, tone) {
 
 function adminContractRowClass(contract) {
   const status = String(contract.statoContratto || '');
+  if (status === 'Bozza') return 'admin-contract-row is-muted';
   if (status === 'K.O.') return 'admin-contract-row is-muted';
   if (status === 'Caricato') return 'admin-contract-row is-urgent';
   if (status === 'OK') return 'admin-contract-row is-attention';
@@ -1648,7 +1954,10 @@ async function bulkMarkSelectedSent() {
     .map(Number)
     .filter((id) =>
       adminState.contracts.some(
-        (contract) => Number(contract.id) === id && contract.statoContratto !== 'Inviato'
+        (contract) =>
+          Number(contract.id) === id &&
+          contract.statoContratto !== 'Inviato' &&
+          contract.statoContratto !== 'Bozza'
       )
     );
 
@@ -1686,7 +1995,8 @@ function updateAdminBulkBar(rows) {
   const actionableSelected = adminState.contracts.filter(
     (contract) =>
       adminState.selectedContractIds.map(Number).includes(Number(contract.id)) &&
-      contract.statoContratto !== 'Inviato'
+      contract.statoContratto !== 'Inviato' &&
+      contract.statoContratto !== 'Bozza'
   ).length;
 
   bar.hidden = rows.length === 0;
@@ -1839,7 +2149,6 @@ async function handleLogin(event) {
     agent = session.agent;
     await loadAndRenderContracts({ silent: true, force: true });
     document.getElementById('agent-name').textContent = agent.nome;
-    document.getElementById('contract-form').elements.agente.value = agent.nome;
     setConnectionStatus('online', 'Database connesso');
     setAuthLocked(false);
     event.currentTarget.reset();
@@ -1946,7 +2255,7 @@ function percent(done, target) {
 
 function normalizeStatus(value) {
   const status = String(value).trim();
-  const valid = ['OK', 'Caricato', 'Inviato', 'K.O.', 'Switch - Out'];
+  const valid = ['Bozza', 'OK', 'Caricato', 'Inviato', 'K.O.', 'Switch - Out'];
   return valid.includes(status) ? status : 'Caricato';
 }
 
@@ -2047,7 +2356,6 @@ async function initApp() {
         agent = session.agent;
         await loadAndRenderContracts({ silent: true, force: true });
         document.getElementById('agent-name').textContent = agent.nome;
-        document.getElementById('contract-form').elements.agente.value = agent.nome;
         setConnectionStatus('online', 'Database connesso');
         setAuthLocked(false);
       } catch (err) {

@@ -115,9 +115,66 @@ describe('sanitizeContractInput', () => {
       });
       assert.equal(result.tipoFornitura, 'dual');
     });
+
+    it('accetta una bozza con dati parziali se allowDraft=true', () => {
+      const result = sanitizeContractInput(
+        {
+          ragioneSociale: 'Rossi SRL',
+          cellulare: '',
+          tipoCliente: '',
+          categoriaCliente: '',
+          fornitore: '',
+          nomeOfferta: '',
+          tipoOperazione: [],
+          tipoFornitura: '',
+          pod: '',
+          pdr: '',
+          metodoPagamento: '',
+          iban: '',
+          piva: '',
+          email: '',
+          indirizzoFatturazione: '',
+          indirizzoFornitura: '',
+          descrizione: '',
+          dataInizioFornitura: '',
+        },
+        { allowDraft: true }
+      );
+      assert.equal(result.ragioneSociale, 'Rossi SRL');
+    });
   });
 
   describe('campi obbligatori', () => {
+    it('lancia DRAFT_TOO_EMPTY se una bozza e completamente vuota', () => {
+      throwsWithCode(
+        () =>
+          sanitizeContractInput(
+            {
+              ragioneSociale: '',
+              cellulare: '',
+              tipoCliente: '',
+              categoriaCliente: '',
+              fornitore: '',
+              nomeOfferta: '',
+              tipoOperazione: [],
+              tipoFornitura: '',
+              pod: '',
+              pdr: '',
+              metodoPagamento: '',
+              iban: '',
+              piva: '',
+              email: '',
+              indirizzoFatturazione: '',
+              indirizzoFornitura: '',
+              descrizione: '',
+              dataInizioFornitura: '',
+            },
+            { allowDraft: true }
+          ),
+        'DRAFT_TOO_EMPTY'
+      );
+    });
+
     it('lancia CUSTOMER_REQUIRED se ragione sociale vuota', () => {
       throwsWithCode(
         () => sanitizeContractInput({ ...validContract, ragioneSociale: '  ' }),

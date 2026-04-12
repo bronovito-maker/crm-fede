@@ -25,7 +25,7 @@ const CONFIG = {
 
 const allowedClientTypes = new Set(['Business', 'Privato', 'Condominio']);
 const allowedCustomerCategories = new Set(['prospect', 'switch ricorrente']);
-const allowedStatuses = new Set(['Caricato', 'Inviato', 'OK', 'K.O.', 'Switch - Out']);
+const allowedStatuses = new Set(['Bozza', 'Caricato', 'Inviato', 'OK', 'K.O.', 'Switch - Out']);
 const allowedOperations = new Set(['switch', 'switch + voltura', 'cambio listino', 'subentro']);
 const allowedSupplyTypes = new Set(['luce', 'gas', 'dual']);
 const allowedPaymentMethods = new Set(['bollettino', 'rid']);
@@ -282,12 +282,19 @@ app.post(
   async (req, res) => {
     try {
       ensureConfigured();
-      const agent = await getCurrentAgent(req.session.agentId);
-      const contract = sanitizeContractInput(req.body);
+      const currentUser = await getCurrentAgent(req.session.agentId);
+      const saveMode = normalizeContractSaveMode(req.body.mode || req.body.saveMode);
+      const contract = sanitizeContractInput(req.body, { allowDraft: saveMode === 'draft' });
+      const requestedAgentId = Number.parseInt(cleanText(req.body.agenteId), 10);
+      const assignedAgentId =
+        currentUser.ruolo === 'admin' && Number.isInteger(requestedAgentId) && requestedAgentId > 0
+          ? requestedAgentId
+          : req.session.agentId;
+      const assignedAgent = await getCurrentAgent(assignedAgentId);
       const files = Array.isArray(req.files) ? req.files : [];
       const uploadedFiles = await Promise.all(files.map(uploadContractFile));
       const payload = {
-        agente: [req.session.agentId],
+        agente: [assignedAgent.id],
         data_inserimento: todayIsoDate(),
         ragione_sociale: contract.ragioneSociale,
         cellulare: contract.cellulare,
@@ -306,9 +313,9 @@ app.post(
         indirizzo_fatturazione: contract.indirizzoFatturazione,
         indirizzo_fornitura: contract.indirizzoFornitura,
         descrizione: contract.descrizione,
-        stato_contratto: 'Caricato',
+        stato_contratto: saveMode === 'draft' ? 'Bozza' : 'Caricato',
         data_inizio_fornitura: contract.dataInizioFornitura,
-        cb_unitaria_snapshot: agent.cbUnitaria,
+        cb_unitaria_snapshot: assignedAgent.cbUnitaria,
       };
 
       if (contract.idContratto) {
@@ -323,7 +330,7 @@ app.post(
       }
 
       const created = await createBaserowContract(payload);
-      invalidateContractsCache(req.session.agentId);
+      invalidateContractsCache(assignedAgent.id);
       invalidateAdminStatsCache();
       res.status(201).json(normalizeContract(created));
     } catch (error) {
@@ -331,6 +338,122 @@ app.post(
     }
   }
 );
+
+app.patch(
+  '/api/contracts/:id',
+  requireAuth,
+  upload.array('fileContratto', maxContractFiles),
+  async (req, res) => {
+    try {
+      ensureConfigured();
+      const contractId = Number(req.params.id);
+      if (!Number.isInteger(contractId) || contractId <= 0) {
+        throw publicError(400, 'INVALID_CONTRACT_ID', 'Contratto non valido.');
+      }
+
+      const currentUser = await getCurrentAgent(req.session.agentId);
+      const existing = await getBaserowContract(contractId);
+      const existingNormalized = normalizeContract(existing);
+      const existingAgentId = Number(linkedAgentId(existing.agente)) || req.session.agentId;
+
+      if (currentUser.ruolo !== 'admin' && existingAgentId !== req.session.agentId) {
+        throw publicError(403, 'CONTRACT_FORBIDDEN', 'Contratto non accessibile.');
+      }
+
+      const saveMode = normalizeContractSaveMode(req.body.mode || req.body.saveMode);
+      const contract = sanitizeContractInput(req.body, { allowDraft: saveMode === 'draft' });
+      const requestedAgentId = Number.parseInt(cleanText(req.body.agenteId), 10);
+      const assignedAgentId =
+        currentUser.ruolo === 'admin' && Number.isInteger(requestedAgentId) && requestedAgentId > 0
+          ? requestedAgentId
+          : existingAgentId;
+      const assignedAgent = await getCurrentAgent(assignedAgentId);
+      const files = Array.isArray(req.files) ? req.files : [];
+      const uploadedFiles = await Promise.all(files.map(uploadContractFile));
+      const retainedFileNames = normalizeRetainedFileNames(req.body.retainedFileName);
+      const preservedFiles = fileValue(existing.file_contratto)
+        .filter((file) => retainedFileNames.includes(file.name))
+        .map((file) => ({
+          name: file.name,
+          visible_name: file.visibleName || file.name,
+        }));
+      const nextStatus =
+        saveMode === 'draft'
+          ? 'Bozza'
+          : existingNormalized.statoContratto === 'Bozza'
+            ? 'Caricato'
+            : existingNormalized.statoContratto;
+
+      const payload = {
+        agente: [assignedAgent.id],
+        ragione_sociale: contract.ragioneSociale,
+        cellulare: contract.cellulare,
+        tipo_cliente: contract.tipoCliente,
+        categoria_cliente: contract.categoriaCliente,
+        fornitore: contract.fornitore,
+        nome_offerta: contract.nomeOfferta,
+        tipo_operazione: contract.tipoOperazione,
+        tipo_fornitura: contract.tipoFornitura,
+        pod: contract.pod,
+        pdr: contract.pdr,
+        metodo_pagamento: contract.metodoPagamento,
+        iban: contract.iban,
+        piva: contract.piva,
+        email: contract.email,
+        indirizzo_fatturazione: contract.indirizzoFatturazione,
+        indirizzo_fornitura: contract.indirizzoFornitura,
+        descrizione: contract.descrizione,
+        stato_contratto: nextStatus,
+        data_inizio_fornitura: contract.dataInizioFornitura,
+        cb_unitaria_snapshot: assignedAgent.cbUnitaria,
+        id_contratto: contract.idContratto,
+      };
+
+      if (preservedFiles.length || uploadedFiles.length) {
+        payload.file_contratto = [
+          ...preservedFiles,
+          ...uploadedFiles.map((uploadedFile, index) => ({
+            name: uploadedFile.name,
+            visible_name: files[index].originalname,
+          })),
+        ];
+      }
+
+      const updated = await updateBaserowContract(contractId, payload);
+      invalidateContractsCache(existingAgentId);
+      invalidateContractsCache(assignedAgent.id);
+      invalidateAdminStatsCache();
+      res.json(normalizeContract(updated));
+    } catch (error) {
+      handleApiError(res, error, 'CONTRACT_NOT_UPDATED', 'Contratto non aggiornato.');
+    }
+  }
+);
+
+app.delete('/api/contracts/:id', requireAuth, async (req, res) => {
+  try {
+    ensureConfigured();
+    const contractId = Number(req.params.id);
+    if (!Number.isInteger(contractId) || contractId <= 0) {
+      throw publicError(400, 'INVALID_CONTRACT_ID', 'Contratto non valido.');
+    }
+
+    const currentUser = await getCurrentAgent(req.session.agentId);
+    const existing = await getBaserowContract(contractId);
+    const existingAgentId = Number(linkedAgentId(existing.agente)) || req.session.agentId;
+
+    if (currentUser.ruolo !== 'admin' && existingAgentId !== req.session.agentId) {
+      throw publicError(403, 'CONTRACT_FORBIDDEN', 'Contratto non accessibile.');
+    }
+
+    await deleteBaserowContract(contractId);
+    invalidateContractsCache(existingAgentId);
+    invalidateAdminStatsCache();
+    res.json({ ok: true });
+  } catch (error) {
+    handleApiError(res, error, 'CONTRACT_NOT_DELETED', 'Contratto non eliminato.');
+  }
+});
 
 app.patch('/api/contracts/:id/status', requireAuth, async (req, res) => {
   try {
@@ -817,6 +940,26 @@ async function updateBaserowContract(contractId, payload) {
   );
 }
 
+async function deleteBaserowContract(contractId) {
+  const response = await fetch(
+    `${CONFIG.baserowBaseUrl}/api/database/rows/table/${CONFIG.contrattiTableId}/${contractId}/?user_field_names=true`,
+    {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Token ${CONFIG.baserowToken}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const body = await response.text();
+    const error = new Error(`Baserow API ${response.status}: ${body}`);
+    error.status = response.status;
+    throw error;
+  }
+}
+
 async function createBaserowAgent(payload) {
   return baserowFetch(`/api/database/rows/table/${CONFIG.agentiTableId}/?user_field_names=true`, {
     method: 'POST',
@@ -865,7 +1008,7 @@ async function uploadContractFile(file) {
   return response.json();
 }
 
-function sanitizeContractInput(input) {
+function sanitizeContractInput(input, { allowDraft = false } = {}) {
   const contract = {
     idContratto: cleanText(input.idContratto),
     ragioneSociale: cleanText(input.ragioneSociale),
@@ -888,54 +1031,78 @@ function sanitizeContractInput(input) {
     dataInizioFornitura: cleanText(input.dataInizioFornitura),
   };
 
-  if (!contract.ragioneSociale) {
+  if (allowDraft) {
+    if (!contract.ragioneSociale && !contract.cellulare && !contract.email && !contract.piva) {
+      throw publicError(
+        400,
+        'DRAFT_TOO_EMPTY',
+        'Per salvare una bozza inserisci almeno cliente, cellulare, email o P.IVA.'
+      );
+    }
+  }
+
+  if (!allowDraft && !contract.ragioneSociale) {
     throw publicError(400, 'CUSTOMER_REQUIRED', 'Inserisci il cliente.');
   }
 
-  if (!contract.cellulare) {
+  if (!allowDraft && !contract.cellulare) {
     throw publicError(400, 'PHONE_REQUIRED', 'Inserisci il cellulare.');
   }
 
-  if (!allowedClientTypes.has(contract.tipoCliente)) {
+  if ((!allowDraft || contract.tipoCliente) && !allowedClientTypes.has(contract.tipoCliente)) {
     throw publicError(400, 'CLIENT_TYPE_INVALID', 'Tipo cliente non valido.');
   }
 
-  if (!allowedCustomerCategories.has(contract.categoriaCliente)) {
+  if (
+    (!allowDraft || contract.categoriaCliente) &&
+    !allowedCustomerCategories.has(contract.categoriaCliente)
+  ) {
     throw publicError(400, 'CUSTOMER_CATEGORY_INVALID', 'Categoria cliente non valida.');
   }
 
-  if (!contract.fornitore) {
+  if (!allowDraft && !contract.fornitore) {
     throw publicError(400, 'SUPPLIER_REQUIRED', 'Inserisci il fornitore.');
   }
 
-  if (!contract.nomeOfferta) {
+  if (!allowDraft && !contract.nomeOfferta) {
     throw publicError(400, 'OFFER_REQUIRED', "Inserisci il nome dell'offerta.");
   }
 
   if (
-    !contract.tipoOperazione.length ||
+    (!allowDraft && !contract.tipoOperazione.length) ||
     contract.tipoOperazione.some((operation) => !allowedOperations.has(operation))
   ) {
     throw publicError(400, 'OPERATION_INVALID', 'Tipo operazione non valido.');
   }
 
-  if (!allowedSupplyTypes.has(contract.tipoFornitura)) {
+  if ((!allowDraft || contract.tipoFornitura) && !allowedSupplyTypes.has(contract.tipoFornitura)) {
     throw publicError(400, 'SUPPLY_TYPE_INVALID', 'Tipo fornitura non valido.');
   }
 
-  if ((contract.tipoFornitura === 'luce' || contract.tipoFornitura === 'dual') && !contract.pod) {
+  if (
+    !allowDraft &&
+    (contract.tipoFornitura === 'luce' || contract.tipoFornitura === 'dual') &&
+    !contract.pod
+  ) {
     throw publicError(400, 'POD_REQUIRED', 'Inserisci il POD.');
   }
 
-  if ((contract.tipoFornitura === 'gas' || contract.tipoFornitura === 'dual') && !contract.pdr) {
+  if (
+    !allowDraft &&
+    (contract.tipoFornitura === 'gas' || contract.tipoFornitura === 'dual') &&
+    !contract.pdr
+  ) {
     throw publicError(400, 'PDR_REQUIRED', 'Inserisci il PDR.');
   }
 
-  if (!allowedPaymentMethods.has(contract.metodoPagamento)) {
+  if (
+    (!allowDraft || contract.metodoPagamento) &&
+    !allowedPaymentMethods.has(contract.metodoPagamento)
+  ) {
     throw publicError(400, 'PAYMENT_METHOD_INVALID', 'Metodo di pagamento non valido.');
   }
 
-  if (contract.metodoPagamento === 'rid' && !contract.iban) {
+  if (!allowDraft && contract.metodoPagamento === 'rid' && !contract.iban) {
     throw publicError(400, 'IBAN_REQUIRED', "Inserisci l'IBAN.");
   }
 
@@ -1116,13 +1283,14 @@ function buildAdminStats(agents, contracts) {
   const month = currentMonthKey();
   const quarter = currentQuarterKey();
   const year = String(new Date().getFullYear());
-  const monthlyContracts = contracts.filter((contract) =>
+  const operationalContracts = contracts.filter((contract) => contract.statoContratto !== 'Bozza');
+  const monthlyContracts = operationalContracts.filter((contract) =>
     contract.dataInserimento.startsWith(month)
   );
-  const quarterContracts = contracts.filter(
+  const quarterContracts = operationalContracts.filter(
     (contract) => contract.trimestreRiferimento === quarter
   );
-  const yearContracts = contracts.filter(
+  const yearContracts = operationalContracts.filter(
     (contract) => contract.annoRiferimento === year || contract.dataInserimento.startsWith(year)
   );
   const agentRows = agents.map((agent) => {
@@ -1314,12 +1482,25 @@ function normalizeStatus(value) {
   if (allowedStatuses.has(status)) return status;
 
   const map = {
+    bozza: 'Bozza',
     validato: 'OK',
     inviato: 'Inviato',
     'in attesa': 'Caricato',
     scartato: 'K.O.',
   };
   return map[status.toLowerCase()] || 'Caricato';
+}
+
+function normalizeContractSaveMode(value) {
+  return cleanText(value).toLowerCase() === 'draft' ? 'draft' : 'submit';
+}
+
+function normalizeRetainedFileNames(value) {
+  if (Array.isArray(value)) {
+    return value.map(cleanText).filter(Boolean);
+  }
+  const single = cleanText(value);
+  return single ? [single] : [];
 }
 
 function cleanText(value) {
