@@ -2228,41 +2228,50 @@ td[data-label='Cliente'] strong {
   }
 
   #dashboard-metrics,
-  #cb-metrics {
+  #cb-metrics-money {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  #cb-metrics {
+  #cb-metrics-money,
+  #cb-metrics-counts {
     gap: 12px;
   }
 
-  #admin-metrics {
+  #cb-metrics-counts {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-bottom: 18px;
+  }
+
+  #admin-metrics-status {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
   }
 
-  #cb-metrics .metric-card {
+  #admin-metrics-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+
+  #cb-metrics-money .metric-card,
+  #cb-metrics-counts .metric-card,
+  #admin-metrics-status .metric-card,
+  #admin-metrics-summary .metric-card {
     padding: 14px 16px;
   }
 
-  #admin-metrics .metric-card {
-    padding: 14px 16px;
-  }
-
-  #cb-metrics .metric-card span {
+  #cb-metrics-money .metric-card span,
+  #cb-metrics-counts .metric-card span,
+  #admin-metrics-status .metric-card span,
+  #admin-metrics-summary .metric-card span {
     margin-bottom: 6px;
     font-size: 0.84rem;
   }
 
-  #admin-metrics .metric-card span {
-    margin-bottom: 6px;
-    font-size: 0.84rem;
-  }
-
-  #cb-metrics .metric-card strong {
-    font-size: 1.45rem;
-  }
-
-  #admin-metrics .metric-card strong {
+  #cb-metrics-money .metric-card strong,
+  #cb-metrics-counts .metric-card strong,
+  #admin-metrics-status .metric-card strong,
+  #admin-metrics-summary .metric-card strong {
     font-size: 1.45rem;
   }
 
@@ -2589,40 +2598,108 @@ td[data-label='Cliente'] strong {
     margin-bottom: 24px;
   }
 
-  #cb-metrics {
+  #cb-metrics-money {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  #cb-metrics-counts {
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 12px;
+    gap: 16px;
+    margin-bottom: 20px;
   }
 
-  #cb-metrics .metric-card {
+  #cb-metrics-money .metric-card,
+  #cb-metrics-counts .metric-card {
     padding: 14px 16px;
   }
 
-  #cb-metrics .metric-card span {
+  #cb-metrics-money .metric-card span,
+  #cb-metrics-counts .metric-card span {
     margin-bottom: 6px;
     font-size: 0.84rem;
   }
 
-  #cb-metrics .metric-card strong {
+  #cb-metrics-money .metric-card strong,
+  #cb-metrics-counts .metric-card strong {
     font-size: 1.4rem;
   }
 
-  #admin-metrics {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 12px;
+  #admin-metrics-status {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 16px;
   }
 
-  #admin-metrics .metric-card {
+  #admin-metrics-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  #admin-metrics-status .metric-card,
+  #admin-metrics-summary .metric-card {
     padding: 14px 16px;
   }
 
-  #admin-metrics .metric-card span {
+  #admin-metrics-status .metric-card span,
+  #admin-metrics-summary .metric-card span {
     margin-bottom: 6px;
     font-size: 0.84rem;
   }
 
-  #admin-metrics .metric-card strong {
+  #admin-metrics-status .metric-card strong,
+  #admin-metrics-summary .metric-card strong {
     font-size: 1.4rem;
+  }
+
+  /* Admin summary cards: show icon */
+  #admin-metrics-summary .metric-card {
+    display: grid;
+    grid-template-columns: 42px 1fr;
+    grid-template-rows: auto auto;
+    column-gap: 14px;
+    row-gap: 4px;
+    align-items: center;
+    padding: 18px 20px;
+  }
+
+  #admin-metrics-summary .metric-card .metric-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    grid-row: 1 / -1;
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    background: #f1f5f9;
+  }
+
+  #admin-metrics-summary .metric-card .metric-icon svg {
+    width: 20px;
+    height: 20px;
+    color: var(--muted);
+  }
+
+  #admin-metrics-summary .metric-card.accent-green .metric-icon { background: #dcfce7; }
+  #admin-metrics-summary .metric-card.accent-green .metric-icon svg { color: #16a34a; }
+  #admin-metrics-summary .metric-card.accent-amber .metric-icon { background: #fef3c7; }
+  #admin-metrics-summary .metric-card.accent-amber .metric-icon svg { color: #d97706; }
+  #admin-metrics-summary .metric-card.accent-blue .metric-icon { background: #dbeafe; }
+  #admin-metrics-summary .metric-card.accent-blue .metric-icon svg { color: #2563eb; }
+
+  #admin-metrics-summary .metric-card > span:not(.metric-icon) {
+    margin-bottom: 0;
+    align-self: end;
+  }
+
+  #admin-metrics-summary .metric-card > strong {
+    align-self: start;
+  }
+
+  #admin-metrics-status .metric-card:hover,
+  #admin-metrics-summary .metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(24, 32, 42, 0.12);
   }
 
   .metric-card strong {
@@ -2685,6 +2762,56 @@ td[data-label='Cliente'] strong {
 
   #dashboard-metrics .metric-card > strong {
     align-self: start;
+  }
+
+  /* CB money cards: show icon */
+  #cb-metrics-money .metric-card {
+    display: grid;
+    grid-template-columns: 42px 1fr;
+    grid-template-rows: auto auto;
+    column-gap: 14px;
+    row-gap: 4px;
+    align-items: center;
+    padding: 18px 20px;
+  }
+
+  #cb-metrics-money .metric-card .metric-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    grid-row: 1 / -1;
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    background: #f1f5f9;
+  }
+
+  #cb-metrics-money .metric-card .metric-icon svg {
+    width: 20px;
+    height: 20px;
+    color: var(--muted);
+  }
+
+  #cb-metrics-money .metric-card.accent-green .metric-icon { background: #dcfce7; }
+  #cb-metrics-money .metric-card.accent-green .metric-icon svg { color: #16a34a; }
+  #cb-metrics-money .metric-card.accent-amber .metric-icon { background: #fef3c7; }
+  #cb-metrics-money .metric-card.accent-amber .metric-icon svg { color: #d97706; }
+  #cb-metrics-money .metric-card.accent-blue .metric-icon { background: #dbeafe; }
+  #cb-metrics-money .metric-card.accent-blue .metric-icon svg { color: #2563eb; }
+
+  #cb-metrics-money .metric-card > span:not(.metric-icon) {
+    margin-bottom: 0;
+    align-self: end;
+  }
+
+  #cb-metrics-money .metric-card > strong {
+    align-self: start;
+  }
+
+  #cb-metrics-money .metric-card:hover,
+  #cb-metrics-counts .metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(24, 32, 42, 0.12);
   }
 
   .contract-form,

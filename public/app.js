@@ -990,22 +990,28 @@ function renderCbPage() {
   const filteredKo = filteredMonthly.filter((contract) => contract.statoContratto === 'K.O.');
 
   document.getElementById('cb-category-filter').value = cbCategoryFilter;
-  renderMetrics('cb-metrics', [
+  renderMetrics('cb-metrics-money', [
     {
       label: 'CB del mese',
       value: formatCurrency(
         sumContractCommissions([...filteredOk, ...filteredCaricati, ...filteredInviati])
       ),
+      accent: 'blue',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
     },
-    { label: 'CB validata (OK)', value: formatCurrency(sumContractCommissions(filteredOk)) },
+    { label: 'CB validata (OK)', value: formatCurrency(sumContractCommissions(filteredOk)), accent: 'green', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>' },
     {
       label: 'CB in attesa',
       value: formatCurrency(sumContractCommissions([...filteredCaricati, ...filteredInviati])),
+      accent: 'amber',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
     },
-    { label: 'OK', value: sumContractUnits(filteredOk) },
-    { label: 'Caricati', value: sumContractUnits(filteredCaricati) },
-    { label: 'Inviati', value: sumContractUnits(filteredInviati) },
-    { label: 'K.O.', value: sumContractUnits(filteredKo) },
+  ]);
+  renderMetrics('cb-metrics-counts', [
+    { label: 'OK', value: sumContractUnits(filteredOk), accent: 'green' },
+    { label: 'Caricati', value: sumContractUnits(filteredCaricati), accent: 'blue' },
+    { label: 'Inviati', value: sumContractUnits(filteredInviati), accent: 'blue' },
+    { label: 'K.O.', value: sumContractUnits(filteredKo), accent: 'red' },
   ]);
 
   const table = document.getElementById('cb-table');
@@ -1750,16 +1756,18 @@ async function renderAdminPage() {
 
 function renderAdminMetrics(stats) {
   const activeAgents = stats.agents.filter((row) => row.attivo).length;
-  renderMetrics('admin-metrics', [
-    { label: 'Contatori mese', value: stats.totals.contracts },
-    { label: 'Validati (OK)', value: stats.totals.ok },
-    { label: 'Caricati', value: stats.totals.caricati },
-    { label: 'Inviati', value: stats.totals.inviati },
-    { label: 'K.O.', value: stats.totals.ko },
-    { label: 'Switch Out', value: stats.totals.switchOut },
-    { label: 'CB validata mese', value: formatCurrency(stats.totals.cbValidata) },
-    { label: 'CB potenziale mese', value: formatCurrency(stats.totals.cbPotenziale) },
-    { label: 'Agenti attivi', value: activeAgents },
+  renderMetrics('admin-metrics-status', [
+    { label: 'Contatori mese', value: stats.totals.contracts, accent: 'blue' },
+    { label: 'Validati (OK)', value: stats.totals.ok, accent: 'green' },
+    { label: 'Caricati', value: stats.totals.caricati, accent: 'blue' },
+    { label: 'Inviati', value: stats.totals.inviati, accent: 'blue' },
+    { label: 'K.O.', value: stats.totals.ko, accent: 'red' },
+    { label: 'Switch Out', value: stats.totals.switchOut, accent: 'red' },
+  ]);
+  renderMetrics('admin-metrics-summary', [
+    { label: 'CB validata mese', value: formatCurrency(stats.totals.cbValidata), accent: 'green', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' },
+    { label: 'CB potenziale mese', value: formatCurrency(stats.totals.cbPotenziale), accent: 'amber', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' },
+    { label: 'Agenti attivi', value: activeAgents, accent: 'blue', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
   ]);
 }
 
