@@ -93,6 +93,7 @@ const baserowClient = {
 async function fetchJson(url, options = {}) {
   const isFormData = options.body instanceof FormData;
   const response = await fetch(url, {
+    credentials: 'same-origin',
     ...options,
     headers: isFormData
       ? options.headers || {}
