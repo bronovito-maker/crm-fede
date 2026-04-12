@@ -533,6 +533,22 @@ describe('helper coverage', () => {
     assert.ok(withPassword.password_hash.length > 20);
   });
 
+  it('agentToBaserowPayload non invia cb_unitaria se il valore non e presente', () => {
+    const payload = agentToBaserowPayload({
+      nome: 'Mario',
+      email: 'mario@example.it',
+      cbUnitaria: null,
+      targetMensile: 10,
+      targetTrimestrale: 30,
+      targetAnnuale: 120,
+      ruolo: 'agente',
+      attivo: true,
+      password: '',
+    });
+
+    assert.equal('cb_unitaria' in payload, false);
+  });
+
   it('normalizeContract normalizza un record Baserow completo', () => {
     const normalized = normalizeContract({
       id: 7,
@@ -1327,12 +1343,12 @@ describe('HTTP routes', () => {
         payloads.push(payload);
         assert.equal(payload.nome, 'Laura Verdi');
         assert.equal(payload.email, 'laura@example.it');
-        assert.equal(payload.cb_unitaria, 95);
         assert.equal(payload.target_mensile, 8);
         assert.equal(payload.target_trimestrale, 24);
         assert.equal(payload.target_annuale, 96);
         assert.equal(payload.ruolo, 'agente');
         assert.equal(payload.attivo, true);
+        assert.equal('cb_unitaria' in payload, false);
         assert.equal('password_hash' in payload, false);
 
         return mockJsonResponse({
@@ -1358,7 +1374,6 @@ describe('HTTP routes', () => {
         nome: 'Laura Verdi',
         email: 'LAURA@EXAMPLE.IT',
         password: '',
-        cbUnitaria: 95,
         targetMensile: 8,
         targetTrimestrale: 24,
         targetAnnuale: 96,

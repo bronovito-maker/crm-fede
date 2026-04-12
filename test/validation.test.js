@@ -388,6 +388,14 @@ describe('sanitizeAgentInput', () => {
       );
       assert.equal(result.nome, 'Marco Bianchi');
     });
+
+    it('lascia cbUnitaria a null se il campo non viene inviato', () => {
+      const result = sanitizeAgentInput(
+        { ...validAgent, cbUnitaria: '', password: '' },
+        { requirePassword: false }
+      );
+      assert.equal(result.cbUnitaria, null);
+    });
   });
 
   describe('campi obbligatori', () => {

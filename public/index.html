@@ -591,6 +591,13 @@
               <h2>Contratti collegati</h2>
               <span>CB del mese</span>
             </div>
+            <div class="filters">
+              <select id="cb-category-filter" aria-label="Filtra CB per categoria cliente">
+                <option value="all">Tutti</option>
+                <option value="prospect">Prospect</option>
+                <option value="switch ricorrente">Switch ricorrenti</option>
+              </select>
+            </div>
             <div class="table-wrap flat">
               <table>
                 <caption class="sr-only">
@@ -621,7 +628,7 @@
           <div class="progress-layout">
             <article class="panel progress-focus">
               <div class="panel-heading">
-                <h2>Target mensile</h2>
+                <h2>Avanzamento del mese</h2>
                 <span id="month-target-label"></span>
               </div>
               <strong id="month-target-percent"></strong>
@@ -631,6 +638,15 @@
               <p class="motivation" id="progress-message"></p>
             </article>
             <div class="target-stack">
+              <article class="panel">
+                <h2>Mese ricorrente</h2>
+                <p class="target-line" id="recurring-target"></p>
+                <strong class="target-percent-small" id="recurring-target-percent"></strong>
+                <div class="progress-track compact">
+                  <span id="recurring-target-bar"></span>
+                </div>
+                <p class="target-line" id="recurring-target-note"></p>
+              </article>
               <article class="panel">
                 <h2>Trimestre</h2>
                 <p class="target-line" id="quarter-target"></p>
@@ -939,10 +955,6 @@
                     <p>Valori personalizzati per ogni agente.</p>
                   </div>
                   <div class="admin-form-grid">
-                    <label>
-                      CB unitaria
-                      <input name="cbUnitaria" type="number" min="0" step="0.01" required />
-                    </label>
                     <label>
                       Target mensile contratti OK
                       <input name="targetMensile" type="number" min="0" step="1" required />

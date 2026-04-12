@@ -216,6 +216,7 @@ const adminState = {
   agentRole: 'all',
   agentState: 'all',
 };
+let cbCategoryFilter = 'all';
 
 const pages = {
   dashboard: 'Dashboard',
@@ -344,6 +345,10 @@ document
 document
   .getElementById('contract-files-input')
   .addEventListener('change', handleContractFilesSelection);
+document.getElementById('cb-category-filter').addEventListener('change', (event) => {
+  cbCategoryFilter = event.currentTarget.value || 'all';
+  renderCbPage();
+});
 
 // ---- File drop zone ----
 (function setupFileDropZone() {
@@ -666,9 +671,9 @@ function renderDashboard() {
   const summary = getSummary();
   renderMetrics('dashboard-metrics', [
     { label: 'Contatori inseriti', value: summary.monthlyUnits },
-    { label: 'Contratti OK', value: summary.okUnits },
-    { label: 'Contratti inviati', value: summary.inviatiUnits },
-    { label: 'Contratti scartati (K.O.)', value: summary.scartatiUnits },
+    { label: 'Contatori OK', value: summary.okUnits },
+    { label: 'Pratiche inviate', value: summary.inviati.length },
+    { label: 'Contatori K.O.', value: summary.scartatiUnits },
     { label: 'CB maturata', value: formatCurrency(summary.cbValidata) },
     { label: 'CB potenziale', value: formatCurrency(summary.cbPotenziale) },
     { label: 'Target mensile', value: agent.targetMensile },
@@ -954,24 +959,43 @@ function statusClass(status) {
 
 function renderCbPage() {
   const summary = getSummary();
+  const filteredMonthly =
+    cbCategoryFilter === 'all'
+      ? summary.monthly
+      : summary.monthly.filter((contract) => contract.categoriaCliente === cbCategoryFilter);
+  const filteredOk = filteredMonthly.filter((contract) => contract.statoContratto === 'OK');
+  const filteredCaricati = filteredMonthly.filter(
+    (contract) => contract.statoContratto === 'Caricato'
+  );
+  const filteredInviati = filteredMonthly.filter(
+    (contract) => contract.statoContratto === 'Inviato'
+  );
+  const filteredKo = filteredMonthly.filter((contract) => contract.statoContratto === 'K.O.');
+
+  document.getElementById('cb-category-filter').value = cbCategoryFilter;
   renderMetrics('cb-metrics', [
-    { label: 'CB del mese', value: formatCurrency(summary.cbPotenziale) },
-    { label: 'CB validata (OK)', value: formatCurrency(summary.cbValidata) },
+    {
+      label: 'CB del mese',
+      value: formatCurrency(
+        sumContractCommissions([...filteredOk, ...filteredCaricati, ...filteredInviati])
+      ),
+    },
+    { label: 'CB validata (OK)', value: formatCurrency(sumContractCommissions(filteredOk)) },
     {
       label: 'CB in attesa',
-      value: formatCurrency(sumContractCommissions([...summary.caricati, ...summary.inviati])),
+      value: formatCurrency(sumContractCommissions([...filteredCaricati, ...filteredInviati])),
     },
-    { label: 'OK', value: summary.okUnits },
-    { label: 'Caricati', value: summary.caricatiUnits },
-    { label: 'Inviati', value: summary.inviatiUnits },
-    { label: 'K.O.', value: summary.koUnits },
+    { label: 'OK', value: sumContractUnits(filteredOk) },
+    { label: 'Caricati', value: sumContractUnits(filteredCaricati) },
+    { label: 'Inviati', value: sumContractUnits(filteredInviati) },
+    { label: 'K.O.', value: sumContractUnits(filteredKo) },
   ]);
 
   const table = document.getElementById('cb-table');
   const tableWrap = table.closest('.table-wrap');
   const emptyState = document.getElementById('cb-empty');
 
-  table.innerHTML = summary.monthly
+  table.innerHTML = filteredMonthly
     .map(
       (contract) => `
         <tr data-contract-id="${contract.id}" tabindex="0" aria-label="Apri dettaglio contratto ${escapeHtml(contract.ragioneSociale)}">
@@ -994,14 +1018,23 @@ function renderCbPage() {
     });
   });
 
-  tableWrap.hidden = summary.monthly.length === 0;
-  emptyState.hidden = summary.monthly.length > 0;
+  tableWrap.hidden = filteredMonthly.length === 0;
+  emptyState.hidden = filteredMonthly.length > 0;
 }
 
 function renderProgressPage() {
   const summary = getSummary();
   const quarterKey = getQuarterKey(today);
   const yearKey = String(today.getFullYear());
+  const recurringPendingDone = currentMonthContracts()
+    .filter(
+      (contract) =>
+        contract.categoriaCliente === 'switch ricorrente' &&
+        ['Caricato', 'Inviato'].includes(contract.statoContratto)
+    )
+    .reduce((sum, contract) => sum + contractUnitCount(contract), 0);
+  const recurringMonthDone = summary.okUnits + recurringPendingDone;
+  const recurringMonthPercent = percent(recurringMonthDone, agent.targetMensile);
   const quarterDone = contracts
     .filter(
       (contract) =>
@@ -1030,6 +1063,14 @@ function renderProgressPage() {
     summary.mancanti === 0
       ? 'Target centrato. Puoi puntare al bonus extra.'
       : `Ti mancano ${summary.mancanti} contratti conteggiati per chiudere il target.`;
+  document.getElementById('recurring-target').textContent =
+    `${recurringMonthDone} di ${agent.targetMensile} contatori`;
+  document.getElementById('recurring-target-percent').textContent = `${recurringMonthPercent}%`;
+  document.getElementById('recurring-target-bar').style.width = `${recurringMonthPercent}%`;
+  document.getElementById('recurring-target-note').textContent =
+    recurringPendingDone === 0
+      ? 'Nessuno switch ricorrente in lavorazione nel mese.'
+      : `Include ${recurringPendingDone} contatori da switch ricorrenti in corso.`;
   document.getElementById('quarter-target').textContent =
     `${quarterDone} di ${agent.targetTrimestrale} contratti conteggiati`;
   document.getElementById('quarter-target-percent').textContent = `${quarterPercent}%`;
@@ -2020,7 +2061,6 @@ function fillAdminAgentForm(agentRow) {
   form.elements.nome.value = agentRow.nome || '';
   form.elements.email.value = agentRow.email || '';
   form.elements.password.value = '';
-  form.elements.cbUnitaria.value = agentRow.cbUnitaria || 0;
   form.elements.targetMensile.value = agentRow.targetMensile || 0;
   form.elements.targetTrimestrale.value = agentRow.targetTrimestrale || 0;
   form.elements.targetAnnuale.value = agentRow.targetAnnuale || 0;
@@ -2083,7 +2123,6 @@ function adminAgentPayload(form) {
     nome: String(form.get('nome')).trim(),
     email: String(form.get('email')).trim(),
     password: String(form.get('password')).trim(),
-    cbUnitaria: Number(form.get('cbUnitaria') || 0),
     targetMensile: Number(form.get('targetMensile') || 0),
     targetTrimestrale: Number(form.get('targetTrimestrale') || 0),
     targetAnnuale: Number(form.get('targetAnnuale') || 0),

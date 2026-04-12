@@ -1126,11 +1126,12 @@ function sanitizeContractInput(input, { allowDraft = false } = {}) {
 }
 
 function sanitizeAgentInput(input, { requirePassword }) {
+  const rawCbUnitaria = cleanText(input.cbUnitaria);
   const agent = {
     nome: cleanText(input.nome),
     email: cleanText(input.email).toLowerCase(),
     password: cleanText(input.password),
-    cbUnitaria: numberValue(input.cbUnitaria),
+    cbUnitaria: rawCbUnitaria ? numberValue(rawCbUnitaria) : null,
     targetMensile: integerValue(input.targetMensile),
     targetTrimestrale: integerValue(input.targetTrimestrale),
     targetAnnuale: integerValue(input.targetAnnuale),
@@ -1169,13 +1170,16 @@ function agentToBaserowPayload(agent) {
   const payload = {
     nome: agent.nome,
     email: agent.email,
-    cb_unitaria: agent.cbUnitaria,
     target_mensile: agent.targetMensile,
     target_trimestrale: agent.targetTrimestrale,
     target_annuale: agent.targetAnnuale,
     ruolo: agent.ruolo,
     attivo: agent.attivo,
   };
+
+  if (agent.cbUnitaria !== null) {
+    payload.cb_unitaria = agent.cbUnitaria;
+  }
 
   if (agent.password) {
     payload.password_hash = bcrypt.hashSync(
