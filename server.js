@@ -293,7 +293,7 @@ app.post(
       const assignedAgent = await getCurrentAgent(assignedAgentId);
       const files = Array.isArray(req.files) ? req.files : [];
       const uploadedFiles = await Promise.all(files.map(uploadContractFile));
-      const payload = {
+      const payload = normalizeBaserowContractPayload({
         agente: [assignedAgent.id],
         data_inserimento: todayIsoDate(),
         ragione_sociale: contract.ragioneSociale,
@@ -316,7 +316,7 @@ app.post(
         stato_contratto: saveMode === 'draft' ? 'Bozza' : 'Caricato',
         data_inizio_fornitura: contract.dataInizioFornitura,
         cb_unitaria_snapshot: assignedAgent.cbUnitaria,
-      };
+      });
 
       if (contract.idContratto) {
         payload.id_contratto = contract.idContratto;
@@ -384,7 +384,7 @@ app.patch(
             ? 'Caricato'
             : existingNormalized.statoContratto;
 
-      const payload = {
+      const payload = normalizeBaserowContractPayload({
         agente: [assignedAgent.id],
         ragione_sociale: contract.ragioneSociale,
         cellulare: contract.cellulare,
@@ -407,7 +407,7 @@ app.patch(
         data_inizio_fornitura: contract.dataInizioFornitura,
         cb_unitaria_snapshot: assignedAgent.cbUnitaria,
         id_contratto: contract.idContratto,
-      };
+      });
 
       if (preservedFiles.length || uploadedFiles.length) {
         payload.file_contratto = [
@@ -1501,6 +1501,22 @@ function normalizeRetainedFileNames(value) {
   }
   const single = cleanText(value);
   return single ? [single] : [];
+}
+
+function normalizeBaserowContractPayload(payload) {
+  const normalized = { ...payload };
+
+  ['tipo_cliente', 'categoria_cliente', 'tipo_fornitura', 'metodo_pagamento'].forEach((field) => {
+    if (normalized[field] === '') {
+      normalized[field] = null;
+    }
+  });
+
+  if (normalized.data_inizio_fornitura === '') {
+    normalized.data_inizio_fornitura = null;
+  }
+
+  return normalized;
 }
 
 function cleanText(value) {

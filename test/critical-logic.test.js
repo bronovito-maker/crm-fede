@@ -1066,6 +1066,10 @@ describe('HTTP routes', () => {
         const payload = JSON.parse(options.body);
         assert.equal(payload.ragione_sociale, 'Rossi SRL');
         assert.equal(payload.stato_contratto, 'Bozza');
+        assert.equal(payload.tipo_cliente, null);
+        assert.equal(payload.categoria_cliente, null);
+        assert.equal(payload.tipo_fornitura, null);
+        assert.equal(payload.metodo_pagamento, null);
         assert.equal(payload.cellulare, '');
         assert.equal(payload.nome_offerta, '');
 
