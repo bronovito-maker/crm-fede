@@ -1469,10 +1469,14 @@ td[data-label='Cliente'] strong {
   display: grid;
   grid-template-columns: 1fr;
   gap: 16px;
+  align-items: start;
 }
 
 .progress-focus {
   min-height: auto;
+  border-color: #cfe0ff;
+  background: linear-gradient(180deg, #fbfdff 0%, #ffffff 100%);
+  box-shadow: var(--shadow-sm);
 }
 
 .target-stack {
@@ -1480,11 +1484,64 @@ td[data-label='Cliente'] strong {
   gap: 16px;
 }
 
+.progress-layout .panel {
+  min-height: 0;
+}
+
 .target-line {
   margin: 10px 0 0;
   color: var(--muted);
   font-size: 1.1rem;
   line-height: 1.45;
+}
+
+.motivation-card .panel-heading {
+  align-items: center;
+}
+
+.motivation-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  margin-top: 14px;
+  padding: 4px 10px;
+  border: 1px solid #d6e4ff;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: var(--primary-strong);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ghost-button {
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid #d6e4ff;
+  border-radius: 8px;
+  background: #f8fbff;
+  color: var(--primary-strong);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ghost-button:hover {
+  border-color: #bfd3ff;
+  background: #eef4ff;
+}
+
+.motivation-quote {
+  margin: 12px 0 0;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.motivation-author {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-style: italic;
 }
 
 /* ---- Modal (mobile: bottom sheet) ---- */
@@ -2031,9 +2088,38 @@ td[data-label='Cliente'] strong {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  /* CB: 7 card su 3 col = 3+3+1 → ultima piena se sola */
-  #cb-metrics .metric-card:last-child:nth-child(3n + 1) {
-    grid-column: 1 / -1;
+  #cb-metrics {
+    gap: 12px;
+  }
+
+  #admin-metrics {
+    gap: 12px;
+  }
+
+  #cb-metrics .metric-card {
+    padding: 14px 16px;
+  }
+
+  #admin-metrics .metric-card {
+    padding: 14px 16px;
+  }
+
+  #cb-metrics .metric-card span {
+    margin-bottom: 6px;
+    font-size: 0.84rem;
+  }
+
+  #admin-metrics .metric-card span {
+    margin-bottom: 6px;
+    font-size: 0.84rem;
+  }
+
+  #cb-metrics .metric-card strong {
+    font-size: 1.45rem;
+  }
+
+  #admin-metrics .metric-card strong {
+    font-size: 1.45rem;
   }
 
   .metric-card {
@@ -2358,16 +2444,39 @@ td[data-label='Cliente'] strong {
   }
 
   #cb-metrics {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
   }
 
-  /* CB: 7 card su 3 col = 3+3+1 → ultima card piena se sola sulla riga */
-  #cb-metrics .metric-card:last-child:nth-child(3n + 1) {
-    grid-column: 1 / -1;
+  #cb-metrics .metric-card {
+    padding: 14px 16px;
+  }
+
+  #cb-metrics .metric-card span {
+    margin-bottom: 6px;
+    font-size: 0.84rem;
+  }
+
+  #cb-metrics .metric-card strong {
+    font-size: 1.4rem;
   }
 
   #admin-metrics {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  #admin-metrics .metric-card {
+    padding: 14px 16px;
+  }
+
+  #admin-metrics .metric-card span {
+    margin-bottom: 6px;
+    font-size: 0.84rem;
+  }
+
+  #admin-metrics .metric-card strong {
+    font-size: 1.4rem;
   }
 
   .metric-card strong {
@@ -2428,6 +2537,7 @@ td[data-label='Cliente'] strong {
   /* Progress layout: 2 columns */
   .progress-layout {
     grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+    align-items: start;
   }
 
   .progress-focus {

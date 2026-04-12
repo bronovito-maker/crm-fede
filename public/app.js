@@ -193,6 +193,7 @@ const defaultContracts = [
 ];
 
 const storageKey = 'energia-crm-contracts';
+const motivationStorageKey = 'energia-crm-motivation-state';
 let contracts = [];
 let selectedContractFiles = [];
 let existingContractFiles = [];
@@ -217,6 +218,9 @@ const adminState = {
   agentState: 'all',
 };
 let cbCategoryFilter = 'all';
+const motivationQuotes = Array.isArray(window.MOTIVATION_QUOTES) ? window.MOTIVATION_QUOTES : [];
+let motivationQuotePool = [];
+let currentMotivationQuote = '';
 
 const pages = {
   dashboard: 'Dashboard',
@@ -340,9 +344,6 @@ document.querySelectorAll('[data-go-page]').forEach((button) => {
 document.getElementById('tipo-fornitura').addEventListener('change', updateConditionalFields);
 document.getElementById('metodo-pagamento').addEventListener('change', updateConditionalFields);
 document
-  .querySelector('select[name="categoriaCliente"]')
-  .addEventListener('change', updateNewContractSummary);
-document
   .getElementById('contract-files-input')
   .addEventListener('change', handleContractFilesSelection);
 document.getElementById('cb-category-filter').addEventListener('change', (event) => {
@@ -395,6 +396,9 @@ document.querySelectorAll('.toggle-password').forEach((btn) => {
   });
 });
 document.getElementById('logout-button').addEventListener('click', handleLogout);
+document.getElementById('refresh-motivation').addEventListener('click', () => {
+  updateMotivationCard(true);
+});
 document.getElementById('admin-agent-form').addEventListener('submit', handleAdminAgentSubmit);
 document.getElementById('admin-agent-reset').addEventListener('click', resetAdminAgentForm);
 document.getElementById('admin-agent-mode-create').addEventListener('click', resetAdminAgentForm);
@@ -1056,33 +1060,112 @@ function renderProgressPage() {
   const dailyNeed = summary.mancanti === 0 ? 0 : summary.mancanti / daysLeft;
 
   document.getElementById('month-target-label').textContent =
-    `${summary.okUnits} di ${agent.targetMensile}`;
+    `${summary.okUnits}/${agent.targetMensile}`;
   document.getElementById('month-target-percent').textContent = `${summary.targetPercent}%`;
   document.getElementById('month-target-bar').style.width = `${summary.targetPercent}%`;
   document.getElementById('progress-message').textContent =
-    summary.mancanti === 0
-      ? 'Target centrato. Puoi puntare al bonus extra.'
-      : `Ti mancano ${summary.mancanti} contratti conteggiati per chiudere il target.`;
+    summary.mancanti === 0 ? 'Target raggiunto.' : `Ti mancano ${summary.mancanti} contatori.`;
   document.getElementById('recurring-target').textContent =
-    `${recurringMonthDone} di ${agent.targetMensile} contatori`;
+    `${recurringMonthDone}/${agent.targetMensile} contatori`;
   document.getElementById('recurring-target-percent').textContent = `${recurringMonthPercent}%`;
   document.getElementById('recurring-target-bar').style.width = `${recurringMonthPercent}%`;
   document.getElementById('recurring-target-note').textContent =
     recurringPendingDone === 0
-      ? 'Nessuno switch ricorrente in lavorazione nel mese.'
-      : `Include ${recurringPendingDone} contatori da switch ricorrenti in corso.`;
+      ? 'Nessun ricorrente in corso.'
+      : `Include ${recurringPendingDone} contatori ricorrenti.`;
   document.getElementById('quarter-target').textContent =
-    `${quarterDone} di ${agent.targetTrimestrale} contratti conteggiati`;
+    `${quarterDone}/${agent.targetTrimestrale} contatori`;
   document.getElementById('quarter-target-percent').textContent = `${quarterPercent}%`;
   document.getElementById('quarter-target-bar').style.width = `${quarterPercent}%`;
   document.getElementById('year-target').textContent =
-    `${yearDone} di ${agent.targetAnnuale} contratti conteggiati`;
+    `${yearDone}/${agent.targetAnnuale} contatori`;
   document.getElementById('year-target-percent').textContent = `${yearPercent}%`;
   document.getElementById('year-target-bar').style.width = `${yearPercent}%`;
   document.getElementById('daily-need').textContent =
     dailyNeed === 0
-      ? 'Target mensile già raggiunto'
-      : `${dailyNeed.toLocaleString('it-IT', { maximumFractionDigits: 1 })} contratti conteggiati al giorno`;
+      ? 'Target già raggiunto'
+      : `${dailyNeed.toLocaleString('it-IT', { maximumFractionDigits: 1 })} contatori al giorno`;
+  updateMotivationCard();
+}
+
+function nextMotivationQuote() {
+  if (!motivationQuotePool.length) {
+    motivationQuotePool = motivationQuotes
+      .slice()
+      .sort(() => Math.random() - 0.5)
+      .filter((quote) => quote.text !== currentMotivationQuote);
+  }
+
+  const nextQuote = motivationQuotePool.shift() || motivationQuotes[0];
+  currentMotivationQuote = nextQuote.text;
+  saveMotivationState();
+  return nextQuote;
+}
+
+function updateMotivationCard(forceRefresh = false) {
+  const quoteEl = document.getElementById('motivation-quote');
+  const tagEl = document.getElementById('motivation-tag');
+  const authorEl = document.getElementById('motivation-author');
+  if (!quoteEl || !tagEl || !authorEl) return;
+  if (!forceRefresh && currentMotivationQuote) {
+    const currentQuote = motivationQuotes.find((quote) => quote.text === currentMotivationQuote);
+    if (currentQuote) {
+      quoteEl.textContent = currentQuote.text;
+      tagEl.textContent = currentQuote.tag;
+      authorEl.textContent = currentQuote.author;
+      return;
+    }
+  }
+
+  const nextQuote = nextMotivationQuote();
+  quoteEl.textContent = nextQuote.text;
+  tagEl.textContent = nextQuote.tag;
+  authorEl.textContent = nextQuote.author;
+}
+
+function motivationQuoteByText(text) {
+  return motivationQuotes.find((quote) => quote.text === text) || null;
+}
+
+function motivationPoolTexts(pool) {
+  return pool.map((quote) => quote.text);
+}
+
+function motivationPoolFromTexts(texts) {
+  return texts.map((text) => motivationQuoteByText(text)).filter(Boolean);
+}
+
+function loadMotivationState() {
+  try {
+    const raw = localStorage.getItem(motivationStorageKey);
+    if (!raw) return;
+
+    const parsed = JSON.parse(raw);
+    const savedCurrent = String(parsed?.currentMotivationQuote || '');
+    const savedPool = Array.isArray(parsed?.motivationQuotePool) ? parsed.motivationQuotePool : [];
+
+    currentMotivationQuote = motivationQuoteByText(savedCurrent)?.text || '';
+    motivationQuotePool = motivationPoolFromTexts(savedPool).filter(
+      (quote) => quote.text !== currentMotivationQuote
+    );
+  } catch {
+    currentMotivationQuote = '';
+    motivationQuotePool = [];
+  }
+}
+
+function saveMotivationState() {
+  try {
+    localStorage.setItem(
+      motivationStorageKey,
+      JSON.stringify({
+        currentMotivationQuote,
+        motivationQuotePool: motivationPoolTexts(motivationQuotePool),
+      })
+    );
+  } catch {
+    // Ignora errori di storage locale.
+  }
 }
 
 function renderMonthFilter() {
@@ -1187,7 +1270,6 @@ function populateContractForm(contract) {
     : [];
   renderSelectedContractFiles();
   updateConditionalFields();
-  updateNewContractSummary();
 }
 
 function resetContractEditor({ keepFeedback = false } = {}) {
@@ -1203,7 +1285,6 @@ function resetContractEditor({ keepFeedback = false } = {}) {
   }
   form.elements.statoContratto.value = 'Caricato';
   updateConditionalFields();
-  updateNewContractSummary();
   syncContractEditorUi();
   if (!keepFeedback) {
     setFormFeedback('', '');
@@ -1553,15 +1634,6 @@ function updateConditionalFields() {
   toggleField('pod-field', showPod);
   toggleField('pdr-field', showPdr);
   toggleField('iban-field', showIban);
-  updateNewContractSummary();
-}
-
-function updateNewContractSummary() {
-  const tipoFornitura = document.querySelector('select[name="tipoFornitura"]').value;
-  const categoriaCliente = document.querySelector('select[name="categoriaCliente"]').value;
-  const weightedUnits = contractUnitCount({ tipoFornitura, categoriaCliente });
-
-  document.getElementById('summary-units').textContent = String(weightedUnits);
 }
 
 function toggleField(id, isVisible) {
@@ -2359,6 +2431,8 @@ function sanitizeUrl(value) {
 }
 
 async function initApp() {
+  loadMotivationState();
+
   // Aggiungi listener per predizione data inizio fornitura nel form
   const infoBanner = document.getElementById('new-contract-summary');
   const predictedDateEl = document.getElementById('predicted-start-date');
@@ -2370,7 +2444,6 @@ async function initApp() {
       infoBanner.hidden = false;
     };
     updatePrediction();
-    updateNewContractSummary();
   }
 
   try {

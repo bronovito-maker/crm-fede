@@ -305,12 +305,6 @@
                 >Ingresso in fornitura previsto il:
                 <strong id="predicted-start-date">--</strong></span
               >
-              <div class="form-summary-metrics" aria-label="Riepilogo contratto">
-                <span class="summary-pill">
-                  <small>Contatori</small>
-                  <strong id="summary-units">1</strong>
-                </span>
-              </div>
             </div>
             <div class="form-grid">
               <p
@@ -667,6 +661,17 @@
                 <h2>Media necessaria</h2>
                 <p class="target-line" id="daily-need"></p>
               </article>
+              <article class="panel motivation-card">
+                <div class="panel-heading">
+                  <h2>Spinta del giorno</h2>
+                  <button class="ghost-button" id="refresh-motivation" type="button">
+                    Aggiorna
+                  </button>
+                </div>
+                <span class="motivation-tag" id="motivation-tag"></span>
+                <p class="motivation-quote" id="motivation-quote"></p>
+                <p class="motivation-author" id="motivation-author"></p>
+              </article>
             </div>
           </div>
         </section>
@@ -1020,6 +1025,7 @@
 
     <script src="config.js"></script>
     <script src="baserowClient.js"></script>
+    <script src="motivationQuotes.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
