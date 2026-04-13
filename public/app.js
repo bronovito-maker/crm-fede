@@ -227,7 +227,6 @@ const pages = {
   cb: 'Client Base',
   'switch ricorrente': 'Switch ricorrente',
   progress: 'Avanzamento',
-  calendar: 'Calendario',
   admin: 'Admin',
 };
 
@@ -246,7 +245,6 @@ let currentCompetence = {
   quarter: getQuarterKey(today),
   year: String(today.getFullYear()),
 };
-let calendarViewMonth = monthKey(today);
 const isStaticFileMode = window.location.protocol === 'file:';
 const demoFallbackEnabled = Boolean(CONFIG.ENABLE_DEMO_FALLBACK || isStaticFileMode);
 const maxContractFiles = 10;
@@ -445,18 +443,6 @@ document
 document
   .getElementById('admin-competence-load')
   .addEventListener('click', () => loadAdminCompetenceConfig());
-document.getElementById('calendar-prev').addEventListener('click', () => {
-  calendarViewMonth = addMonthsToMonthKey(calendarViewMonth, -1);
-  renderCompetenceCalendar();
-});
-document.getElementById('calendar-next').addEventListener('click', () => {
-  calendarViewMonth = addMonthsToMonthKey(calendarViewMonth, 1);
-  renderCompetenceCalendar();
-});
-document.getElementById('calendar-today').addEventListener('click', () => {
-  calendarViewMonth = currentCompetence.month || monthKey(new Date());
-  renderCompetenceCalendar();
-});
 
 document.getElementById('close-contract-modal').addEventListener('click', closeContractModal);
 document.getElementById('contract-modal').addEventListener('click', (event) => {
@@ -637,7 +623,7 @@ function setActivePage(pageId) {
   // Nascondi "Nuovo contratto" quick-action nelle pagine dove è fuori contesto
   const quickBtn = document.querySelector('.quick-action');
   if (quickBtn) {
-    quickBtn.hidden = ['admin', 'calendar'].includes(pageId);
+    quickBtn.hidden = pageId === 'admin';
   }
 
   if (pageId === 'new-contract') {
@@ -732,7 +718,7 @@ function renderDashboard() {
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>',
     },
     {
-      label: 'Scartati / Out',
+      label: 'Scartati / K.O.',
       value: summary.scartatiUnits,
       accent: 'red',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>',
@@ -1218,7 +1204,6 @@ function renderAll() {
   syncContractEditorUi();
   if (agent.ruolo === 'admin') {
     renderAdminPage();
-    renderCompetenceCalendar();
   }
 }
 
@@ -1745,7 +1730,6 @@ async function renderAdminPage() {
     renderAdminAgentList(stats, agents);
     renderAdminContracts(adminContracts, agents);
     await loadAdminCompetenceConfig({ silent: true });
-    renderCompetenceCalendar();
   } catch (error) {
     document.getElementById('admin-agent-list').innerHTML = `
       <div class="empty-state compact">
@@ -1758,55 +1742,6 @@ async function renderAdminPage() {
     document.getElementById('admin-contracts-empty').hidden = false;
     setAdminCompetenceFeedback('error', error.message || 'Competenza non disponibile.');
   }
-}
-
-function renderCompetenceCalendar() {
-  const calendar = document.getElementById('competence-calendar');
-  const label = document.getElementById('calendar-month-label');
-  const note = document.getElementById('calendar-cutoff-note');
-  if (!calendar || !label || !note) return;
-
-  const month = calendarViewMonth || currentCompetence.month || monthKey(new Date());
-  const date = dateFromMonthKey(month);
-  const year = date.getFullYear();
-  const monthIndex = date.getMonth();
-  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
-  const firstDayOffset = (new Date(year, monthIndex, 1).getDay() + 6) % 7; // lunedi=0
-  const cutoffDate = competitionData?.[month]?.cutoffDate || '';
-  const cutoffDay = cutoffDate ? Number(cutoffDate.slice(-2)) : 0;
-  const todayKey = toInputDate(new Date());
-
-  label.textContent = capitalize(formatMonth.format(date));
-  if (cutoffDate) {
-    const nextMonth = addMonthsToMonthKey(month, 1);
-    note.textContent = `Cut-off: ${formatDate.format(new Date(cutoffDate))}. Dal giorno successivo la competenza passa a ${capitalize(formatMonth.format(dateFromMonthKey(nextMonth)))}.`;
-  } else {
-    note.textContent = 'Nessun cut-off configurato per questo mese.';
-  }
-
-  const weekLabels = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom']
-    .map((item) => `<div class="calendar-weekday">${item}</div>`)
-    .join('');
-  const cells = [];
-  for (let i = 0; i < firstDayOffset; i += 1) {
-    cells.push('<div class="calendar-day empty" aria-hidden="true"></div>');
-  }
-
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const dayDate = `${month}-${String(day).padStart(2, '0')}`;
-    const classes = ['calendar-day'];
-    if (dayDate === todayKey) classes.push('is-today');
-    if (cutoffDay && day === cutoffDay) classes.push('is-cutoff');
-    if (cutoffDay && day === cutoffDay + 1) classes.push('is-next-competence');
-    cells.push(`<div class="${classes.join(' ')}"><span>${day}</span></div>`);
-  }
-
-  calendar.innerHTML = `
-    <div class="calendar-grid">
-      ${weekLabels}
-      ${cells.join('')}
-    </div>
-  `;
 }
 
 function renderAdminMetrics(stats) {
@@ -2446,12 +2381,6 @@ function monthKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function addMonthsToMonthKey(key, delta) {
-  const base = dateFromMonthKey(key);
-  const shifted = new Date(base.getFullYear(), base.getMonth() + delta, 1);
-  return monthKey(shifted);
-}
-
 function contractMonthRef(contract) {
   return String(contract?.meseRiferimento || contract?.dataInserimento || '').slice(0, 7);
 }
@@ -2652,7 +2581,6 @@ async function initApp() {
 
         agent = session.agent;
         await loadCurrentCompetence({ silent: true });
-        calendarViewMonth = currentCompetence.month;
         await loadAndRenderContracts({ silent: true, force: true });
         document.getElementById('agent-name').textContent = agent.nome;
         setConnectionStatus('online', 'Database connesso');
@@ -2731,5 +2659,4 @@ async function loadCompetitionCutoffs({ silent = false } = {}) {
     const pred = calculateSupplyStartDate(toInputDate(new Date()));
     predictedDateEl.textContent = formatDate.format(new Date(pred));
   }
-  renderCompetenceCalendar();
 }
