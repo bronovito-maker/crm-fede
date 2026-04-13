@@ -1951,6 +1951,18 @@ td[data-label='Cliente'] strong {
   align-items: end;
 }
 
+.admin-competence-form {
+  grid-template-columns: 1fr;
+}
+
+.admin-competence-form > label:first-child {
+  grid-column: auto;
+}
+
+.admin-competence-form .admin-competence-actions {
+  grid-column: 1 / -1;
+}
+
 .admin-agent-list {
   display: grid;
   gap: 12px;
@@ -2473,8 +2485,13 @@ td[data-label='Cliente'] strong {
   }
 
   .admin-competence-form .admin-competence-actions {
-    grid-template-columns: repeat(2, max-content);
+    display: flex;
+    flex-wrap: wrap;
     justify-content: end;
+  }
+
+  .admin-competence-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .calendar-toolbar {
