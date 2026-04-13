@@ -29,6 +29,14 @@ const baserowClient = {
     return fetchJson('/api/contracts');
   },
 
+  async getCurrentCompetence() {
+    return fetchJson('/api/competence/current');
+  },
+  
+  async getCompetitionCutoffs() {
+    return fetchJson('/api/competenze');
+  },
+
   async createContract(contract) {
     return fetchJson('/api/contracts', {
       method: 'POST',
@@ -87,6 +95,18 @@ const baserowClient = {
 
   async getAdminStats() {
     return fetchJson('/api/admin/stats');
+  },
+
+  async getAdminCompetenceConfig(month) {
+    const monthParam = encodeURIComponent(String(month || ''));
+    return fetchJson(`/api/admin/competence-config?month=${monthParam}`);
+  },
+
+  async saveAdminCompetenceConfig(payload) {
+    return fetchJson('/api/admin/competence-config', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
   },
 };
 

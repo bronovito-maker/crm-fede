@@ -193,7 +193,6 @@ const defaultContracts = [
 ];
 
 const storageKey = 'energia-crm-contracts';
-const motivationStorageKey = 'energia-crm-motivation-state';
 let contracts = [];
 let selectedContractFiles = [];
 let existingContractFiles = [];
@@ -210,17 +209,16 @@ const adminState = {
   contractSearch: '',
   contractAgentId: 'all',
   contractStatus: 'all',
-  contractSentFilter: 'pending',
+  contractSentFilter: 'all',
   contractSort: 'recent',
   selectedContractIds: [],
+  competenceMonth: monthKey(new Date()),
+  competenceCutoffDate: '',
   agentSearch: '',
   agentRole: 'all',
   agentState: 'all',
 };
 let cbCategoryFilter = 'all';
-const motivationQuotes = Array.isArray(window.MOTIVATION_QUOTES) ? window.MOTIVATION_QUOTES : [];
-let motivationQuotePool = [];
-let currentMotivationQuote = '';
 
 const pages = {
   dashboard: 'Dashboard',
@@ -229,6 +227,7 @@ const pages = {
   cb: 'Client Base',
   'switch ricorrente': 'Switch ricorrente',
   progress: 'Avanzamento',
+  calendar: 'Calendario',
   admin: 'Admin',
 };
 
@@ -242,7 +241,12 @@ const statusColors = {
 };
 
 const today = new Date();
-const currentMonthKey = monthKey(today);
+let currentCompetence = {
+  month: monthKey(today),
+  quarter: getQuarterKey(today),
+  year: String(today.getFullYear()),
+};
+let calendarViewMonth = monthKey(today);
 const isStaticFileMode = window.location.protocol === 'file:';
 const demoFallbackEnabled = Boolean(CONFIG.ENABLE_DEMO_FALLBACK || isStaticFileMode);
 const maxContractFiles = 10;
@@ -284,32 +288,37 @@ const IBAN_RE = /^[A-Z]{2}[0-9A-Z]{13,32}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PIVA_RE = /^\d{11}$/;
 const CODICE_FISCALE_RE = /^[A-Z0-9]{16}$/;
+let competitionData = {}; // Global store for cutoffs
+
 /**
  * Calcola la data d'ingresso in fornitura.
- * Se inserito entro il 20 del mese corrente -> primo del mese tra due mesi.
- * Se inserito dal 21 del mese corrente -> primo del mese tra tre mesi.
+ * Usa i cutoff dinamici se disponibili, altrimenti fallback al giorno 20.
  * @param {string} inputDate - La data di inserimento (YYYY-MM-DD)
  * @returns {string} - Data inizio fornitura (YYYY-MM-DD)
  */
 function calculateSupplyStartDate(inputDate) {
   const date = inputDate ? new Date(inputDate) : new Date();
   const day = date.getDate();
-  const month = date.getMonth();
-  const year = date.getFullYear();
+  const isoDate = toInputDate(date);
+  const monthKey = isoDate.slice(0, 7); // YYYY-MM
+  
+  // Cerchiamo il cutoff dinamico per questo mese
+  const config = competitionData[monthKey];
+  const cutoffDay = config && config.cutoffDate ? new Date(config.cutoffDate).getDate() : 20;
 
   let targetMonth;
-  let targetYear = year;
+  const month = date.getMonth();
 
-  if (day <= 20) {
-    // Due mesi dopo
+  if (day <= cutoffDay) {
+    // Entro il cutoff -> primo del mese tra due mesi
     targetMonth = month + 2;
   } else {
-    // Tre mesi dopo
+    // Dopo il cutoff -> primo del mese tra tre mesi
     targetMonth = month + 3;
   }
 
   // Crea la data al 1° del mese target (JS gestisce l'overflow dei mesi automatically)
-  const resultDate = new Date(targetYear, targetMonth, 1);
+  const resultDate = new Date(date.getFullYear(), targetMonth, 1);
 
   const yyyy = resultDate.getFullYear();
   const mm = String(resultDate.getMonth() + 1).padStart(2, '0');
@@ -328,7 +337,7 @@ const formatDate = new Intl.DateTimeFormat('it-IT', {
 const formatMonth = new Intl.DateTimeFormat('it-IT', { month: 'long', year: 'numeric' });
 
 document.getElementById('agent-name').textContent = agent.nome;
-document.getElementById('current-period').textContent = capitalize(formatMonth.format(today));
+document.getElementById('current-period').textContent = currentPeriodLabel();
 setConnectionStatus('loading', 'Connessione...');
 setAppLoading(true);
 setAuthLocked(true);
@@ -399,9 +408,6 @@ document.querySelectorAll('.toggle-password').forEach((btn) => {
 document.querySelectorAll('.logout-button').forEach((button) => {
   button.addEventListener('click', handleLogout);
 });
-document.getElementById('refresh-motivation').addEventListener('click', () => {
-  updateMotivationCard(true);
-});
 document.getElementById('admin-agent-form').addEventListener('submit', handleAdminAgentSubmit);
 document.getElementById('admin-agent-reset').addEventListener('click', resetAdminAgentForm);
 document.getElementById('admin-agent-mode-create').addEventListener('click', resetAdminAgentForm);
@@ -433,6 +439,24 @@ document
   .getElementById('admin-clear-selection')
   .addEventListener('click', () => clearAdminContractSelection());
 document.getElementById('admin-bulk-send').addEventListener('click', () => bulkMarkSelectedSent());
+document
+  .getElementById('admin-competence-form')
+  .addEventListener('submit', (event) => handleAdminCompetenceSubmit(event));
+document
+  .getElementById('admin-competence-load')
+  .addEventListener('click', () => loadAdminCompetenceConfig());
+document.getElementById('calendar-prev').addEventListener('click', () => {
+  calendarViewMonth = addMonthsToMonthKey(calendarViewMonth, -1);
+  renderCompetenceCalendar();
+});
+document.getElementById('calendar-next').addEventListener('click', () => {
+  calendarViewMonth = addMonthsToMonthKey(calendarViewMonth, 1);
+  renderCompetenceCalendar();
+});
+document.getElementById('calendar-today').addEventListener('click', () => {
+  calendarViewMonth = currentCompetence.month || monthKey(new Date());
+  renderCompetenceCalendar();
+});
 
 document.getElementById('close-contract-modal').addEventListener('click', closeContractModal);
 document.getElementById('contract-modal').addEventListener('click', (event) => {
@@ -600,7 +624,7 @@ function setActivePage(pageId) {
   document.getElementById('page-title').textContent = pages[pageId];
 
   // Eyebrow sempre con il mese corrente
-  document.getElementById('current-period').textContent = capitalize(formatMonth.format(today));
+  document.getElementById('current-period').textContent = currentPeriodLabel();
 
   // Saluto personalizzato nel titolo della dashboard
   if (pageId === 'dashboard' && agent && agent.nome) {
@@ -613,7 +637,7 @@ function setActivePage(pageId) {
   // Nascondi "Nuovo contratto" quick-action nelle pagine dove è fuori contesto
   const quickBtn = document.querySelector('.quick-action');
   if (quickBtn) {
-    quickBtn.hidden = pageId === 'admin';
+    quickBtn.hidden = ['admin', 'calendar'].includes(pageId);
   }
 
   if (pageId === 'new-contract') {
@@ -624,7 +648,7 @@ function setActivePage(pageId) {
 function currentMonthContracts() {
   return contracts.filter(
     (contract) =>
-      contract.dataInserimento.startsWith(currentMonthKey) && contract.statoContratto !== 'Bozza'
+      contractMonthRef(contract) === currentCompetence.month && contract.statoContratto !== 'Bozza'
   );
 }
 
@@ -822,11 +846,9 @@ function renderBarChart() {
       new Intl.DateTimeFormat('it-IT', { month: 'short' }).format(date)
     ).replace('.', '');
     const value = sumContractUnits(
-      contracts.filter(
-        (contract) => contract.dataInserimento.startsWith(key) && contract.statoContratto === 'OK'
-      )
+      contracts.filter((contract) => contractMonthRef(contract) === key && contract.statoContratto === 'OK')
     );
-    return [label, value, key === currentMonthKey];
+    return [label, value, key === currentCompetence.month];
   });
   const max = Math.max(...monthValues.map((value) => value[1]), 1);
 
@@ -862,7 +884,7 @@ function renderContractsTable() {
       .join(' ')
       .toLowerCase()
       .includes(search);
-    const matchesMonth = month === 'all' || contract.dataInserimento.startsWith(month);
+    const matchesMonth = month === 'all' || contractMonthRef(contract) === month;
     const matchesStatus = status === 'all' || contract.statoContratto === status;
     return matchesSearch && matchesMonth && matchesStatus;
   });
@@ -1020,10 +1042,18 @@ function statusClass(status) {
 
 function renderCbPage() {
   const summary = getSummary();
+  const selectedCategory = String(cbCategoryFilter || 'all')
+    .trim()
+    .toLowerCase();
   const filteredMonthly =
-    cbCategoryFilter === 'all'
+    selectedCategory === 'all'
       ? summary.monthly
-      : summary.monthly.filter((contract) => contract.categoriaCliente === cbCategoryFilter);
+      : summary.monthly.filter(
+          (contract) =>
+            String(contract.categoriaCliente || '')
+              .trim()
+              .toLowerCase() === selectedCategory
+        );
   const filteredOk = filteredMonthly.filter((contract) => contract.statoContratto === 'OK');
   const filteredCaricati = filteredMonthly.filter(
     (contract) => contract.statoContratto === 'Caricato'
@@ -1033,7 +1063,10 @@ function renderCbPage() {
   );
   const filteredKo = filteredMonthly.filter((contract) => contract.statoContratto === 'K.O.');
 
-  document.getElementById('cb-category-filter').value = cbCategoryFilter;
+  document.getElementById('cb-category-filter').value =
+    selectedCategory === 'prospect' || selectedCategory === 'switch ricorrente'
+      ? selectedCategory
+      : 'all';
   renderMetrics('cb-metrics-money', [
     {
       label: 'CB del mese',
@@ -1096,8 +1129,8 @@ function renderCbPage() {
 
 function renderProgressPage() {
   const summary = getSummary();
-  const quarterKey = getQuarterKey(today);
-  const yearKey = String(today.getFullYear());
+  const quarterKey = currentCompetence.quarter;
+  const yearKey = currentCompetence.year;
   const recurringPendingDone = currentMonthContracts()
     .filter(
       (contract) =>
@@ -1110,13 +1143,13 @@ function renderProgressPage() {
   const quarterDone = contracts
     .filter(
       (contract) =>
-        getQuarterKey(new Date(contract.dataInserimento)) === quarterKey &&
+        contractQuarterRef(contract) === quarterKey &&
         contract.statoContratto === 'OK'
     )
     .reduce((sum, contract) => sum + contractUnitCount(contract), 0);
   const yearDone = contracts
     .filter(
-      (contract) => contract.dataInserimento.startsWith(yearKey) && contract.statoContratto === 'OK'
+      (contract) => contractYearRef(contract) === yearKey && contract.statoContratto === 'OK'
     )
     .reduce((sum, contract) => sum + contractUnitCount(contract), 0);
   const quarterPercent = percent(quarterDone, agent.targetTrimestrale);
@@ -1153,95 +1186,15 @@ function renderProgressPage() {
     dailyNeed === 0
       ? 'Target già raggiunto'
       : `${dailyNeed.toLocaleString('it-IT', { maximumFractionDigits: 1 })} contatori al giorno`;
-  updateMotivationCard();
-}
-
-function nextMotivationQuote() {
-  if (!motivationQuotePool.length) {
-    motivationQuotePool = motivationQuotes
-      .slice()
-      .sort(() => Math.random() - 0.5)
-      .filter((quote) => quote.text !== currentMotivationQuote);
-  }
-
-  const nextQuote = motivationQuotePool.shift() || motivationQuotes[0];
-  currentMotivationQuote = nextQuote.text;
-  saveMotivationState();
-  return nextQuote;
-}
-
-function updateMotivationCard(forceRefresh = false) {
-  const quoteEl = document.getElementById('motivation-quote');
-  const tagEl = document.getElementById('motivation-tag');
-  const authorEl = document.getElementById('motivation-author');
-  if (!quoteEl || !tagEl || !authorEl) return;
-  if (!forceRefresh && currentMotivationQuote) {
-    const currentQuote = motivationQuotes.find((quote) => quote.text === currentMotivationQuote);
-    if (currentQuote) {
-      quoteEl.textContent = currentQuote.text;
-      tagEl.textContent = currentQuote.tag;
-      authorEl.textContent = currentQuote.author;
-      return;
-    }
-  }
-
-  const nextQuote = nextMotivationQuote();
-  quoteEl.textContent = nextQuote.text;
-  tagEl.textContent = nextQuote.tag;
-  authorEl.textContent = nextQuote.author;
-}
-
-function motivationQuoteByText(text) {
-  return motivationQuotes.find((quote) => quote.text === text) || null;
-}
-
-function motivationPoolTexts(pool) {
-  return pool.map((quote) => quote.text);
-}
-
-function motivationPoolFromTexts(texts) {
-  return texts.map((text) => motivationQuoteByText(text)).filter(Boolean);
-}
-
-function loadMotivationState() {
-  try {
-    const raw = localStorage.getItem(motivationStorageKey);
-    if (!raw) return;
-
-    const parsed = JSON.parse(raw);
-    const savedCurrent = String(parsed?.currentMotivationQuote || '');
-    const savedPool = Array.isArray(parsed?.motivationQuotePool) ? parsed.motivationQuotePool : [];
-
-    currentMotivationQuote = motivationQuoteByText(savedCurrent)?.text || '';
-    motivationQuotePool = motivationPoolFromTexts(savedPool).filter(
-      (quote) => quote.text !== currentMotivationQuote
-    );
-  } catch {
-    currentMotivationQuote = '';
-    motivationQuotePool = [];
-  }
-}
-
-function saveMotivationState() {
-  try {
-    localStorage.setItem(
-      motivationStorageKey,
-      JSON.stringify({
-        currentMotivationQuote,
-        motivationQuotePool: motivationPoolTexts(motivationQuotePool),
-      })
-    );
-  } catch {
-    // Ignora errori di storage locale.
-  }
 }
 
 function renderMonthFilter() {
   const select = document.getElementById('month-filter');
   const selected = select.value || 'all';
   const months = Array.from(
-    new Set([currentMonthKey, ...contracts.map((contract) => contract.dataInserimento.slice(0, 7))])
+    new Set([currentCompetence.month, ...contracts.map((contract) => contractMonthRef(contract))])
   )
+    .filter(Boolean)
     .sort()
     .reverse();
 
@@ -1265,6 +1218,7 @@ function renderAll() {
   syncContractEditorUi();
   if (agent.ruolo === 'admin') {
     renderAdminPage();
+    renderCompetenceCalendar();
   }
 }
 
@@ -1790,6 +1744,8 @@ async function renderAdminPage() {
     populateContractAgentOptions();
     renderAdminAgentList(stats, agents);
     renderAdminContracts(adminContracts, agents);
+    await loadAdminCompetenceConfig({ silent: true });
+    renderCompetenceCalendar();
   } catch (error) {
     document.getElementById('admin-agent-list').innerHTML = `
       <div class="empty-state compact">
@@ -1800,7 +1756,57 @@ async function renderAdminPage() {
     document.getElementById('admin-agent-empty').hidden = true;
     document.getElementById('admin-contracts-table').innerHTML = '';
     document.getElementById('admin-contracts-empty').hidden = false;
+    setAdminCompetenceFeedback('error', error.message || 'Competenza non disponibile.');
   }
+}
+
+function renderCompetenceCalendar() {
+  const calendar = document.getElementById('competence-calendar');
+  const label = document.getElementById('calendar-month-label');
+  const note = document.getElementById('calendar-cutoff-note');
+  if (!calendar || !label || !note) return;
+
+  const month = calendarViewMonth || currentCompetence.month || monthKey(new Date());
+  const date = dateFromMonthKey(month);
+  const year = date.getFullYear();
+  const monthIndex = date.getMonth();
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  const firstDayOffset = (new Date(year, monthIndex, 1).getDay() + 6) % 7; // lunedi=0
+  const cutoffDate = competitionData?.[month]?.cutoffDate || '';
+  const cutoffDay = cutoffDate ? Number(cutoffDate.slice(-2)) : 0;
+  const todayKey = toInputDate(new Date());
+
+  label.textContent = capitalize(formatMonth.format(date));
+  if (cutoffDate) {
+    const nextMonth = addMonthsToMonthKey(month, 1);
+    note.textContent = `Cut-off: ${formatDate.format(new Date(cutoffDate))}. Dal giorno successivo la competenza passa a ${capitalize(formatMonth.format(dateFromMonthKey(nextMonth)))}.`;
+  } else {
+    note.textContent = 'Nessun cut-off configurato per questo mese.';
+  }
+
+  const weekLabels = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom']
+    .map((item) => `<div class="calendar-weekday">${item}</div>`)
+    .join('');
+  const cells = [];
+  for (let i = 0; i < firstDayOffset; i += 1) {
+    cells.push('<div class="calendar-day empty" aria-hidden="true"></div>');
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const dayDate = `${month}-${String(day).padStart(2, '0')}`;
+    const classes = ['calendar-day'];
+    if (dayDate === todayKey) classes.push('is-today');
+    if (cutoffDay && day === cutoffDay) classes.push('is-cutoff');
+    if (cutoffDay && day === cutoffDay + 1) classes.push('is-next-competence');
+    cells.push(`<div class="${classes.join(' ')}"><span>${day}</span></div>`);
+  }
+
+  calendar.innerHTML = `
+    <div class="calendar-grid">
+      ${weekLabels}
+      ${cells.join('')}
+    </div>
+  `;
 }
 
 function renderAdminMetrics(stats) {
@@ -2112,7 +2118,7 @@ function applyAdminQuickFilter(mode) {
     adminState.contractAgentId = 'all';
     adminState.contractStatus = 'all';
     adminState.contractSort = 'recent';
-    adminState.contractSentFilter = 'pending';
+    adminState.contractSentFilter = 'all';
   }
 
   syncAdminFilterControls();
@@ -2325,6 +2331,70 @@ function setAdminFeedback(type, message) {
   feedback.textContent = message;
 }
 
+function setAdminCompetenceFeedback(type, message) {
+  const feedback = document.getElementById('admin-competence-feedback');
+  feedback.className = type ? `is-${type}` : '';
+  feedback.textContent = message;
+}
+
+async function loadAdminCompetenceConfig({ silent = false } = {}) {
+  const monthInput = document.getElementById('admin-competence-month');
+  const cutoffInput = document.getElementById('admin-competence-cutoff');
+  const currentMonth = monthInput.value || adminState.competenceMonth || monthKey(new Date());
+
+  monthInput.value = currentMonth;
+  adminState.competenceMonth = currentMonth;
+
+  try {
+    const config = await baserowClient.getAdminCompetenceConfig(currentMonth);
+    cutoffInput.value = config.cutoffDate || '';
+    adminState.competenceCutoffDate = cutoffInput.value;
+    setAdminCompetenceFeedback(
+      'success',
+      config.cutoffDate
+        ? `Cut-off ${currentMonth}: ${formatDate.format(new Date(config.cutoffDate))}`
+        : `Nessun cut-off salvato per ${currentMonth}.`
+    );
+  } catch (error) {
+    cutoffInput.value = '';
+    adminState.competenceCutoffDate = '';
+    if (!silent) {
+      setAdminCompetenceFeedback('error', error.message || 'Impossibile caricare la competenza.');
+    }
+  }
+}
+
+async function handleAdminCompetenceSubmit(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const month = String(form.get('month') || '').trim();
+  const cutoffDate = String(form.get('cutoffDate') || '').trim();
+  const saveButton = document.getElementById('admin-competence-save');
+
+  if (!month || !cutoffDate) {
+    setAdminCompetenceFeedback('error', 'Seleziona mese e data cut-off.');
+    return;
+  }
+
+  saveButton.disabled = true;
+  setAdminCompetenceFeedback('', 'Salvataggio cut-off...');
+
+  try {
+    await baserowClient.saveAdminCompetenceConfig({ month, cutoffDate });
+    await loadCompetitionCutoffs({ silent: true });
+    adminState.competenceMonth = month;
+    adminState.competenceCutoffDate = cutoffDate;
+    await loadCurrentCompetence({ silent: true });
+    await loadAndRenderContracts({ silent: true, force: true });
+    await renderAdminPage();
+    setAdminCompetenceFeedback('success', 'Cut-off competenza salvato.');
+  } catch (error) {
+    setAdminCompetenceFeedback('error', error.message || 'Cut-off non salvato.');
+  } finally {
+    saveButton.disabled = false;
+  }
+}
+
 async function handleLogin(event) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
@@ -2343,6 +2413,7 @@ async function handleLogin(event) {
     });
 
     agent = session.agent;
+    await loadCurrentCompetence({ silent: true });
     await loadAndRenderContracts({ silent: true, force: true });
     document.getElementById('agent-name').textContent = agent.nome;
     setConnectionStatus('online', 'Database connesso');
@@ -2375,6 +2446,29 @@ function monthKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function addMonthsToMonthKey(key, delta) {
+  const base = dateFromMonthKey(key);
+  const shifted = new Date(base.getFullYear(), base.getMonth() + delta, 1);
+  return monthKey(shifted);
+}
+
+function contractMonthRef(contract) {
+  return String(contract?.meseRiferimento || contract?.dataInserimento || '').slice(0, 7);
+}
+
+function contractQuarterRef(contract) {
+  if (contract?.trimestreRiferimento) return String(contract.trimestreRiferimento);
+  const month = contractMonthRef(contract);
+  const date = month ? dateFromMonthKey(month) : new Date(contract?.dataInserimento || Date.now());
+  return getQuarterKey(date);
+}
+
+function contractYearRef(contract) {
+  if (contract?.annoRiferimento) return String(contract.annoRiferimento);
+  const month = contractMonthRef(contract);
+  return month ? month.slice(0, 4) : String(contract?.dataInserimento || '').slice(0, 4);
+}
+
 function dateFromMonthKey(key) {
   const [year, month] = key.split('-').map(Number);
   return new Date(year, month - 1, 1);
@@ -2385,14 +2479,19 @@ function toInputDate(date) {
 }
 
 function getRecentMonths(count) {
+  const anchor = dateFromMonthKey(currentCompetence.month || monthKey(today));
   return Array.from({ length: count }, (_, index) => {
-    const date = new Date(today.getFullYear(), today.getMonth() - (count - 1 - index), 1);
+    const date = new Date(anchor.getFullYear(), anchor.getMonth() - (count - 1 - index), 1);
     return monthKey(date);
   });
 }
 
 function getQuarterKey(date) {
   return `${date.getFullYear()}-Q${Math.floor(date.getMonth() / 3) + 1}`;
+}
+
+function currentPeriodLabel() {
+  return capitalize(formatMonth.format(dateFromMonthKey(currentCompetence.month || monthKey(today))));
 }
 
 function contractUnitCount(contract) {
@@ -2516,8 +2615,6 @@ function sanitizeUrl(value) {
 }
 
 async function initApp() {
-  loadMotivationState();
-
   // Aggiungi listener per predizione data inizio fornitura nel form
   const infoBanner = document.getElementById('new-contract-summary');
   const predictedDateEl = document.getElementById('predicted-start-date');
@@ -2532,10 +2629,13 @@ async function initApp() {
   }
 
   try {
+    await loadCompetitionCutoffs({ silent: true });
+
     if (isStaticFileMode && demoFallbackEnabled) {
       contracts = loadContracts();
       setConnectionStatus('demo', 'Modalità demo');
       setAuthLocked(false);
+      await loadCurrentCompetence({ silent: true });
       renderAll();
       return;
     }
@@ -2551,6 +2651,8 @@ async function initApp() {
         }
 
         agent = session.agent;
+        await loadCurrentCompetence({ silent: true });
+        calendarViewMonth = currentCompetence.month;
         await loadAndRenderContracts({ silent: true, force: true });
         document.getElementById('agent-name').textContent = agent.nome;
         setConnectionStatus('online', 'Database connesso');
@@ -2558,6 +2660,7 @@ async function initApp() {
       } catch (err) {
         console.error(err);
         contracts = demoFallbackEnabled ? loadContracts() : [];
+        await loadCurrentCompetence({ silent: true });
         setConnectionStatus(
           'error',
           demoFallbackEnabled ? 'Errore Database' : 'Connessione non disponibile'
@@ -2568,6 +2671,7 @@ async function initApp() {
       contracts = loadContracts();
       setConnectionStatus('demo', 'Modalità demo');
       setAuthLocked(false);
+      await loadCurrentCompetence({ silent: true });
     } else {
       contracts = [];
       setConnectionStatus('error', 'Connessione non disponibile');
@@ -2580,3 +2684,52 @@ async function initApp() {
 }
 
 initApp();
+
+async function loadCurrentCompetence({ silent = false } = {}) {
+  const fallback = {
+    month: monthKey(new Date()),
+    quarter: getQuarterKey(new Date()),
+    year: String(new Date().getFullYear()),
+  };
+
+  if (typeof baserowClient === 'undefined' || !baserowClient.isConfigured()) {
+    currentCompetence = fallback;
+    return;
+  }
+
+  try {
+    const period = await baserowClient.getCurrentCompetence();
+    currentCompetence = {
+      month: String(period.month || fallback.month),
+      quarter: String(period.quarter || fallback.quarter),
+      year: String(period.year || fallback.year),
+    };
+  } catch (error) {
+    currentCompetence = fallback;
+    if (!silent) {
+      console.error(error);
+    }
+  }
+}
+
+async function loadCompetitionCutoffs({ silent = false } = {}) {
+  if (typeof baserowClient === 'undefined' || !baserowClient.isConfigured()) {
+    competitionData = {};
+    return;
+  }
+
+  try {
+    const data = await baserowClient.getCompetitionCutoffs();
+    competitionData = data && typeof data === 'object' ? data : {};
+  } catch (error) {
+    competitionData = {};
+    if (!silent) console.warn('Cut-off dinamici non disponibili:', error);
+  }
+
+  const predictedDateEl = document.getElementById('predicted-start-date');
+  if (predictedDateEl) {
+    const pred = calculateSupplyStartDate(toInputDate(new Date()));
+    predictedDateEl.textContent = formatDate.format(new Date(pred));
+  }
+  renderCompetenceCalendar();
+}

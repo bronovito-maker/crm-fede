@@ -18,6 +18,9 @@ const CONFIG = {
   baserowToken: process.env.BASEROW_TOKEN || '',
   agentiTableId: process.env.BASEROW_TABLE_AGENTI_ID || '',
   contrattiTableId: process.env.BASEROW_TABLE_CONTRATTI_ID || '',
+  competenzeTableId: process.env.BASEROW_TABLE_COMPETENZE_ID || '',
+  competenzeMonthField: process.env.BASEROW_FIELD_COMPETENZE_MESE || 'mese_competenza',
+  competenzeCutoffField: process.env.BASEROW_FIELD_COMPETENZE_CUTOFF || 'data_cutoff',
   contrattiAgenteField: process.env.BASEROW_FIELD_CONTRATTI_AGENTE || 'agente',
   sessionTtlMs: Number(process.env.SESSION_TTL_HOURS || 12) * 60 * 60 * 1000,
   cookieSecure: process.env.NODE_ENV === 'production',
@@ -275,6 +278,37 @@ app.get('/api/contracts', apiReadLimiter, requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/competence/current', apiReadLimiter, requireAuth, async (req, res) => {
+  try {
+    ensureConfigured();
+    const period = await resolveCompetencePeriod(todayIsoDate());
+    res.json({
+      month: period.monthKey,
+      quarter: period.quarterKey,
+      year: period.yearKey,
+    });
+  } catch (error) {
+    handleApiError(
+      res,
+      error,
+      'COMPETENCE_CURRENT_LOAD_FAILED',
+      'Competenza corrente non disponibile.'
+    );
+  }
+});
+
+app.get('/api/competenze', apiReadLimiter, requireAuth, async (req, res) => {
+  try {
+    ensureConfigured();
+    ensureCompetenceConfigEnabled();
+    const map = await getCompetenceConfigMap();
+    // Convertiamo la Map in un oggetto per JSON
+    res.json(Object.fromEntries(map));
+  } catch (error) {
+    handleApiError(res, error, 'COMPETENZE_LOAD_FAILED', 'Impossibile caricare i cutoff delle competenze.');
+  }
+});
+
 app.post(
   '/api/contracts',
   requireAuth,
@@ -293,9 +327,11 @@ app.post(
       const assignedAgent = await getCurrentAgent(assignedAgentId);
       const files = Array.isArray(req.files) ? req.files : [];
       const uploadedFiles = await Promise.all(files.map(uploadContractFile));
+      const insertionDate = todayIsoDate();
+      const competencePeriod = await resolveCompetencePeriod(insertionDate);
       const payload = normalizeBaserowContractPayload({
         agente: [assignedAgent.id],
-        data_inserimento: todayIsoDate(),
+        data_inserimento: insertionDate,
         ragione_sociale: contract.ragioneSociale,
         cellulare: contract.cellulare,
         tipo_cliente: contract.tipoCliente,
@@ -315,6 +351,9 @@ app.post(
         descrizione: contract.descrizione,
         stato_contratto: saveMode === 'draft' ? 'Bozza' : 'Caricato',
         data_inizio_fornitura: contract.dataInizioFornitura,
+        mese_riferimento: competencePeriod.monthKey,
+        trimestre_riferimento: competencePeriod.quarterKey,
+        anno_riferimento: competencePeriod.yearKey,
         cb_unitaria_snapshot: assignedAgent.cbUnitaria,
       });
 
@@ -383,6 +422,8 @@ app.patch(
           : existingNormalized.statoContratto === 'Bozza'
             ? 'Caricato'
             : existingNormalized.statoContratto;
+      const insertionDate = existingNormalized.dataInserimento || todayIsoDate();
+      const competencePeriod = await resolveCompetencePeriod(insertionDate);
 
       const payload = normalizeBaserowContractPayload({
         agente: [assignedAgent.id],
@@ -405,6 +446,9 @@ app.patch(
         descrizione: contract.descrizione,
         stato_contratto: nextStatus,
         data_inizio_fornitura: contract.dataInizioFornitura,
+        mese_riferimento: competencePeriod.monthKey,
+        trimestre_riferimento: competencePeriod.quarterKey,
+        anno_riferimento: competencePeriod.yearKey,
         cb_unitaria_snapshot: assignedAgent.cbUnitaria,
         id_contratto: contract.idContratto,
       });
@@ -562,11 +606,54 @@ app.get('/api/admin/stats', apiReadLimiter, requireAdmin, async (req, res) => {
     ensureConfigured();
     const stats = await getCached(adminStatsCacheKey(), async () => {
       const [agents, contracts] = await Promise.all([listAgents(), listAllContracts()]);
-      return buildAdminStats(agents, contracts);
+      const period = await resolveCompetencePeriod(todayIsoDate());
+      return buildAdminStats(agents, contracts, period);
     });
     res.json(stats);
   } catch (error) {
     handleApiError(res, error, 'ADMIN_STATS_LOAD_FAILED', 'Statistiche non disponibili.');
+  }
+});
+
+app.get('/api/admin/competence-config', apiReadLimiter, requireAdmin, async (req, res) => {
+  try {
+    ensureConfigured();
+    ensureCompetenceConfigEnabled();
+    const month = normalizeCompetenceMonth(req.query.month);
+    const config = await getCompetenceConfig(month);
+    res.json({
+      month,
+      cutoffDate: config?.cutoffDate || '',
+      fallback: !config,
+    });
+  } catch (error) {
+    handleApiError(
+      res,
+      error,
+      'ADMIN_COMPETENCE_CONFIG_LOAD_FAILED',
+      'Configurazione competenza non disponibile.'
+    );
+  }
+});
+
+app.put('/api/admin/competence-config', requireAdmin, async (req, res) => {
+  try {
+    ensureConfigured();
+    ensureCompetenceConfigEnabled();
+    const month = normalizeCompetenceMonth(req.body.month);
+    const cutoffDate = normalizeCutoffDate(req.body.cutoffDate, month);
+    const updated = await upsertCompetenceConfig(month, cutoffDate);
+    invalidateCompetenceConfigCache();
+    invalidateContractsCache(req.session.agentId);
+    invalidateAdminStatsCache();
+    res.json(updated);
+  } catch (error) {
+    handleApiError(
+      res,
+      error,
+      'ADMIN_COMPETENCE_CONFIG_NOT_SAVED',
+      'Configurazione competenza non salvata.'
+    );
   }
 });
 
@@ -597,6 +684,9 @@ module.exports = {
   buildAdminStats,
   cleanText,
   contractCommissionValue,
+  contractCompetenceMonth,
+  contractCompetenceQuarter,
+  contractCompetenceYear,
   contractUnitCount,
   createSession,
   fetchAllRows,
@@ -612,6 +702,7 @@ module.exports = {
   linkedAgentId,
   multiSelectValue,
   normalizeAgent,
+  normalizeCompetenceMonth,
   normalizeContract,
   normalizeStatus,
   numberValue,
@@ -758,12 +849,20 @@ function adminStatsCacheKey() {
   return 'admin:stats';
 }
 
+function competenceConfigCacheKey() {
+  return 'competence:config';
+}
+
 function invalidateContractsCache(agentId) {
   invalidateCacheByPrefix(`contracts:${agentId}`);
 }
 
 function invalidateAdminStatsCache() {
   apiCache.delete(adminStatsCacheKey());
+}
+
+function invalidateCompetenceConfigCache() {
+  apiCache.delete(competenceConfigCacheKey());
 }
 
 async function baserowFetch(pathname, options = {}) {
@@ -912,6 +1011,119 @@ async function listAllContracts() {
   });
   const rows = await fetchAllBaserowRows(CONFIG.contrattiTableId, params, 'lista contratti admin');
   return rows.map(normalizeContract);
+}
+
+function ensureCompetenceConfigEnabled() {
+  if (!CONFIG.competenzeTableId) {
+    throw publicError(
+      503,
+      'COMPETENCE_CONFIG_NOT_ENABLED',
+      'Tabella competenze non configurata. Imposta BASEROW_TABLE_COMPETENZE_ID.'
+    );
+  }
+}
+
+async function listCompetenceRows() {
+  ensureCompetenceConfigEnabled();
+  const params = new URLSearchParams({
+    user_field_names: 'true',
+    order_by: `-${CONFIG.competenzeMonthField}`,
+  });
+  return fetchAllBaserowRows(CONFIG.competenzeTableId, params, 'config competenze');
+}
+
+async function getCompetenceConfigMap() {
+  return getCached(competenceConfigCacheKey(), async () => {
+    const rows = await listCompetenceRows();
+    const map = new Map();
+    const duplicates = new Map();
+
+    rows.forEach((row) => {
+      const month = normalizeCompetenceMonth(row[CONFIG.competenzeMonthField], { strict: false });
+      const cutoffDate = normalizeIsoDate(row[CONFIG.competenzeCutoffField]);
+      if (!month || !cutoffDate) return;
+      if (map.has(month)) {
+        duplicates.set(month, (duplicates.get(month) || 1) + 1);
+      }
+      map.set(month, {
+        id: Number(row.id),
+        month,
+        cutoffDate,
+      });
+    });
+
+    duplicates.forEach((count, month) => {
+      console.warn(
+        `[COMPETENCE_CONFIG] Mese duplicato ${month}: trovate ${count} configurazioni, uso l'ultima per ordine.`
+      );
+    });
+
+    return map;
+  });
+}
+
+async function getCompetenceConfig(monthKey) {
+  const map = await getCompetenceConfigMap();
+  return map.get(monthKey) || null;
+}
+
+async function upsertCompetenceConfig(monthKey, cutoffDate) {
+  const rows = await listCompetenceRows();
+  const matches = rows.filter(
+    (row) =>
+      normalizeCompetenceMonth(row[CONFIG.competenzeMonthField], { strict: false }) === monthKey
+  );
+
+  if (matches.length > 1) {
+    throw publicError(
+      409,
+      'COMPETENCE_MONTH_DUPLICATED',
+      `Trovate ${matches.length} configurazioni per ${monthKey}. Tienine una sola su Baserow e riprova.`
+    );
+  }
+
+  const current = matches.length === 1 ? { id: Number(matches[0].id) } : null;
+  const payload = {
+    [CONFIG.competenzeMonthField]: monthKey,
+    [CONFIG.competenzeCutoffField]: cutoffDate,
+  };
+  const basePath = `/api/database/rows/table/${CONFIG.competenzeTableId}`;
+  const response = current?.id
+    ? await baserowFetch(`${basePath}/${current.id}/?user_field_names=true`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      })
+    : await baserowFetch(`${basePath}/?user_field_names=true`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+  return {
+    id: response.id,
+    month: normalizeCompetenceMonth(response[CONFIG.competenzeMonthField]),
+    cutoffDate: normalizeIsoDate(response[CONFIG.competenzeCutoffField]),
+  };
+}
+
+async function resolveCompetencePeriod(insertionDate) {
+  const monthKey = normalizeIsoMonthFromDate(insertionDate);
+  const nextMonth = addMonthsToKey(monthKey, 1);
+  let map = new Map();
+  if (CONFIG.competenzeTableId) {
+    try {
+      map = await getCompetenceConfigMap();
+    } catch (error) {
+      console.warn(
+        `[COMPETENCE_CONFIG] Cut-off non disponibile, uso fallback calendario per ${monthKey}: ${error.message}`
+      );
+    }
+  }
+  const cutoff = map.get(monthKey)?.cutoffDate;
+  const competenceMonth = cutoff && insertionDate > cutoff ? nextMonth : monthKey;
+  return {
+    monthKey: competenceMonth,
+    quarterKey: quarterFromMonthKey(competenceMonth),
+    yearKey: competenceMonth.slice(0, 4),
+  };
 }
 
 async function getBaserowContract(contractId) {
@@ -1226,7 +1438,7 @@ function normalizeContract(row) {
   const cbMaturata =
     row.cb_maturata !== undefined
       ? numberValue(row.cb_maturata)
-      : status === 'K.O.' || status === 'Switch - Out'
+      : status === 'K.O.' || status === 'Switch - Out' || status === 'Bozza'
         ? 0
         : cbSnapshot;
   const normalized = {
@@ -1283,19 +1495,21 @@ function isCurrentAgentContract(row, agentId) {
   return false;
 }
 
-function buildAdminStats(agents, contracts) {
-  const month = currentMonthKey();
-  const quarter = currentQuarterKey();
-  const year = String(new Date().getFullYear());
+function buildAdminStats(agents, contracts, competence = {}) {
+  const month = normalizeCompetenceMonth(competence.monthKey || currentMonthKey(), {
+    strict: false,
+  });
+  const quarter = competence.quarterKey || quarterFromMonthKey(month);
+  const year = competence.yearKey || month.slice(0, 4);
   const operationalContracts = contracts.filter((contract) => contract.statoContratto !== 'Bozza');
-  const monthlyContracts = operationalContracts.filter((contract) =>
-    contract.dataInserimento.startsWith(month)
+  const monthlyContracts = operationalContracts.filter(
+    (contract) => contractCompetenceMonth(contract) === month
   );
   const quarterContracts = operationalContracts.filter(
-    (contract) => contract.trimestreRiferimento === quarter
+    (contract) => contractCompetenceQuarter(contract) === quarter
   );
   const yearContracts = operationalContracts.filter(
-    (contract) => contract.annoRiferimento === year || contract.dataInserimento.startsWith(year)
+    (contract) => contractCompetenceYear(contract) === year
   );
   const agentRows = agents.map((agent) => {
     const agentContracts = monthlyContracts.filter(
@@ -1391,11 +1605,6 @@ function currentMonthKey() {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function currentQuarterKey() {
-  const date = new Date();
-  return `${date.getFullYear()}-Q${Math.floor(date.getMonth() / 3) + 1}`;
-}
-
 function percent(done, target) {
   return target ? Math.min(Math.round((done / target) * 100), 100) : 0;
 }
@@ -1422,6 +1631,114 @@ function contractCommissionValue(contract) {
 
 function sumContractCommissions(items) {
   return items.reduce((sum, contract) => sum + contractCommissionValue(contract), 0);
+}
+
+function normalizeIsoDate(value) {
+  const text = cleanText(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
+}
+
+function normalizeIsoMonthFromDate(value) {
+  const date = normalizeIsoDate(value);
+  if (!date) {
+    throw publicError(400, 'COMPETENCE_DATE_INVALID', 'Data competenza non valida.');
+  }
+  return date.slice(0, 7);
+}
+
+function normalizeCompetenceMonth(value, { strict = true } = {}) {
+  const text = cleanText(value);
+  if (/^\d{4}-\d{2}$/.test(text)) {
+    return text;
+  }
+
+  // Supporta anche colonne Date in Baserow (es. "2026-04-01")
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return text.slice(0, 7);
+  }
+
+  if (value instanceof Date && !Number.isNaN(value.valueOf())) {
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const asDate = new Date(value);
+    if (!Number.isNaN(asDate.valueOf())) {
+      return `${asDate.getFullYear()}-${String(asDate.getMonth() + 1).padStart(2, '0')}`;
+    }
+  }
+
+  if (strict) {
+    throw publicError(400, 'COMPETENCE_MONTH_INVALID', 'Mese competenza non valido (YYYY-MM).');
+  }
+
+  return '';
+}
+
+function normalizeCompetenceMonthDay(value) {
+  const text = cleanText(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  if (/^\d{4}-\d{2}$/.test(text)) return `${text}-01`;
+  if (value instanceof Date && !Number.isNaN(value.valueOf())) {
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-01`;
+  }
+  return '';
+}
+
+function normalizeCutoffDate(value, monthKey) {
+  let cutoffDate = normalizeIsoDate(value);
+
+  // In caso arrivi un valore con orario da API/integrazioni
+  if (!cutoffDate) {
+    const monthDay = normalizeCompetenceMonthDay(value);
+    if (monthDay) cutoffDate = monthDay;
+  }
+
+  if (!cutoffDate) {
+    throw publicError(400, 'COMPETENCE_CUTOFF_INVALID', 'Cut-off non valido (YYYY-MM-DD).');
+  }
+  if (!cutoffDate.startsWith(monthKey)) {
+    throw publicError(
+      400,
+      'COMPETENCE_CUTOFF_OUTSIDE_MONTH',
+      'La data di cut-off deve appartenere al mese selezionato.'
+    );
+  }
+  return cutoffDate;
+}
+
+function addMonthsToKey(monthKey, delta) {
+  const [yearRaw, monthRaw] = monthKey.split('-').map(Number);
+  const date = new Date(yearRaw, monthRaw - 1 + delta, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function quarterFromMonthKey(monthKey) {
+  const [yearRaw, monthRaw] = monthKey.split('-').map(Number);
+  return `${yearRaw}-Q${Math.floor((monthRaw - 1) / 3) + 1}`;
+}
+
+function contractCompetenceMonth(contract) {
+  const byRef = cleanText(contract.meseRiferimento);
+  return /^\d{4}-\d{2}$/.test(byRef)
+    ? byRef
+    : normalizeCompetenceMonth(cleanText(contract.dataInserimento).slice(0, 7), {
+        strict: false,
+      });
+}
+
+function contractCompetenceQuarter(contract) {
+  const byRef = cleanText(contract.trimestreRiferimento);
+  if (/^\d{4}-Q[1-4]$/.test(byRef)) return byRef;
+  const month = contractCompetenceMonth(contract);
+  return month ? quarterFromMonthKey(month) : '';
+}
+
+function contractCompetenceYear(contract) {
+  const byRef = cleanText(contract.annoRiferimento);
+  if (/^\d{4}$/.test(byRef)) return byRef;
+  const month = contractCompetenceMonth(contract);
+  return month ? month.slice(0, 4) : '';
 }
 
 function isAllowedContractFile(file) {
