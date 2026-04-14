@@ -1185,15 +1185,24 @@ async function upsertCompetenceConfig(monthKey, cutoffDate) {
     [CONFIG.competenzeCutoffField]: cutoffDate,
   };
   const basePath = `/api/database/rows/table/${CONFIG.competenzeTableId}`;
-  const response = current?.id
-    ? await baserowFetch(`${basePath}/${current.id}/?user_field_names=true`, {
-        method: 'PATCH',
-        body: JSON.stringify(payload),
-      })
-    : await baserowFetch(`${basePath}/?user_field_names=true`, {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
+  console.log(`[ADMIN_COMPETENCE] Upserting for month ${monthKey}:`, { currentId: current?.id, payload });
+  
+  let response;
+  try {
+    response = current?.id
+      ? await baserowFetch(`${basePath}/${current.id}/?user_field_names=true`, {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        })
+      : await baserowFetch(`${basePath}/?user_field_names=true`, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+    console.log(`[ADMIN_COMPETENCE] Success:`, response.id);
+  } catch (error) {
+    console.error(`[ADMIN_COMPETENCE] Error:`, error.message);
+    throw error;
+  }
   return {
     id: response.id,
     month: normalizeCompetenceMonth(response[CONFIG.competenzeMonthField]),
@@ -1349,15 +1358,24 @@ async function upsertSupplierCutoffConfig(monthKey, supplierId, cutoffDate) {
     [CONFIG.cutoffFornitoreField]: [Number(supplierId)],
   };
   const basePath = `/api/database/rows/table/${CONFIG.cutoffFornitoriTableId}`;
-  const response = existingRow
-    ? await baserowFetch(`${basePath}/${existingRow.id}/?user_field_names=true`, {
-        method: 'PATCH',
-        body: JSON.stringify(payload),
-      })
-    : await baserowFetch(`${basePath}/?user_field_names=true`, {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
+  console.log(`[ADMIN_SUPPLIER_CUTOFF] Upserting for month ${monthKey}, supplier ${supplierId}:`, { existingId: existingRow?.id, payload });
+
+  let response;
+  try {
+    response = existingRow
+      ? await baserowFetch(`${basePath}/${existingRow.id}/?user_field_names=true`, {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        })
+      : await baserowFetch(`${basePath}/?user_field_names=true`, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+    console.log(`[ADMIN_SUPPLIER_CUTOFF] Success:`, response.id);
+  } catch (error) {
+    console.error(`[ADMIN_SUPPLIER_CUTOFF] Error:`, error.message);
+    throw error;
+  }
 
   return {
     id: Number(response.id),
@@ -1983,8 +2001,8 @@ function normalizeCutoffDate(value, monthKey) {
   if (!cutoffDate.startsWith(monthKey)) {
     throw publicError(
       400,
-      'COMPETENCE_CUTOFF_OUTSIDE_MONTH',
-      'La data di cut-off deve appartenere al mese selezionato.'
+      'COMPETENCE_CUTOFF_INVALID_MONTH',
+      `La data di cut-off deve appartenere al mese di competenza (${monthKey}).`
     );
   }
   return cutoffDate;

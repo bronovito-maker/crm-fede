@@ -808,7 +808,7 @@ function renderDonut(summary) {
     ['OK', summary.okUnits, statusColors.OK],
     ['Caricati', summary.caricatiUnits, statusColors.Caricato],
     ['Inviati', summary.inviatiUnits, statusColors.Inviato],
-    ['Scartati / Out', summary.scartatiUnits, statusColors['K.O.']],
+    ['Scartati / K.O.', summary.scartatiUnits, statusColors['K.O.']],
   ]
     .map(
       ([label, value, color]) => `
@@ -1761,8 +1761,8 @@ async function renderAdminPage() {
     populateContractAgentOptions();
     renderAdminAgentList(stats, agents);
     renderAdminContracts(adminContracts, agents);
-    await loadAdminCompetenceConfig({ silent: true });
-    await loadAdminSupplierCutoffs({ silent: true });
+    await loadAdminCompetenceConfig();
+    await loadAdminSupplierCutoffs();
   } catch (error) {
     document.getElementById('admin-agent-list').innerHTML = `
       <div class="empty-state compact">
@@ -2405,6 +2405,7 @@ async function loadAdminSupplierCutoffs({ silent = false } = {}) {
     adminState.supplierCutoffBySupplier = Object.fromEntries(
       (data.cutoffs || []).map((row) => [String(row.supplierId), row.cutoffDate || ''])
     );
+    const currentSelected = supplierSelect.value;
     supplierSelect.innerHTML = [
       '<option value="">Seleziona fornitore</option>',
       ...options.map(
@@ -2412,9 +2413,8 @@ async function loadAdminSupplierCutoffs({ silent = false } = {}) {
       ),
     ].join('');
 
-    const selectedSupplier = String(supplierSelect.value || '').trim();
-    if (selectedSupplier && options.some((row) => String(row.id) === selectedSupplier)) {
-      supplierSelect.value = selectedSupplier;
+    if (currentSelected && options.some((row) => String(row.id) === String(currentSelected))) {
+      supplierSelect.value = currentSelected;
       handleAdminSupplierSelectionChange();
     } else {
       supplierSelect.value = '';
@@ -2434,9 +2434,10 @@ async function loadAdminSupplierCutoffs({ silent = false } = {}) {
     dateInput.value = '';
     renderAdminSupplierCutoffList([]);
     if (!silent) {
+      console.error('[ADMIN_SUPPLIER_LOAD_ERROR]', error);
       setAdminSupplierCutoffFeedback(
         'error',
-        error.message || 'Impossibile caricare i cut-off fornitore.'
+        error.message || 'Impossibile caricare i cut-off fornitore. Verifica la connessione a Baserow.'
       );
     }
   }
