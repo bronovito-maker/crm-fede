@@ -214,6 +214,8 @@ const adminState = {
   selectedContractIds: [],
   competenceMonth: monthKey(new Date()),
   competenceCutoffDate: '',
+  supplierCutoffMonth: monthKey(new Date()),
+  supplierCutoffBySupplier: {},
   agentSearch: '',
   agentRole: 'all',
   agentState: 'all',
@@ -294,7 +296,14 @@ let competitionData = {}; // Global store for cutoffs
  * @param {string} inputDate - La data di inserimento (YYYY-MM-DD)
  * @returns {string} - Data inizio fornitura (YYYY-MM-DD)
  */
-function calculateSupplyStartDate(inputDate) {
+function normalizeSupplierKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function calculateSupplyStartDate(inputDate, supplierName = '') {
   const date = inputDate ? new Date(inputDate) : new Date();
   const day = date.getDate();
   const isoDate = toInputDate(date);
@@ -302,7 +311,12 @@ function calculateSupplyStartDate(inputDate) {
   
   // Cerchiamo il cutoff dinamico per questo mese
   const config = competitionData[monthKey];
-  const cutoffDay = config && config.cutoffDate ? new Date(config.cutoffDate).getDate() : 20;
+  const supplierKey = normalizeSupplierKey(supplierName);
+  const supplierCutoff =
+    config && config.suppliers && supplierKey ? config.suppliers[supplierKey] : '';
+  const fallbackCutoff = config && config.cutoffDate ? config.cutoffDate : '';
+  const cutoffDate = supplierCutoff || fallbackCutoff;
+  const cutoffDay = cutoffDate ? new Date(cutoffDate).getDate() : 20;
 
   let targetMonth;
   const month = date.getMonth();
@@ -351,6 +365,7 @@ document.querySelectorAll('[data-go-page]').forEach((button) => {
 
 document.getElementById('tipo-fornitura').addEventListener('change', updateConditionalFields);
 document.getElementById('metodo-pagamento').addEventListener('change', updateConditionalFields);
+document.getElementById('fornitore-input').addEventListener('input', () => updateStartDatePrediction());
 document
   .getElementById('contract-files-input')
   .addEventListener('change', handleContractFilesSelection);
@@ -443,6 +458,18 @@ document
 document
   .getElementById('admin-competence-load')
   .addEventListener('click', () => loadAdminCompetenceConfig());
+document
+  .getElementById('admin-supplier-cutoff-form')
+  .addEventListener('submit', (event) => handleAdminSupplierCutoffSubmit(event));
+document
+  .getElementById('admin-supplier-cutoff-load')
+  .addEventListener('click', () => loadAdminSupplierCutoffs());
+document
+  .getElementById('admin-supplier-cutoff-supplier')
+  .addEventListener('change', () => handleAdminSupplierSelectionChange());
+document
+  .getElementById('admin-supplier-cutoff-list')
+  .addEventListener('click', (event) => handleSupplierCutoffListClick(event));
 
 document.getElementById('close-contract-modal').addEventListener('click', closeContractModal);
 document.getElementById('contract-modal').addEventListener('click', (event) => {
@@ -944,6 +971,7 @@ function openContractModal(contractLike) {
     detailItem('Tipo cliente', contract.tipoCliente),
     detailItem('Categoria cliente', contract.categoriaCliente || 'Non inserita'),
     detailItem('Fornitore', contract.fornitore || 'Non inserito'),
+    detailItem('Ex fornitore', contract.exFornitore || 'Non inserito'),
     detailItem('Nome offerta', contract.nomeOfferta || 'Non inserita'),
     detailItem('Tipo operazione', formatList(contract.tipoOperazione) || 'Non inserita'),
     detailItem('Tipo fornitura', capitalize(contract.tipoFornitura || 'Non inserita')),
@@ -1250,6 +1278,7 @@ function populateContractForm(contract) {
   form.elements.idContratto.value = contract.idContratto || '';
   form.elements.categoriaCliente.value = contract.categoriaCliente || '';
   form.elements.fornitore.value = contract.fornitore || '';
+  form.elements.exFornitore.value = contract.exFornitore || '';
   form.elements.nomeOfferta.value = contract.nomeOfferta || '';
   form.elements.tipoFornitura.value = contract.tipoFornitura || '';
   form.elements.pod.value = contract.pod || '';
@@ -1360,6 +1389,7 @@ async function handleDeleteCurrentContract() {
 function buildContractDraft(form, saveMode = 'submit') {
   const stato = saveMode === 'draft' ? 'Bozza' : normalizeStatus(form.get('statoContratto'));
   const dateInserimento = toInputDate(today);
+  const fornitore = String(form.get('fornitore')).trim();
   const assignedAgentId =
     agent.ruolo === 'admin'
       ? Number.parseInt(String(form.get('agenteId') || ''), 10) || agent.id
@@ -1370,13 +1400,14 @@ function buildContractDraft(form, saveMode = 'submit') {
     saveMode,
     agenteId: assignedAgentId,
     dataInserimento: dateInserimento,
-    dataInizioFornitura: calculateSupplyStartDate(dateInserimento),
+    dataInizioFornitura: calculateSupplyStartDate(dateInserimento, fornitore),
     idContratto: String(form.get('idContratto')).trim(),
     ragioneSociale: String(form.get('ragioneSociale')).trim(),
     cellulare: String(form.get('cellulare')).trim(),
     tipoCliente: String(form.get('tipoCliente')).trim(),
     categoriaCliente: String(form.get('categoriaCliente')).trim().toLowerCase(),
-    fornitore: String(form.get('fornitore')).trim(),
+    fornitore,
+    exFornitore: String(form.get('exFornitore')).trim(),
     nomeOfferta: String(form.get('nomeOfferta')).trim(),
     tipoOperazione: [String(form.get('tipoOperazione') || '').trim()].filter(Boolean),
     tipoFornitura: String(form.get('tipoFornitura')).trim(),
@@ -1409,6 +1440,7 @@ function buildContractFormData(draft) {
     'idContratto',
     'categoriaCliente',
     'fornitore',
+    'exFornitore',
     'nomeOfferta',
     'tipoFornitura',
     'pod',
@@ -1730,6 +1762,7 @@ async function renderAdminPage() {
     renderAdminAgentList(stats, agents);
     renderAdminContracts(adminContracts, agents);
     await loadAdminCompetenceConfig({ silent: true });
+    await loadAdminSupplierCutoffs({ silent: true });
   } catch (error) {
     document.getElementById('admin-agent-list').innerHTML = `
       <div class="empty-state compact">
@@ -1741,6 +1774,7 @@ async function renderAdminPage() {
     document.getElementById('admin-contracts-table').innerHTML = '';
     document.getElementById('admin-contracts-empty').hidden = false;
     setAdminCompetenceFeedback('error', error.message || 'Competenza non disponibile.');
+    setAdminSupplierCutoffFeedback('error', error.message || 'Cut-off fornitore non disponibile.');
   }
 }
 
@@ -1848,6 +1882,7 @@ function renderAdminContracts(adminContracts, agents) {
           contract.email,
           contract.cellulare,
           contract.fornitore,
+          contract.exFornitore,
           agentNames.get(Number(contract.agenteId)) || '',
           contract.statoContratto,
         ],
@@ -2272,6 +2307,12 @@ function setAdminCompetenceFeedback(type, message) {
   feedback.textContent = message;
 }
 
+function setAdminSupplierCutoffFeedback(type, message) {
+  const feedback = document.getElementById('admin-supplier-cutoff-feedback');
+  feedback.className = type ? `is-${type}` : '';
+  feedback.textContent = message;
+}
+
 async function loadAdminCompetenceConfig({ silent = false } = {}) {
   const monthInput = document.getElementById('admin-competence-month');
   const cutoffInput = document.getElementById('admin-competence-cutoff');
@@ -2296,6 +2337,159 @@ async function loadAdminCompetenceConfig({ silent = false } = {}) {
     if (!silent) {
       setAdminCompetenceFeedback('error', error.message || 'Impossibile caricare la competenza.');
     }
+  }
+}
+
+function renderAdminSupplierCutoffList(cutoffs) {
+  const container = document.getElementById('admin-supplier-cutoff-list');
+  if (!cutoffs.length) {
+    container.innerHTML = `
+      <p class="admin-form-copy compact">
+        Nessun cut-off fornitore salvato per questo mese.
+      </p>
+    `;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="table-wrap flat admin-supplier-cutoff-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Fornitore</th>
+            <th>Data cut-off</th>
+            <th>Azione</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${cutoffs
+            .map(
+              (row) => `
+            <tr>
+              <td data-label="Fornitore">${escapeHtml(row.supplierName || 'Non assegnato')}</td>
+              <td data-label="Data cut-off">${
+                row.cutoffDate ? formatDate.format(new Date(row.cutoffDate)) : 'Non impostata'
+              }</td>
+              <td data-label="Azione">
+                <button
+                  class="secondary-button compact-button"
+                  type="button"
+                  data-cutoff-use="${Number(row.supplierId)}"
+                  data-cutoff-date="${escapeHtml(row.cutoffDate || '')}"
+                >
+                  Modifica
+                </button>
+              </td>
+            </tr>
+          `
+            )
+            .join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function loadAdminSupplierCutoffs({ silent = false } = {}) {
+  const monthInput = document.getElementById('admin-supplier-cutoff-month');
+  const supplierSelect = document.getElementById('admin-supplier-cutoff-supplier');
+  const dateInput = document.getElementById('admin-supplier-cutoff-date');
+  const currentMonth = monthInput.value || adminState.supplierCutoffMonth || monthKey(new Date());
+
+  monthInput.value = currentMonth;
+  adminState.supplierCutoffMonth = currentMonth;
+
+  try {
+    const data = await baserowClient.getAdminSupplierCutoffs(currentMonth);
+    const options = data.suppliers || [];
+    adminState.supplierCutoffBySupplier = Object.fromEntries(
+      (data.cutoffs || []).map((row) => [String(row.supplierId), row.cutoffDate || ''])
+    );
+    supplierSelect.innerHTML = [
+      '<option value="">Seleziona fornitore</option>',
+      ...options.map(
+        (row) => `<option value="${Number(row.id)}">${escapeHtml(titleCase(row.name))}</option>`
+      ),
+    ].join('');
+
+    const selectedSupplier = String(supplierSelect.value || '').trim();
+    if (selectedSupplier && options.some((row) => String(row.id) === selectedSupplier)) {
+      supplierSelect.value = selectedSupplier;
+      handleAdminSupplierSelectionChange();
+    } else {
+      supplierSelect.value = '';
+      dateInput.value = '';
+    }
+
+    renderAdminSupplierCutoffList(data.cutoffs || []);
+    setAdminSupplierCutoffFeedback(
+      'success',
+      data.cutoffs && data.cutoffs.length
+        ? `${data.cutoffs.length} cut-off fornitore caricati per ${currentMonth}.`
+        : `Nessun cut-off fornitore salvato per ${currentMonth}.`
+    );
+  } catch (error) {
+    adminState.supplierCutoffBySupplier = {};
+    supplierSelect.innerHTML = '<option value="">Seleziona fornitore</option>';
+    dateInput.value = '';
+    renderAdminSupplierCutoffList([]);
+    if (!silent) {
+      setAdminSupplierCutoffFeedback(
+        'error',
+        error.message || 'Impossibile caricare i cut-off fornitore.'
+      );
+    }
+  }
+}
+
+function handleAdminSupplierSelectionChange() {
+  const supplierSelect = document.getElementById('admin-supplier-cutoff-supplier');
+  const dateInput = document.getElementById('admin-supplier-cutoff-date');
+  const supplierId = String(supplierSelect.value || '');
+  if (!supplierId) {
+    dateInput.value = '';
+    return;
+  }
+  dateInput.value = adminState.supplierCutoffBySupplier[supplierId] || '';
+}
+
+function handleSupplierCutoffListClick(event) {
+  const button = event.target.closest('[data-cutoff-use]');
+  if (!button) return;
+  const supplierSelect = document.getElementById('admin-supplier-cutoff-supplier');
+  const dateInput = document.getElementById('admin-supplier-cutoff-date');
+  supplierSelect.value = String(button.dataset.cutoffUse || '');
+  dateInput.value = String(button.dataset.cutoffDate || '');
+  setAdminSupplierCutoffFeedback('', 'Fornitore caricato. Puoi aggiornare la data e salvare.');
+}
+
+async function handleAdminSupplierCutoffSubmit(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const month = String(form.get('month') || '').trim();
+  const supplierId = Number(String(form.get('supplierId') || '').trim());
+  const cutoffDate = String(form.get('cutoffDate') || '').trim();
+  const saveButton = document.getElementById('admin-supplier-cutoff-save');
+
+  if (!month || !supplierId || !cutoffDate) {
+    setAdminSupplierCutoffFeedback('error', 'Seleziona mese, fornitore e data cut-off.');
+    return;
+  }
+
+  saveButton.disabled = true;
+  setAdminSupplierCutoffFeedback('', 'Salvataggio cut-off fornitore...');
+
+  try {
+    await baserowClient.saveAdminSupplierCutoff({ month, supplierId, cutoffDate });
+    await loadCompetitionCutoffs({ silent: true });
+    await loadCurrentCompetence({ silent: true });
+    await loadAndRenderContracts({ silent: true, force: true });
+    await loadAdminSupplierCutoffs({ silent: true });
+    setAdminSupplierCutoffFeedback('success', 'Cut-off fornitore salvato.');
+  } catch (error) {
+    setAdminSupplierCutoffFeedback('error', error.message || 'Cut-off fornitore non salvato.');
+  } finally {
+    saveButton.disabled = false;
   }
 }
 
@@ -2543,18 +2737,23 @@ function sanitizeUrl(value) {
   }
 }
 
+function updateStartDatePrediction() {
+  const predictedDateEl = document.getElementById('predicted-start-date');
+  const infoBanner = document.getElementById('new-contract-summary');
+  if (!predictedDateEl || !infoBanner) return;
+  const fornitoreValue = document.getElementById('fornitore-input')?.value || '';
+  const pred = calculateSupplyStartDate(toInputDate(new Date()), fornitoreValue);
+  predictedDateEl.textContent = formatDate.format(new Date(pred));
+  infoBanner.hidden = false;
+}
+
 async function initApp() {
   // Aggiungi listener per predizione data inizio fornitura nel form
   const infoBanner = document.getElementById('new-contract-summary');
   const predictedDateEl = document.getElementById('predicted-start-date');
 
   if (infoBanner && predictedDateEl) {
-    const updatePrediction = () => {
-      const pred = calculateSupplyStartDate(toInputDate(new Date()));
-      predictedDateEl.textContent = formatDate.format(new Date(pred));
-      infoBanner.hidden = false;
-    };
-    updatePrediction();
+    updateStartDatePrediction();
   }
 
   try {
@@ -2656,7 +2855,6 @@ async function loadCompetitionCutoffs({ silent = false } = {}) {
 
   const predictedDateEl = document.getElementById('predicted-start-date');
   if (predictedDateEl) {
-    const pred = calculateSupplyStartDate(toInputDate(new Date()));
-    predictedDateEl.textContent = formatDate.format(new Date(pred));
+    updateStartDatePrediction();
   }
 }

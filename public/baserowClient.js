@@ -108,6 +108,18 @@ const baserowClient = {
       body: JSON.stringify(payload),
     });
   },
+
+  async getAdminSupplierCutoffs(month) {
+    const monthParam = encodeURIComponent(String(month || ''));
+    return fetchJson(`/api/admin/supplier-cutoffs?month=${monthParam}`);
+  },
+
+  async saveAdminSupplierCutoff(payload) {
+    return fetchJson('/api/admin/supplier-cutoffs', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
 };
 
 async function fetchJson(url, options = {}) {

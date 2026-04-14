@@ -21,6 +21,13 @@ const CONFIG = {
   competenzeTableId: process.env.BASEROW_TABLE_COMPETENZE_ID || '',
   competenzeMonthField: process.env.BASEROW_FIELD_COMPETENZE_MESE || 'mese_competenza',
   competenzeCutoffField: process.env.BASEROW_FIELD_COMPETENZE_CUTOFF || 'data_cutoff',
+  fornitoriTableId: process.env.BASEROW_TABLE_FORNITORI_ID || '',
+  fornitoriNameField: process.env.BASEROW_FIELD_FORNITORI_NOME || 'nome',
+  cutoffFornitoriTableId: process.env.BASEROW_TABLE_CUTOFF_FORNITORI_ID || '',
+  cutoffFornitoreField: process.env.BASEROW_FIELD_CUTOFF_FORNITORE || 'fornitore',
+  cutoffFornitoriMonthField: process.env.BASEROW_FIELD_CUTOFF_MESE || 'mese_competenza',
+  cutoffFornitoriDateField: process.env.BASEROW_FIELD_CUTOFF_DATA || 'data_cutoff',
+  contrattiExFornitoreField: process.env.BASEROW_FIELD_EX_FORNITORE || '',
   contrattiAgenteField: process.env.BASEROW_FIELD_CONTRATTI_AGENTE || 'agente',
   sessionTtlMs: Number(process.env.SESSION_TTL_HOURS || 12) * 60 * 60 * 1000,
   cookieSecure: process.env.NODE_ENV === 'production',
@@ -300,12 +307,32 @@ app.get('/api/competence/current', apiReadLimiter, requireAuth, async (req, res)
 app.get('/api/competenze', apiReadLimiter, requireAuth, async (req, res) => {
   try {
     ensureConfigured();
-    ensureCompetenceConfigEnabled();
-    const map = await getCompetenceConfigMap();
-    // Convertiamo la Map in un oggetto per JSON
-    res.json(Object.fromEntries(map));
+    const [globalMap, supplierMap] = await Promise.all([
+      CONFIG.competenzeTableId ? getCompetenceConfigMap() : Promise.resolve(new Map()),
+      CONFIG.cutoffFornitoriTableId ? getSupplierCutoffMap() : Promise.resolve(new Map()),
+    ]);
+    const monthKeys = new Set([...globalMap.keys(), ...supplierMap.keys()]);
+    const result = {};
+
+    monthKeys.forEach((monthKey) => {
+      const globalCutoff = globalMap.get(monthKey)?.cutoffDate || '';
+      const suppliers = supplierMap.get(monthKey) || new Map();
+      result[monthKey] = {
+        cutoffDate: globalCutoff,
+        suppliers: Object.fromEntries(
+          [...suppliers.entries()].map(([supplierKey, entry]) => [supplierKey, entry.cutoffDate])
+        ),
+      };
+    });
+
+    res.json(result);
   } catch (error) {
-    handleApiError(res, error, 'COMPETENZE_LOAD_FAILED', 'Impossibile caricare i cutoff delle competenze.');
+    handleApiError(
+      res,
+      error,
+      'COMPETENZE_LOAD_FAILED',
+      'Impossibile caricare i cutoff delle competenze.'
+    );
   }
 });
 
@@ -328,7 +355,7 @@ app.post(
       const files = Array.isArray(req.files) ? req.files : [];
       const uploadedFiles = await Promise.all(files.map(uploadContractFile));
       const insertionDate = todayIsoDate();
-      const competencePeriod = await resolveCompetencePeriod(insertionDate);
+      const competencePeriod = await resolveCompetencePeriod(insertionDate, contract.fornitore);
       const payload = normalizeBaserowContractPayload({
         agente: [assignedAgent.id],
         data_inserimento: insertionDate,
@@ -337,6 +364,9 @@ app.post(
         tipo_cliente: contract.tipoCliente,
         categoria_cliente: contract.categoriaCliente,
         fornitore: contract.fornitore,
+        ...(CONFIG.contrattiExFornitoreField
+          ? { [CONFIG.contrattiExFornitoreField]: contract.exFornitore }
+          : {}),
         nome_offerta: contract.nomeOfferta,
         tipo_operazione: contract.tipoOperazione,
         tipo_fornitura: contract.tipoFornitura,
@@ -423,7 +453,7 @@ app.patch(
             ? 'Caricato'
             : existingNormalized.statoContratto;
       const insertionDate = existingNormalized.dataInserimento || todayIsoDate();
-      const competencePeriod = await resolveCompetencePeriod(insertionDate);
+      const competencePeriod = await resolveCompetencePeriod(insertionDate, contract.fornitore);
 
       const payload = normalizeBaserowContractPayload({
         agente: [assignedAgent.id],
@@ -432,6 +462,9 @@ app.patch(
         tipo_cliente: contract.tipoCliente,
         categoria_cliente: contract.categoriaCliente,
         fornitore: contract.fornitore,
+        ...(CONFIG.contrattiExFornitoreField
+          ? { [CONFIG.contrattiExFornitoreField]: contract.exFornitore }
+          : {}),
         nome_offerta: contract.nomeOfferta,
         tipo_operazione: contract.tipoOperazione,
         tipo_fornitura: contract.tipoFornitura,
@@ -657,6 +690,48 @@ app.put('/api/admin/competence-config', requireAdmin, async (req, res) => {
   }
 });
 
+app.get('/api/admin/supplier-cutoffs', apiReadLimiter, requireAdmin, async (req, res) => {
+  try {
+    ensureConfigured();
+    ensureSupplierCutoffConfigEnabled();
+    const month = normalizeCompetenceMonth(req.query.month);
+    const config = await getSupplierCutoffConfig(month);
+    res.json(config);
+  } catch (error) {
+    handleApiError(
+      res,
+      error,
+      'ADMIN_SUPPLIER_CUTOFF_LOAD_FAILED',
+      'Cut-off fornitore non disponibile.'
+    );
+  }
+});
+
+app.put('/api/admin/supplier-cutoffs', requireAdmin, async (req, res) => {
+  try {
+    ensureConfigured();
+    ensureSupplierCutoffConfigEnabled();
+    const month = normalizeCompetenceMonth(req.body.month);
+    const supplierId = integerValue(req.body.supplierId);
+    if (!supplierId) {
+      throw publicError(400, 'SUPPLIER_INVALID', 'Fornitore non valido.');
+    }
+    const cutoffDate = normalizeCutoffDate(req.body.cutoffDate, month);
+    const updated = await upsertSupplierCutoffConfig(month, supplierId, cutoffDate);
+    invalidateCompetenceConfigCache();
+    invalidateContractsCache(req.session.agentId);
+    invalidateAdminStatsCache();
+    res.json(updated);
+  } catch (error) {
+    handleApiError(
+      res,
+      error,
+      'ADMIN_SUPPLIER_CUTOFF_NOT_SAVED',
+      'Cut-off fornitore non salvato.'
+    );
+  }
+});
+
 app.use('/api', (req, res) => {
   res.status(404).json({
     error: 'API_NOT_FOUND',
@@ -853,6 +928,10 @@ function competenceConfigCacheKey() {
   return 'competence:config';
 }
 
+function supplierCutoffCacheKey() {
+  return 'competence:supplier-cutoff';
+}
+
 function invalidateContractsCache(agentId) {
   invalidateCacheByPrefix(`contracts:${agentId}`);
 }
@@ -863,6 +942,7 @@ function invalidateAdminStatsCache() {
 
 function invalidateCompetenceConfigCache() {
   apiCache.delete(competenceConfigCacheKey());
+  apiCache.delete(supplierCutoffCacheKey());
 }
 
 async function baserowFetch(pathname, options = {}) {
@@ -1023,6 +1103,23 @@ function ensureCompetenceConfigEnabled() {
   }
 }
 
+function ensureSupplierCutoffConfigEnabled() {
+  if (!CONFIG.cutoffFornitoriTableId) {
+    throw publicError(
+      503,
+      'SUPPLIER_CUTOFF_CONFIG_NOT_ENABLED',
+      'Tabella cut-off fornitori non configurata. Imposta BASEROW_TABLE_CUTOFF_FORNITORI_ID.'
+    );
+  }
+  if (!CONFIG.fornitoriTableId) {
+    throw publicError(
+      503,
+      'SUPPLIER_TABLE_NOT_ENABLED',
+      'Tabella fornitori non configurata. Imposta BASEROW_TABLE_FORNITORI_ID.'
+    );
+  }
+}
+
 async function listCompetenceRows() {
   ensureCompetenceConfigEnabled();
   const params = new URLSearchParams({
@@ -1104,20 +1201,201 @@ async function upsertCompetenceConfig(monthKey, cutoffDate) {
   };
 }
 
-async function resolveCompetencePeriod(insertionDate) {
+async function listSupplierCutoffRows() {
+  ensureSupplierCutoffConfigEnabled();
+  const params = new URLSearchParams({
+    user_field_names: 'true',
+    order_by: `-${CONFIG.cutoffFornitoriMonthField}`,
+  });
+  return fetchAllBaserowRows(CONFIG.cutoffFornitoriTableId, params, 'config cutoff fornitori');
+}
+
+async function listSupplierRowsById() {
+  ensureSupplierCutoffConfigEnabled();
+  const params = new URLSearchParams({
+    user_field_names: 'true',
+  });
+  const rows = await fetchAllBaserowRows(CONFIG.fornitoriTableId, params, 'lista fornitori');
+  const map = new Map();
+  rows.forEach((row) => {
+    map.set(Number(row.id), cleanText(row[CONFIG.fornitoriNameField]));
+  });
+  return map;
+}
+
+async function listSuppliers() {
+  const supplierMap = await listSupplierRowsById();
+  return [...supplierMap.entries()]
+    .map(([id, name]) => ({ id: Number(id), name: cleanText(name) }))
+    .filter((row) => row.id > 0 && row.name)
+    .sort((left, right) => left.name.localeCompare(right.name, 'it'));
+}
+
+function normalizeSupplierKey(value) {
+  return cleanText(value)
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function linkedRowIds(value) {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  return values
+    .map((item) => {
+      if (typeof item === 'number') return item;
+      if (typeof item === 'string' && /^\d+$/.test(item)) return Number(item);
+      if (item && typeof item === 'object' && 'id' in item) return Number(item.id);
+      return 0;
+    })
+    .filter((id) => Number.isInteger(id) && id > 0);
+}
+
+function linkedRowNames(value) {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  return values
+    .map((item) => {
+      if (typeof item === 'string') return cleanText(item);
+      if (item && typeof item === 'object') {
+        if ('value' in item) return cleanText(item.value);
+        if ('name' in item) return cleanText(item.name);
+      }
+      return '';
+    })
+    .filter(Boolean);
+}
+
+async function getSupplierCutoffMap() {
+  return getCached(supplierCutoffCacheKey(), async () => {
+    ensureSupplierCutoffConfigEnabled();
+    const [cutoffRows, supplierById] = await Promise.all([
+      listSupplierCutoffRows(),
+      listSupplierRowsById(),
+    ]);
+
+    const byMonth = new Map();
+    cutoffRows.forEach((row) => {
+      const month = normalizeCompetenceMonth(row[CONFIG.cutoffFornitoriMonthField], {
+        strict: false,
+      });
+      const cutoffDate = normalizeIsoDate(row[CONFIG.cutoffFornitoriDateField]);
+      if (!month || !cutoffDate) return;
+
+      const supplierField = row[CONFIG.cutoffFornitoreField];
+      const namesFromLinks = linkedRowIds(supplierField)
+        .map((id) => supplierById.get(Number(id)))
+        .filter(Boolean);
+      const names = [...new Set([...namesFromLinks, ...linkedRowNames(supplierField)])];
+
+      names.forEach((name) => {
+        const key = normalizeSupplierKey(name);
+        if (!key) return;
+        if (!byMonth.has(month)) byMonth.set(month, new Map());
+        byMonth.get(month).set(key, { name, cutoffDate });
+      });
+    });
+
+    return byMonth;
+  });
+}
+
+async function getSupplierCutoffConfig(monthKey) {
+  ensureSupplierCutoffConfigEnabled();
+  const [suppliers, supplierCutoffMap] = await Promise.all([listSuppliers(), getSupplierCutoffMap()]);
+  const monthCutoffs = supplierCutoffMap.get(monthKey) || new Map();
+  const supplierByKey = new Map(suppliers.map((row) => [normalizeSupplierKey(row.name), row]));
+  const cutoffs = [...monthCutoffs.entries()]
+    .map(([supplierKey, entry]) => {
+      const supplier = supplierByKey.get(supplierKey);
+      return {
+        id: supplier ? supplier.id : 0,
+        supplierId: supplier ? supplier.id : 0,
+        supplierName: supplier ? supplier.name : entry.name,
+        cutoffDate: entry.cutoffDate,
+      };
+    })
+    .filter((row) => row.supplierName)
+    .sort((left, right) => left.supplierName.localeCompare(right.supplierName, 'it'));
+
+  return {
+    month: monthKey,
+    suppliers,
+    cutoffs,
+  };
+}
+
+async function upsertSupplierCutoffConfig(monthKey, supplierId, cutoffDate) {
+  ensureSupplierCutoffConfigEnabled();
+  const [supplierById, rows] = await Promise.all([listSupplierRowsById(), listSupplierCutoffRows()]);
+  const supplierName = cleanText(supplierById.get(Number(supplierId)));
+  if (!supplierName) {
+    throw publicError(400, 'SUPPLIER_NOT_FOUND', 'Fornitore non trovato.');
+  }
+
+  const supplierKey = normalizeSupplierKey(supplierName);
+  const existingRow = rows.find((row) => {
+    const rowMonth = normalizeCompetenceMonth(row[CONFIG.cutoffFornitoriMonthField], {
+      strict: false,
+    });
+    if (rowMonth !== monthKey) return false;
+    const rowNamesFromIds = linkedRowIds(row[CONFIG.cutoffFornitoreField])
+      .map((id) => supplierById.get(Number(id)))
+      .filter(Boolean);
+    const rowNames = [...rowNamesFromIds, ...linkedRowNames(row[CONFIG.cutoffFornitoreField])];
+    return rowNames.some((name) => normalizeSupplierKey(name) === supplierKey);
+  });
+
+  const payload = {
+    [CONFIG.cutoffFornitoriMonthField]: monthKey,
+    [CONFIG.cutoffFornitoriDateField]: cutoffDate,
+    [CONFIG.cutoffFornitoreField]: [Number(supplierId)],
+  };
+  const basePath = `/api/database/rows/table/${CONFIG.cutoffFornitoriTableId}`;
+  const response = existingRow
+    ? await baserowFetch(`${basePath}/${existingRow.id}/?user_field_names=true`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      })
+    : await baserowFetch(`${basePath}/?user_field_names=true`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+
+  return {
+    id: Number(response.id),
+    month: normalizeCompetenceMonth(response[CONFIG.cutoffFornitoriMonthField], { strict: false }),
+    supplierId: Number(supplierId),
+    supplierName,
+    cutoffDate: normalizeIsoDate(response[CONFIG.cutoffFornitoriDateField]),
+  };
+}
+
+async function resolveCompetencePeriod(insertionDate, supplierName = '') {
   const monthKey = normalizeIsoMonthFromDate(insertionDate);
   const nextMonth = addMonthsToKey(monthKey, 1);
-  let map = new Map();
+  let globalMap = new Map();
+  let supplierMap = new Map();
   if (CONFIG.competenzeTableId) {
     try {
-      map = await getCompetenceConfigMap();
+      globalMap = await getCompetenceConfigMap();
     } catch (error) {
       console.warn(
         `[COMPETENCE_CONFIG] Cut-off non disponibile, uso fallback calendario per ${monthKey}: ${error.message}`
       );
     }
   }
-  const cutoff = map.get(monthKey)?.cutoffDate;
+  if (CONFIG.cutoffFornitoriTableId) {
+    try {
+      supplierMap = await getSupplierCutoffMap();
+    } catch (error) {
+      console.warn(
+        `[SUPPLIER_CUTOFF_CONFIG] Cut-off fornitore non disponibile per ${monthKey}: ${error.message}`
+      );
+    }
+  }
+
+  const supplierKey = normalizeSupplierKey(supplierName);
+  const supplierCutoff = supplierMap.get(monthKey)?.get(supplierKey)?.cutoffDate || '';
+  const globalCutoff = globalMap.get(monthKey)?.cutoffDate || '';
+  const cutoff = supplierCutoff || globalCutoff;
   const competenceMonth = cutoff && insertionDate > cutoff ? nextMonth : monthKey;
   return {
     monthKey: competenceMonth,
@@ -1228,6 +1506,7 @@ function sanitizeContractInput(input, { allowDraft = false } = {}) {
     tipoCliente: cleanText(input.tipoCliente),
     categoriaCliente: cleanText(input.categoriaCliente).toLowerCase(),
     fornitore: cleanText(input.fornitore),
+    exFornitore: cleanText(input.exFornitore),
     nomeOfferta: cleanText(input.nomeOfferta),
     tipoOperazione: normalizeOperations(input.tipoOperazione),
     tipoFornitura: cleanText(input.tipoFornitura).toLowerCase(),
@@ -1451,6 +1730,10 @@ function normalizeContract(row) {
     tipoCliente: selectValue(row.tipo_cliente),
     categoriaCliente: selectValue(row.categoria_cliente),
     fornitore: row.fornitore || '',
+    exFornitore:
+      (CONFIG.contrattiExFornitoreField && row[CONFIG.contrattiExFornitoreField]) ||
+      row.ex_fornitore ||
+      '',
     nomeOfferta: row.nome_offerta || '',
     tipoOperazione: multiSelectValue(row.tipo_operazione),
     tipoFornitura: selectValue(row.tipo_fornitura),

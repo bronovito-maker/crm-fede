@@ -388,7 +388,17 @@
               </label>
               <label>
                 <span>Fornitore <span class="req" aria-hidden="true">*</span></span>
-                <input name="fornitore" type="text" placeholder="Es. Enel Energia" required />
+                <input
+                  id="fornitore-input"
+                  name="fornitore"
+                  type="text"
+                  placeholder="Es. Enel Energia"
+                  required
+                />
+              </label>
+              <label>
+                Ex fornitore
+                <input name="exFornitore" type="text" placeholder="Es. A2A Energia" />
               </label>
               <label>
                 <span>Nome offerta <span class="req" aria-hidden="true">*</span></span>
@@ -771,6 +781,58 @@
                 </div>
               </form>
               <p id="admin-competence-feedback" role="status"></p>
+
+              <hr class="admin-section-divider" />
+
+              <p class="admin-form-copy">
+                Cut-off per fornitore. Se impostato, ha priorità rispetto al cut-off mensile generale.
+              </p>
+              <form
+                class="filters admin-toolbar admin-competence-form"
+                id="admin-supplier-cutoff-form"
+              >
+                <label>
+                  Mese
+                  <input id="admin-supplier-cutoff-month" name="month" type="month" required />
+                </label>
+                <label>
+                  Fornitore
+                  <select id="admin-supplier-cutoff-supplier" name="supplierId" required>
+                    <option value="">Seleziona fornitore</option>
+                  </select>
+                </label>
+                <label>
+                  Data cut-off
+                  <input
+                    id="admin-supplier-cutoff-date"
+                    name="cutoffDate"
+                    type="date"
+                    required
+                  />
+                </label>
+                <div class="admin-competence-actions">
+                  <button
+                    class="secondary-button compact-button"
+                    type="button"
+                    id="admin-supplier-cutoff-load"
+                  >
+                    Carica mese
+                  </button>
+                  <button
+                    class="primary-button compact-button"
+                    type="submit"
+                    id="admin-supplier-cutoff-save"
+                  >
+                    Salva fornitore
+                  </button>
+                </div>
+              </form>
+              <p id="admin-supplier-cutoff-feedback" role="status"></p>
+              <div
+                class="admin-supplier-cutoff-list"
+                id="admin-supplier-cutoff-list"
+                aria-live="polite"
+              ></div>
             </article>
 
             <article class="panel">

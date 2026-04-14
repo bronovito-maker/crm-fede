@@ -1928,6 +1928,7 @@ td[data-label='Cliente'] strong {
 }
 
 #admin-competence-feedback,
+#admin-supplier-cutoff-feedback,
 #admin-agent-feedback {
   margin: 0;
   color: var(--muted);
@@ -1935,13 +1936,30 @@ td[data-label='Cliente'] strong {
 }
 
 #admin-competence-feedback.is-error,
+#admin-supplier-cutoff-feedback.is-error,
 #admin-agent-feedback.is-error {
   color: var(--red);
 }
 
 #admin-competence-feedback.is-success,
+#admin-supplier-cutoff-feedback.is-success,
 #admin-agent-feedback.is-success {
   color: var(--green);
+}
+
+.admin-section-divider {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 12px 0 14px;
+}
+
+.admin-supplier-cutoff-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-supplier-cutoff-table td:last-child {
+  padding-bottom: 6px;
 }
 
 .admin-competence-form .admin-competence-actions {
