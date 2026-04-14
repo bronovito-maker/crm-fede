@@ -1741,6 +1741,7 @@ function normalizeContract(row) {
   const normalized = {
     id: row.id,
     agenteId: linkedAgentId(row.agente),
+    agenteNome: (Array.isArray(row.agente) && row.agente[0]?.value) || '',
     dataInserimento: row.data_inserimento || '',
     idContratto: row.id_contratto || '',
     ragioneSociale: row.ragione_sociale || '',

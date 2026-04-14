@@ -961,6 +961,7 @@ function openContractModal(contractLike) {
     detailItem('Cliente', contract.ragioneSociale),
     detailItem('ID contratto', contract.idContratto || 'Non inserito'),
     detailItem('Stato', capitalize(contract.statoContratto)),
+    detailItem('Agente', contract.agenteNome || 'Sconosciuto'),
     detailItem('Data inserimento', formatDate.format(new Date(contract.dataInserimento))),
     detailItem(
       'Inizio fornitura',
