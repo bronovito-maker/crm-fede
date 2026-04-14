@@ -1181,7 +1181,7 @@ async function upsertCompetenceConfig(monthKey, cutoffDate) {
 
   const current = matches.length === 1 ? { id: Number(matches[0].id) } : null;
   const payload = {
-    [CONFIG.competenzeMonthField]: monthKey,
+    [CONFIG.competenzeMonthField]: normalizeCompetenceMonthDay(monthKey),
     [CONFIG.competenzeCutoffField]: cutoffDate,
   };
   const basePath = `/api/database/rows/table/${CONFIG.competenzeTableId}`;
@@ -1353,7 +1353,7 @@ async function upsertSupplierCutoffConfig(monthKey, supplierId, cutoffDate) {
   });
 
   const payload = {
-    [CONFIG.cutoffFornitoriMonthField]: monthKey,
+    [CONFIG.cutoffFornitoriMonthField]: normalizeCompetenceMonthDay(monthKey),
     [CONFIG.cutoffFornitoriDateField]: cutoffDate,
     [CONFIG.cutoffFornitoreField]: [Number(supplierId)],
   };
