@@ -388,13 +388,15 @@
               </label>
               <label>
                 <span>Fornitore <span class="req" aria-hidden="true">*</span></span>
-                <input
-                  id="fornitore-input"
-                  name="fornitore"
-                  type="text"
-                  placeholder="Es. Enel Energia"
-                  required
-                />
+                <select id="fornitore-input" name="fornitore" required>
+                  <option value="">Seleziona fornitore</option>
+                  <option value="Estra">Estra</option>
+                  <option value="Sev Iren">Sev Iren</option>
+                  <option value="Duferco">Duferco</option>
+                  <option value="Sorgenia">Sorgenia</option>
+                  <option value="Eni">Eni</option>
+                  <option value="Altro">Altro</option>
+                </select>
               </label>
               <label>
                 Ex fornitore

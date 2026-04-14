@@ -365,7 +365,7 @@ document.querySelectorAll('[data-go-page]').forEach((button) => {
 
 document.getElementById('tipo-fornitura').addEventListener('change', updateConditionalFields);
 document.getElementById('metodo-pagamento').addEventListener('change', updateConditionalFields);
-document.getElementById('fornitore-input').addEventListener('input', () => updateStartDatePrediction());
+document.getElementById('fornitore-input').addEventListener('change', () => updateStartDatePrediction());
 document
   .getElementById('contract-files-input')
   .addEventListener('change', handleContractFilesSelection);
