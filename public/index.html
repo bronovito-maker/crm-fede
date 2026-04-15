@@ -25,7 +25,7 @@
           <h1 id="login-title">Accedi al CRM</h1>
           <p class="login-copy">Inserisci le tue credenziali per accedere ai contratti.</p>
         </div>
-        <label>
+        <label for="login-email">
           <span>Email</span>
           <div class="input-with-icon">
             <svg
@@ -43,15 +43,16 @@
               <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
             </svg>
             <input
+              id="login-email"
               name="email"
               type="email"
               placeholder="agente@email.it"
-              autocomplete="email"
+              autocomplete="username"
               required
             />
           </div>
         </label>
-        <label>
+        <label for="login-password">
           <span>Password</span>
           <div class="input-with-icon">
             <svg
@@ -69,6 +70,7 @@
               <path d="M7 11V7a5 5 0 0 1 10 0v4" />
             </svg>
             <input
+              id="login-password"
               name="password"
               type="password"
               placeholder="Password"
@@ -402,7 +404,7 @@
                   </label>
                   <label class="full-span">
                     Indirizzo fatturazione
-                    <input name="indirizzoFatturazione" type="text" placeholder="Es. Via Roma 12" />
+                    <input id="indirizzo-fatturazione-input" name="indirizzoFatturazione" type="text" placeholder="Es. Via Roma 12, Milano" autocomplete="off" />
                   </label>
                 </div>
               </div>
@@ -495,7 +497,7 @@
                   </label>
                   <label class="full-span">
                     Indirizzo fornitura
-                    <input name="indirizzoFornitura" type="text" placeholder="Indirizzo di fornitura" />
+                    <input id="indirizzo-fornitura-input" name="indirizzoFornitura" type="text" placeholder="Indirizzo di fornitura" autocomplete="off" />
                   </label>
                 </div>
               </div>

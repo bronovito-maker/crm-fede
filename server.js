@@ -173,12 +173,13 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
+        scriptSrc: ["'self'", 'https://maps.googleapis.com', 'https://maps.gstatic.com'],
         // 'unsafe-inline' necessario per colori dinamici dei grafici (inline style nei legend dot)
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", 'data:', 'https://images.unsplash.com'],
-        connectSrc: ["'self'"],
-        fontSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        imgSrc: ["'self'", 'data:', 'https://images.unsplash.com', 'https://maps.gstatic.com', 'https://*.googleapis.com'],
+        connectSrc: ["'self'", 'https://maps.googleapis.com', 'https://places.googleapis.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+        frameSrc: ["'none'"],
       },
     },
   })
@@ -204,6 +205,12 @@ app.get('/api/health', (req, res) => {
   res.json({
     ok: isConfigured(),
     service: 'crm-energia',
+  });
+});
+
+app.get('/api/config', (req, res) => {
+  res.json({
+    googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || '',
   });
 });
 
@@ -402,6 +409,8 @@ app.post(
         email: contract.email,
         cellulare: contract.cellulare,
         indirizzoFatturazione: contract.indirizzoFatturazione,
+        tipoCliente: contract.tipoCliente,
+        categoriaCliente: contract.categoriaCliente,
         agenteId: assignedAgentId
       };
       const clientId = await syncClientFromContract(clientData);
@@ -518,6 +527,8 @@ app.patch(
         email: contract.email,
         cellulare: contract.cellulare,
         indirizzoFatturazione: contract.indirizzoFatturazione,
+        tipoCliente: contract.tipoCliente,
+        categoriaCliente: contract.categoriaCliente,
         agenteId: assignedAgentId
       };
       const clientId = await syncClientFromContract(clientData);
@@ -1503,6 +1514,8 @@ async function syncClientFromContract(clientData) {
       email: clientData.email,
       cellulare: clientData.cellulare,
       indirizzo_fatturazione: clientData.indirizzoFatturazione,
+      tipo_cliente: clientData.tipoCliente,
+      categoria_cliente: clientData.categoriaCliente,
       agente: [clientData.agenteId],
     };
 

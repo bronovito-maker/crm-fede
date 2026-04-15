@@ -1084,6 +1084,28 @@ textarea:focus {
   border-color: var(--primary);
 }
 
+/* Google Maps PlaceAutocompleteElement — stile uguale agli input */
+gmp-place-autocomplete {
+  display: block;
+  width: 100%;
+}
+gmp-place-autocomplete::part(input) {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-height: 46px;
+  padding: 12px;
+  color: var(--text);
+  background: #ffffff;
+  font: inherit;
+  letter-spacing: 0;
+  box-sizing: border-box;
+}
+gmp-place-autocomplete::part(input):focus {
+  outline: 3px solid #bfdbfe;
+  border-color: var(--primary);
+}
+
 textarea {
   resize: vertical;
 }

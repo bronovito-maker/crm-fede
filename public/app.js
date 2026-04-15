@@ -1094,7 +1094,7 @@ function renderCbPage() {
   const filteredKo = filteredMonthly.filter((contract) => contract.statoContratto === 'K.O.');
 
   document.getElementById('cb-category-filter').value =
-    selectedCategory === 'Prospect' || selectedCategory === 'Switch ricorrente'
+    selectedCategory === 'prospect' || selectedCategory === 'switch ricorrente'
       ? selectedCategory
       : 'all';
   renderMetrics('cb-metrics-money', [
@@ -1164,7 +1164,7 @@ function renderProgressPage() {
   const recurringPendingDone = currentMonthContracts()
     .filter(
       (contract) =>
-        contract.categoriaCliente === 'switch ricorrente' &&
+        contract.categoriaCliente === 'Switch ricorrente' &&
         ['Caricato', 'Inviato'].includes(contract.statoContratto)
     )
     .reduce((sum, contract) => sum + contractUnitCount(contract), 0);
@@ -1297,8 +1297,8 @@ function populateContractForm(contract) {
   form.elements.pdr.value = contract.pdr || '';
   form.elements.metodoPagamento.value = contract.metodoPagamento || '';
   form.elements.iban.value = contract.iban || '';
-  form.elements.indirizzoFatturazione.value = contract.indirizzoFatturazione || '';
-  form.elements.indirizzoFornitura.value = contract.indirizzoFornitura || '';
+  setAddressAutocompleteValue('indirizzo-fatturazione-input', contract.indirizzoFatturazione || '');
+  setAddressAutocompleteValue('indirizzo-fornitura-input', contract.indirizzoFornitura || '');
   form.elements.descrizione.value = contract.descrizione || '';
   form.elements.statoContratto.value = contract.statoContratto || 'Caricato';
 
@@ -1325,6 +1325,7 @@ function resetContractEditor({ keepFeedback = false } = {}) {
   contractEditorState.editingId = null;
   contractEditorState.originalStatus = 'Caricato';
   form.reset();
+  resetAddressAutocompleteValues();
   const dropdown = document.getElementById('client-suggestions');
   if (dropdown) dropdown.hidden = true;
   selectedContractFiles = [];
@@ -1419,7 +1420,7 @@ function buildContractDraft(form, saveMode = 'submit') {
     ragioneSociale: String(form.get('ragioneSociale')).trim(),
     cellulare: String(form.get('cellulare')).trim(),
     tipoCliente: String(form.get('tipoCliente')).trim(),
-    categoriaCliente: String(form.get('categoriaCliente')).trim().toLowerCase(),
+    categoriaCliente: String(form.get('categoriaCliente')).trim(),
     fornitore,
     exFornitore: String(form.get('exFornitore')).trim(),
     nomeOfferta: String(form.get('nomeOfferta')).trim(),
@@ -1567,6 +1568,10 @@ function validateContractDraft(draft, saveMode = 'submit') {
 
   if (draft.piva && !isValidVatOrFiscalCode(draft.piva)) {
     return 'Inserisci una P.IVA di 11 cifre o un codice fiscale valido.';
+  }
+
+  if (draft.fileContratto.length + draft.existingFileContratto.length === 0) {
+    return 'Carica almeno un documento per salvare il contratto.';
   }
 
   if (draft.fileContratto.length + draft.existingFileContratto.length > maxContractFiles) {
@@ -1760,6 +1765,7 @@ function populateContractAgentOptions() {
 }
 
 async function renderAdminPage() {
+  if (agent?.ruolo !== 'admin') return;
   try {
     const [stats, agents, adminContracts] = await Promise.all([
       baserowClient.getAdminStats(),
@@ -2493,10 +2499,12 @@ async function handleLogin(event) {
 
     agent = session.agent;
     await loadCurrentCompetence({ silent: true });
+    await loadCompetitionCutoffs({ silent: true });
     await loadAndRenderContracts({ silent: true, force: true });
     document.getElementById('agent-name').textContent = agent.nome;
     setConnectionStatus('online', 'Database connesso');
     setAuthLocked(false);
+    initGoogleMapsAutocomplete();
     event.currentTarget.reset();
     feedback.className = 'is-success';
     feedback.textContent = '';
@@ -2709,13 +2717,12 @@ async function initApp() {
   }
 
   try {
-    await loadCompetitionCutoffs({ silent: true });
-
     if (isStaticFileMode && demoFallbackEnabled) {
       contracts = loadContracts();
       setConnectionStatus('demo', 'Modalità demo');
       setAuthLocked(false);
       await loadCurrentCompetence({ silent: true });
+      await loadCompetitionCutoffs({ silent: true });
       renderAll();
       return;
     }
@@ -2732,12 +2739,14 @@ async function initApp() {
 
         agent = session.agent;
         await loadCurrentCompetence({ silent: true });
+        await loadCompetitionCutoffs({ silent: true });
         await loadAndRenderContracts({ silent: true, force: true });
         document.getElementById('agent-name').textContent = agent.nome;
         setConnectionStatus('online', 'Database connesso');
         setAuthLocked(false);
       } catch (err) {
         console.error(err);
+        agent = { ...agent, ruolo: undefined }; // revoca i permessi in caso di errore
         contracts = demoFallbackEnabled ? loadContracts() : [];
         await loadCurrentCompetence({ silent: true });
         setConnectionStatus(
@@ -2898,4 +2907,72 @@ async function loadCompetitionCutoffs({ silent = false } = {}) {
   if (predictedDateEl) {
     updateStartDatePrediction();
   }
+}
+
+// ---- Google Maps Places Autocomplete ----
+let mapsScriptLoaded = false;
+const addressAutocompleteRefs = {}; // { inputId: { placeEl, hiddenInput } }
+
+async function initGoogleMapsAutocomplete() {
+  if (mapsScriptLoaded) return;
+  try {
+    const config = await baserowClient.getConfig();
+    const apiKey = config.googleMapsApiKey;
+    if (!apiKey) return;
+
+    mapsScriptLoaded = true;
+
+    await new Promise((resolve, reject) => {
+      window._initMapsCallback = function () {
+        try {
+          setupAddressAutocomplete('indirizzo-fatturazione-input');
+          setupAddressAutocomplete('indirizzo-fornitura-input');
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      };
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&callback=_initMapsCallback`;
+      script.async = true;
+      script.onerror = () => reject(new Error('Script Maps non caricato.'));
+      document.head.appendChild(script);
+    });
+  } catch (e) {
+    console.warn('[Maps] Errore init:', e);
+  }
+}
+
+function setupAddressAutocomplete(inputId) {
+  const input = document.getElementById(inputId);
+  if (!input || !window.google?.maps?.places?.Autocomplete) return;
+
+  const autocomplete = new google.maps.places.Autocomplete(input, {
+    componentRestrictions: { country: 'it' },
+    fields: ['formatted_address'],
+    types: ['address'],
+  });
+
+  addressAutocompleteRefs[inputId] = autocomplete;
+
+  autocomplete.addListener('place_changed', () => {
+    const place = autocomplete.getPlace();
+    if (place.formatted_address) {
+      input.value = place.formatted_address;
+    }
+  });
+}
+
+// Usato da populateContractForm per precompilare il campo
+function setAddressAutocompleteValue(inputId, value) {
+  const el = document.getElementById(inputId);
+  if (el) el.value = value;
+}
+
+// Usato da resetContractEditor per pulire i campi indirizzo
+function resetAddressAutocompleteValues() {
+  ['indirizzo-fatturazione-input', 'indirizzo-fornitura-input'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
 }

@@ -119,6 +119,10 @@ const baserowClient = {
       body: JSON.stringify(client),
     });
   },
+
+  async getConfig() {
+    return fetchJson('/api/config');
+  },
 };
 
 async function fetchJson(url, options = {}) {
