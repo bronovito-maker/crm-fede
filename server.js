@@ -29,6 +29,7 @@ const CONFIG = {
   cutoffFornitoriDateField: process.env.BASEROW_FIELD_CUTOFF_DATA || 'data_cutoff',
   contrattiExFornitoreField: process.env.BASEROW_FIELD_EX_FORNITORE || '',
   contrattiAgenteField: process.env.BASEROW_FIELD_CONTRATTI_AGENTE || 'agente',
+  clientiTableId: process.env.BASEROW_TABLE_CLIENTI_ID || '',
   sessionTtlMs: Number(process.env.SESSION_TTL_HOURS || 12) * 60 * 60 * 1000,
   cookieSecure: process.env.NODE_ENV === 'production',
 };
@@ -393,8 +394,26 @@ app.post(
       }
 
       const created = await createBaserowContract(payload);
+      
+      // Assicuriamoci che il cliente sia sincronizzato/creato
+      const clientData = {
+        ragioneSociale: contract.ragioneSociale,
+        piva: contract.piva,
+        email: contract.email,
+        cellulare: contract.cellulare,
+        indirizzoFatturazione: contract.indirizzoFatturazione,
+        agenteId: assignedAgentId
+      };
+      const clientId = await syncClientFromContract(clientData);
+      
+      // Ricolleghiamo il contratto al cliente (se non già fatto nel payload)
+      if (clientId) {
+        await updateBaserowContract(created.id, { cliente: [clientId] });
+      }
+
       invalidateContractsCache(assignedAgent.id);
       invalidateAdminStatsCache();
+      invalidateClientsCache(assignedAgent.id);
       res.status(201).json(normalizeContract(created));
     } catch (error) {
       handleApiError(res, error, 'CONTRACT_NOT_SAVED', 'Contratto non salvato.');
@@ -491,9 +510,28 @@ app.patch(
       }
 
       const updated = await updateBaserowContract(contractId, payload);
+
+      // Sincronizzazione anagrafica cliente
+      const clientData = {
+        ragioneSociale: contract.ragioneSociale,
+        piva: contract.piva,
+        email: contract.email,
+        cellulare: contract.cellulare,
+        indirizzoFatturazione: contract.indirizzoFatturazione,
+        agenteId: assignedAgentId
+      };
+      const clientId = await syncClientFromContract(clientData);
+      
+      // Se il contratto non era collegato o è cambiato il cliente
+      if (clientId && (!existing.cliente || !existing.cliente.some(c => c.id === clientId))) {
+        await updateBaserowContract(contractId, { cliente: [clientId] });
+      }
+
       invalidateContractsCache(existingAgentId);
       invalidateContractsCache(assignedAgent.id);
       invalidateAdminStatsCache();
+      invalidateClientsCache(assignedAgentId);
+      
       res.json(normalizeContract(updated));
     } catch (error) {
       handleApiError(res, error, 'CONTRACT_NOT_UPDATED', 'Contratto non aggiornato.');
@@ -676,6 +714,61 @@ app.put('/api/admin/supplier-cutoffs', requireAdmin, async (req, res) => {
     res.json(updated);
   } catch (error) {
     handleApiError(res, error, 'ADMIN_SUPPLIER_CUTOFF_NOT_SAVED', 'Cut-off fornitore non salvato.');
+  }
+});
+
+// ---- Clienti Routes ----
+
+app.get('/api/clients', apiReadLimiter, requireAuth, async (req, res) => {
+  try {
+    ensureConfigured();
+    const agentId = req.session.agentId;
+    const currentUser = await getCurrentAgent(agentId);
+    const isAdmin = currentUser.ruolo === 'admin';
+    
+    const cacheKey = clientsCacheKey(isAdmin ? 'admin' : agentId);
+    const clients = await getCached(cacheKey, async () => {
+      const allRows = await fetchAllRows(CONFIG.clientiTableId);
+      const normalized = allRows.map(normalizeClient);
+      if (isAdmin) return normalized;
+      return normalized.filter(c => c.agenteId === agentId);
+    });
+    
+    res.json(clients);
+  } catch (error) {
+    handleApiError(res, error, 'CLIENTS_LOAD_FAILED', 'Impossibile caricare i clienti.');
+  }
+});
+
+app.patch('/api/clients/:id', requireAuth, async (req, res) => {
+  try {
+    ensureConfigured();
+    const clientId = Number(req.params.id);
+    const agentId = req.session.agentId;
+    const currentUser = await getCurrentAgent(agentId);
+    
+    // Verifica proprietà o admin
+    const clientRow = await getBaserowClient(clientId);
+    const client = normalizeClient(clientRow);
+    
+    if (currentUser.ruolo !== 'admin' && client.agenteId !== agentId) {
+      throw publicError(403, 'CLIENT_FORBIDDEN', 'Accesso negato a questo cliente.');
+    }
+
+    const payload = {
+      'Ragione Sociale': cleanText(req.body.ragioneSociale),
+      email: cleanText(req.body.email),
+      cellulare: cleanText(req.body.cellulare),
+      indirizzo_fatturazione: cleanText(req.body.indirizzoFatturazione),
+      piva: cleanText(req.body.piva), // Attenzione a modificare la PIVA
+    };
+
+    const updated = await updateBaserowClient(clientId, payload);
+    invalidateClientsCache(agentId);
+    invalidateAdminStatsCache();
+    res.json(normalizeClient(updated));
+  } catch (error) {
+    handleApiError(res, error, 'CLIENT_NOT_UPDATED', 'Impossibile aggiornare il cliente.');
   }
 });
 
@@ -867,6 +960,10 @@ function contractsCacheKey(agentId) {
   return `contracts:${agentId}`;
 }
 
+function clientsCacheKey(agentId) {
+  return `clients:${agentId}`;
+}
+
 function adminStatsCacheKey() {
   return 'admin:stats';
 }
@@ -879,9 +976,15 @@ function invalidateContractsCache(agentId) {
   invalidateCacheByPrefix(`contracts:${agentId}`);
 }
 
+function invalidateClientsCache(agentId) {
+  apiCache.delete(clientsCacheKey(agentId));
+  apiCache.delete(clientsCacheKey('admin'));
+}
+
 function invalidateAdminStatsCache() {
   apiCache.delete(adminStatsCacheKey());
 }
+
 function invalidateSupplierCutoffCache() {
   apiCache.delete(supplierCutoffCacheKey());
 }
@@ -1322,6 +1425,81 @@ async function updateBaserowAgent(agentId, payload) {
   );
 }
 
+async function getBaserowClient(clientId) {
+  return baserowFetch(
+    `/api/database/rows/table/${CONFIG.clientiTableId}/${clientId}/?user_field_names=true`
+  );
+}
+
+async function updateBaserowClient(clientId, payload) {
+  return baserowFetch(
+    `/api/database/rows/table/${CONFIG.clientiTableId}/${clientId}/?user_field_names=true`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+async function findClientByPiva(piva) {
+  if (!piva) return null;
+  const filter = JSON.stringify({
+    filter_type: 'AND',
+    filters: [{ field: 'piva', type: 'equal', value: piva }],
+  });
+  const res = await baserowFetch(
+    `/api/database/rows/table/${CONFIG.clientiTableId}/?user_field_names=true&filters=${encodeURIComponent(
+      filter
+    )}`
+  );
+  return res.results && res.results[0] ? res.results[0] : null;
+}
+
+async function syncClientFromContract(clientData) {
+  try {
+    if (!clientData.piva) return null; // senza P.IVA non possiamo deduplicare
+    const existing = await findClientByPiva(clientData.piva);
+    const payload = {
+      'Ragione Sociale': clientData.ragioneSociale,
+      piva: clientData.piva,
+      email: clientData.email,
+      cellulare: clientData.cellulare,
+      indirizzo_fatturazione: clientData.indirizzoFatturazione,
+      agente: [clientData.agenteId],
+    };
+
+    if (existing) {
+      const updated = await updateBaserowClient(existing.id, payload);
+      return updated.id;
+    } else {
+      const created = await baserowFetch(
+        `/api/database/rows/table/${CONFIG.clientiTableId}/?user_field_names=true`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }
+      );
+      return created.id;
+    }
+  } catch (err) {
+    console.error('[syncClientFromContract] Error:', err);
+    return null;
+  }
+}
+
+function normalizeClient(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    ragioneSociale: row['Ragione Sociale'] || '',
+    piva: row.piva || '',
+    email: row.email || '',
+    cellulare: row.cellulare || '',
+    indirizzoFatturazione: row.indirizzo_fatturazione || '',
+    agenteId: Number(linkedAgentId(row.agente)),
+  };
+}
+
 async function uploadContractFile(file) {
   if (!isAllowedContractFile(file)) {
     throw publicError(
@@ -1610,6 +1788,7 @@ function normalizeContract(row) {
     meseRiferimento: row.mese_riferimento || '',
     trimestreRiferimento: row.trimestre_riferimento || '',
     annoRiferimento: row.anno_riferimento || '',
+    clienteId: linkedAgentId(row.cliente), // Riutilizziamo la funzione helper per gli ID linkati
   };
   return {
     ...normalized,

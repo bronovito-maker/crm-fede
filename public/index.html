@@ -171,6 +171,11 @@
               ><span class="nav-icon" aria-hidden="true">📄</span>Pratiche</span
             ><span class="nav-full">Contratti</span>
           </button>
+          <button class="nav-item" type="button" data-page="clients">
+            <span class="nav-short"
+              ><span class="nav-icon" aria-hidden="true">👥</span>Clienti</span
+            ><span class="nav-full">Anagrafiche</span>
+          </button>
           <button class="nav-item" type="button" data-page="cb">
             <span class="nav-short"><span class="nav-icon" aria-hidden="true">€</span>CB</span
             ><span class="nav-full">CB</span>
@@ -332,13 +337,25 @@
                   >Ragione sociale - Nome cliente
                   <span class="req" aria-hidden="true">*</span></span
                 >
-                <input
-                  name="ragioneSociale"
-                  type="text"
-                  placeholder="Es. Rossi SRL"
-                  autocomplete="organization"
-                  required
-                />
+                <div class="client-lookup-wrapper">
+                  <input
+                    name="ragioneSociale"
+                    type="text"
+                    placeholder="Es. Rossi SRL o cerca cliente esistente..."
+                    autocomplete="off"
+                    required
+                    id="contract-ragione-sociale"
+                    aria-autocomplete="list"
+                    aria-controls="client-suggestions"
+                  />
+                  <ul
+                    class="client-suggestions-list"
+                    id="client-suggestions"
+                    hidden
+                    role="listbox"
+                    aria-label="Clienti suggeriti"
+                  ></ul>
+                </div>
               </label>
               <label>
                 <span>Cellulare <span class="req" aria-hidden="true">*</span></span>
@@ -751,6 +768,36 @@
           </div>
         </section>
 
+        <section class="page" id="clients">
+          <div class="content-header">
+            <div class="search-box">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon" aria-hidden="true">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input type="text" id="clients-search" placeholder="Cerca per nome, P.IVA o email..." />
+            </div>
+          </div>
+          <article class="panel full-width no-padding">
+            <div class="table-container">
+              <table id="clients-table">
+                <thead>
+                  <tr>
+                    <th>Ragione Sociale</th>
+                    <th>P.IVA / CF</th>
+                    <th>Contatti</th>
+                    <th>Località</th>
+                    <th class="actions-col">Azioni</th>
+                  </tr>
+                </thead>
+                <tbody id="clients-body">
+                  <!-- Caricato via JS -->
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
         <section class="page" id="admin">
           <div class="metrics-grid" id="admin-metrics-status"></div>
           <div class="metrics-grid" id="admin-metrics-summary"></div>
@@ -1147,6 +1194,47 @@
             Elimina contratto
           </button>
         </div>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="client-modal" hidden>
+      <section class="contract-detail" role="dialog" aria-modal="true" aria-labelledby="client-modal-title">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">Anagrafica Cliente</p>
+            <h2 id="client-modal-title">Modifica Profilo</h2>
+          </div>
+          <button class="icon-button" type="button" id="close-client-modal" aria-label="Chiudi dettaglio">×</button>
+        </div>
+        <form id="edit-client-form" class="modal-form">
+          <input type="hidden" name="id" id="edit-client-id" />
+          <div class="form-grid">
+            <label class="full-span">
+              Ragione Sociale
+              <input type="text" name="ragioneSociale" required placeholder="Es. Mario Rossi Srl" />
+            </label>
+            <label>
+              P.IVA / Cod. Fiscale
+              <input type="text" name="piva" required placeholder="11 cifre o CF" />
+            </label>
+            <label>
+              Email
+              <input type="email" name="email" placeholder="cliente@email.it" />
+            </label>
+            <label>
+              Cellulare
+              <input type="text" name="cellulare" placeholder="333 1234567" />
+            </label>
+            <label class="full-span">
+              Indirizzo Fatturazione
+              <input type="text" name="indirizzoFatturazione" placeholder="Via, civico, città, CAP" />
+            </label>
+          </div>
+          <div class="modal-actions">
+            <button class="primary-button" type="submit" id="save-client-button">Salva modifiche</button>
+            <button class="secondary-button" type="button" id="cancel-client-edit">Annulla</button>
+          </div>
+        </form>
       </section>
     </div>
 

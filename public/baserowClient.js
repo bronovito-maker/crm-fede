@@ -108,6 +108,17 @@ const baserowClient = {
       body: JSON.stringify(payload),
     });
   },
+
+  async listClients() {
+    return fetchJson('/api/clients');
+  },
+
+  async updateClient(clientId, client) {
+    return fetchJson(`/api/clients/${clientId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(client),
+    });
+  },
 };
 
 async function fetchJson(url, options = {}) {

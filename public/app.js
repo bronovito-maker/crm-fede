@@ -194,6 +194,8 @@ const defaultContracts = [
 
 const storageKey = 'energia-crm-contracts';
 let contracts = [];
+let clients = [];
+let clientsRefreshInFlight = false;
 let selectedContractFiles = [];
 let existingContractFiles = [];
 let contractsRefreshInFlight = false;
@@ -230,6 +232,7 @@ const pages = {
   'switch ricorrente': 'Switch ricorrente',
   progress: 'Avanzamento',
   admin: 'Admin',
+  clients: 'Anagrafiche Clienti',
 };
 
 const statusColors = {
@@ -372,9 +375,15 @@ document
   .getElementById('contract-files-input')
   .addEventListener('change', handleContractFilesSelection);
 document.getElementById('cb-category-filter').addEventListener('change', (event) => {
-  cbCategoryFilter = event.currentTarget.value || 'all';
   renderCbPage();
 });
+
+// ---- Clienti listeners ----
+document.getElementById('clients-search')?.addEventListener('input', renderClientsTable);
+document.getElementById('close-client-modal')?.addEventListener('click', closeClientModal);
+document.getElementById('cancel-client-edit')?.addEventListener('click', closeClientModal);
+document.getElementById('edit-client-form')?.addEventListener('submit', handleClientEditSubmit);
+setupContractClientAutocomplete();
 
 // ---- File drop zone ----
 (function setupFileDropZone() {
@@ -651,6 +660,11 @@ function setActivePage(pageId) {
 
   if (pageId === 'new-contract') {
     syncContractEditorUi();
+    loadAndRenderClients({ silent: true }); // precarica per autocomplete
+  }
+
+  if (pageId === 'clients') {
+    loadAndRenderClients();
   }
 }
 
@@ -1223,6 +1237,7 @@ function renderAll() {
   renderContractsTable();
   renderCbPage();
   renderProgressPage();
+  renderClientsTable();
   updateAdminVisibility();
   syncContractEditorUi();
   if (agent.ruolo === 'admin') {
@@ -1308,6 +1323,8 @@ function resetContractEditor({ keepFeedback = false } = {}) {
   contractEditorState.editingId = null;
   contractEditorState.originalStatus = 'Caricato';
   form.reset();
+  const dropdown = document.getElementById('client-suggestions');
+  if (dropdown) dropdown.hidden = true;
   selectedContractFiles = [];
   existingContractFiles = [];
   renderSelectedContractFiles();
@@ -2741,6 +2758,214 @@ async function initApp() {
   } finally {
     setAppLoading(false);
   }
+}
+
+// ---- Clienti Management ----
+
+async function loadAndRenderClients({ silent = false, force = false } = {}) {
+  if (clientsRefreshInFlight || typeof baserowClient === 'undefined' || !baserowClient.isConfigured()) return;
+  
+  if (!force && clients.length > 0) {
+    renderClientsTable();
+    return;
+  }
+
+  clientsRefreshInFlight = true;
+  try {
+    const data = await baserowClient.listClients();
+    clients = Array.isArray(data) ? data : [];
+    renderClientsTable();
+  } catch (error) {
+    if (!silent) console.error('Errore caricamento clienti:', error);
+  } finally {
+    clientsRefreshInFlight = false;
+  }
+}
+
+function renderClientsTable() {
+  const body = document.getElementById('clients-body');
+  const searchInput = document.getElementById('clients-search');
+  if (!body) return;
+
+  const searchTerm = (searchInput?.value || '').toLowerCase().trim();
+  
+  const filtered = clients.filter(c => {
+    return !searchTerm || 
+           c.ragioneSociale.toLowerCase().includes(searchTerm) ||
+           c.piva.toLowerCase().includes(searchTerm) ||
+           c.email.toLowerCase().includes(searchTerm);
+  });
+
+  if (filtered.length === 0) {
+    body.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 3rem; color: #64748b;">Nessun cliente trovato.</td></tr>`;
+    return;
+  }
+
+  body.innerHTML = filtered.map(c => `
+    <tr data-client-id="${c.id}" tabindex="0">
+      <td>
+        <div class="client-name-cell">
+          <strong>${escapeHtml(c.ragioneSociale)}</strong>
+          <span class="client-id-sub">ID: ${c.id}</span>
+        </div>
+      </td>
+      <td><code class="piva-tag">${escapeHtml(c.piva)}</code></td>
+      <td>
+        <div class="contact-info">
+          <div class="contact-line">
+            <svg class="small-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+            <span>${escapeHtml(c.email || '-')}</span>
+          </div>
+          <div class="contact-line">
+            <svg class="small-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1-2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+            <span>${escapeHtml(c.cellulare || '-')}</span>
+          </div>
+        </div>
+      </td>
+      <td class="addr-cell">${escapeHtml(c.indirizzoFatturazione || '-')}</td>
+      <td class="actions-col">
+        <button class="secondary-button compact-button edit-client-action-btn" data-id="${c.id}">
+          Modifica
+        </button>
+      </td>
+    </tr>
+  `).join('');
+
+  // Aggiungi listener per i pulsanti di modifica
+  body.querySelectorAll('.edit-client-action-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openClientModal(Number(btn.dataset.id));
+    });
+  });
+}
+
+function openClientModal(id) {
+  const client = clients.find(c => c.id === id);
+  if (!client) return;
+
+  const modal = document.getElementById('client-modal');
+  const form = document.getElementById('edit-client-form');
+  
+  form.elements['id'].value = client.id;
+  form.elements['ragioneSociale'].value = client.ragioneSociale;
+  form.elements['piva'].value = client.piva;
+  form.elements['email'].value = client.email;
+  form.elements['cellulare'].value = client.cellulare;
+  form.elements['indirizzoFatturazione'].value = client.indirizzoFatturazione;
+
+  modal.hidden = false;
+  modal.classList.add('active');
+}
+
+function closeClientModal() {
+  const modal = document.getElementById('client-modal');
+  modal.hidden = true;
+  modal.classList.remove('active');
+}
+
+async function handleClientEditSubmit(e) {
+  e.preventDefault();
+  const form = e.target;
+  const id = form.elements['id'].value;
+  const submitBtn = document.getElementById('save-client-button');
+  
+  const payload = {
+    ragioneSociale: form.elements['ragioneSociale'].value,
+    piva: form.elements['piva'].value,
+    email: form.elements['email'].value,
+    cellulare: form.elements['cellulare'].value,
+    indirizzoFatturazione: form.elements['indirizzoFatturazione'].value,
+  };
+
+  submitBtn.disabled = true;
+  const originalText = submitBtn.textContent;
+  submitBtn.textContent = 'Salvataggio...';
+
+  try {
+    await baserowClient.updateClient(id, payload);
+    closeClientModal();
+    // Aggiorniamo la lista locale e ri-renderizziamo
+    await loadAndRenderClients({ force: true, silent: true });
+    
+    // Feedback opzionale se implementato (es. toast)
+    console.log('Cliente aggiornato con successo');
+  } catch (error) {
+    console.error(error);
+    alert('Errore durante il salvataggio: ' + (error.message || 'Errore sconosciuto'));
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalText;
+  }
+}
+
+function setupContractClientAutocomplete() {
+  const input = document.getElementById('contract-ragione-sociale');
+  const dropdown = document.getElementById('client-suggestions');
+  if (!input || !dropdown) return;
+
+  let suppressClose = false;
+
+  function showSuggestions() {
+    const q = input.value.trim().toLowerCase();
+    if (!q || clients.length === 0) {
+      dropdown.hidden = true;
+      return;
+    }
+    const matches = clients
+      .filter(
+        (c) =>
+          c.ragioneSociale.toLowerCase().includes(q) || c.piva.toLowerCase().includes(q)
+      )
+      .slice(0, 8);
+
+    if (matches.length === 0) {
+      dropdown.hidden = true;
+      return;
+    }
+
+    dropdown.innerHTML = matches
+      .map(
+        (c) => `
+      <li class="client-suggestion-item" data-id="${c.id}" role="option" tabindex="-1">
+        <span class="client-suggestion-name">${escapeHtml(c.ragioneSociale)}</span>
+        <span class="client-suggestion-meta">${escapeHtml(c.piva || '')}${c.email ? ' · ' + escapeHtml(c.email) : ''}</span>
+      </li>`
+      )
+      .join('');
+
+    dropdown.querySelectorAll('.client-suggestion-item').forEach((item) => {
+      item.addEventListener('mousedown', () => {
+        suppressClose = true;
+      });
+      item.addEventListener('click', () => {
+        const id = Number(item.dataset.id);
+        const client = clients.find((c) => c.id === id);
+        if (client) fillClientFieldsFromLookup(client);
+        dropdown.hidden = true;
+        suppressClose = false;
+        input.focus();
+      });
+    });
+
+    dropdown.hidden = false;
+  }
+
+  input.addEventListener('input', showSuggestions);
+  input.addEventListener('focus', showSuggestions);
+  input.addEventListener('blur', () => {
+    if (!suppressClose) dropdown.hidden = true;
+    suppressClose = false;
+  });
+}
+
+function fillClientFieldsFromLookup(client) {
+  const form = document.getElementById('contract-form');
+  form.elements.ragioneSociale.value = client.ragioneSociale;
+  form.elements.piva.value = client.piva;
+  form.elements.email.value = client.email;
+  form.elements.cellulare.value = client.cellulare;
+  form.elements.indirizzoFatturazione.value = client.indirizzoFatturazione;
 }
 
 initApp();
