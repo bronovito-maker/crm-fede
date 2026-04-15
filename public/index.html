@@ -171,11 +171,6 @@
               ><span class="nav-icon" aria-hidden="true">📄</span>Pratiche</span
             ><span class="nav-full">Contratti</span>
           </button>
-          <button class="nav-item" type="button" data-page="clients">
-            <span class="nav-short"
-              ><span class="nav-icon" aria-hidden="true">👥</span>Clienti</span
-            ><span class="nav-full">Anagrafiche</span>
-          </button>
           <button class="nav-item" type="button" data-page="cb">
             <span class="nav-short"><span class="nav-icon" aria-hidden="true">€</span>CB</span
             ><span class="nav-full">CB</span>
@@ -332,162 +327,181 @@
               >
                 <span class="req" aria-hidden="true">*</span> Campi obbligatori
               </p>
-              <label>
-                <span
-                  >Ragione sociale - Nome cliente
-                  <span class="req" aria-hidden="true">*</span></span
-                >
-                <div class="client-lookup-wrapper">
-                  <input
-                    name="ragioneSociale"
-                    type="text"
-                    placeholder="Es. Rossi SRL o cerca cliente esistente..."
-                    autocomplete="off"
-                    required
-                    id="contract-ragione-sociale"
-                    aria-autocomplete="list"
-                    aria-controls="client-suggestions"
-                  />
-                  <ul
-                    class="client-suggestions-list"
-                    id="client-suggestions"
-                    hidden
-                    role="listbox"
-                    aria-label="Clienti suggeriti"
-                  ></ul>
+            </div>
+
+            <div class="contract-form-cols">
+              <!-- COLONNA SINISTRA: Anagrafica Cliente -->
+              <div class="contract-form-col">
+                <h3 class="form-col-header">Anagrafica Cliente</h3>
+                <div class="form-grid">
+                  <label>
+                    <span
+                      >Ragione sociale - Nome cliente
+                      <span class="req" aria-hidden="true">*</span></span
+                    >
+                    <div class="client-lookup-wrapper">
+                      <input
+                        name="ragioneSociale"
+                        type="text"
+                        placeholder="Es. Rossi SRL o cerca cliente esistente..."
+                        autocomplete="off"
+                        required
+                        id="contract-ragione-sociale"
+                        aria-autocomplete="list"
+                        aria-controls="client-suggestions"
+                      />
+                      <ul
+                        class="client-suggestions-list"
+                        id="client-suggestions"
+                        hidden
+                        role="listbox"
+                        aria-label="Clienti suggeriti"
+                      ></ul>
+                    </div>
+                  </label>
+                  <label>
+                    <span>Cellulare <span class="req" aria-hidden="true">*</span></span>
+                    <input
+                      name="cellulare"
+                      type="tel"
+                      inputmode="tel"
+                      placeholder="+39 333 1234567"
+                      autocomplete="tel"
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span>Tipo cliente <span class="req" aria-hidden="true">*</span></span>
+                    <select name="tipoCliente" required>
+                      <option value="">Seleziona</option>
+                      <option>Business</option>
+                      <option>Privato</option>
+                      <option>Condominio</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Categoria cliente <span class="req" aria-hidden="true">*</span></span>
+                    <select name="categoriaCliente" required>
+                      <option value="">Seleziona</option>
+                      <option value="Prospect">Prospect</option>
+                      <option value="Switch ricorrente">Switch ricorrente</option>
+                    </select>
+                  </label>
+                  <label>
+                    P.IVA - Cod. fiscale
+                    <input name="piva" type="text" inputmode="numeric" placeholder="01234567890" />
+                  </label>
+                  <label>
+                    Email
+                    <input
+                      name="email"
+                      type="email"
+                      placeholder="cliente@email.it"
+                      autocomplete="email"
+                    />
+                  </label>
+                  <label class="full-span">
+                    Indirizzo fatturazione
+                    <input name="indirizzoFatturazione" type="text" placeholder="Es. Via Roma 12" />
+                  </label>
                 </div>
-              </label>
-              <label>
-                <span>Cellulare <span class="req" aria-hidden="true">*</span></span>
-                <input
-                  name="cellulare"
-                  type="tel"
-                  inputmode="tel"
-                  placeholder="+39 333 1234567"
-                  autocomplete="tel"
-                  required
-                />
-              </label>
-              <label>
-                <span>Tipo cliente <span class="req" aria-hidden="true">*</span></span>
-                <select name="tipoCliente" required>
-                  <option value="">Seleziona</option>
-                  <option>Business</option>
-                  <option>Privato</option>
-                  <option>Condominio</option>
-                </select>
-              </label>
-              <label>
-                P.IVA - Cod. fiscale
-                <input name="piva" type="text" inputmode="numeric" placeholder="01234567890" />
-              </label>
-              <label>
-                Email
-                <input
-                  name="email"
-                  type="email"
-                  placeholder="cliente@email.it"
-                  autocomplete="email"
-                />
-              </label>
-              <label>
-                Id contratto
-                <input name="idContratto" type="text" placeholder="Es. 277543" autocomplete="off" />
-              </label>
-              <input name="statoContratto" type="hidden" value="Caricato" />
-              <label>
-                <span>Categoria cliente <span class="req" aria-hidden="true">*</span></span>
-                <select name="categoriaCliente" required>
-                  <option value="">Seleziona</option>
-                  <option value="Prospect">Prospect</option>
-                  <option value="Switch ricorrente">Switch ricorrente</option>
-                </select>
-              </label>
-              <label>
-                <span>Fornitore <span class="req" aria-hidden="true">*</span></span>
-                <select id="fornitore-input" name="fornitore" required>
-                  <option value="">Seleziona fornitore</option>
-                  <option value="Estra">Estra</option>
-                  <option value="Sev Iren">Sev Iren</option>
-                  <option value="Duferco">Duferco</option>
-                  <option value="Sorgenia">Sorgenia</option>
-                  <option value="Eni">Eni</option>
-                  <option value="Altro">Altro</option>
-                </select>
-              </label>
-              <label>
-                Ex fornitore
-                <input name="exFornitore" type="text" placeholder="Es. A2A Energia" />
-              </label>
-              <label>
-                <span>Nome offerta <span class="req" aria-hidden="true">*</span></span>
-                <input
-                  name="nomeOfferta"
-                  type="text"
-                  placeholder="Es. Flex Business Luce"
-                  required
-                />
-              </label>
-              <fieldset class="field-group full-span">
-                <legend>Tipo operazione</legend>
-                <div class="checkbox-grid">
-                  <label><input name="tipoOperazione" type="radio" value="switch" /> Switch</label>
-                  <label
-                    ><input name="tipoOperazione" type="radio" value="switch + voltura" /> Switch +
-                    voltura</label
-                  >
-                  <label
-                    ><input name="tipoOperazione" type="radio" value="cambio listino" /> Cambio
-                    listino</label
-                  >
-                  <label
-                    ><input name="tipoOperazione" type="radio" value="subentro" /> Subentro</label
-                  >
+              </div>
+
+              <!-- COLONNA DESTRA: Dati Contratto -->
+              <div class="contract-form-col">
+                <h3 class="form-col-header">Dati Contratto</h3>
+                <div class="form-grid">
+                  <label>
+                    Id contratto
+                    <input name="idContratto" type="text" placeholder="Es. 277543" autocomplete="off" />
+                  </label>
+                  <input name="statoContratto" type="hidden" value="Caricato" />
+                  <label>
+                    <span>Fornitore <span class="req" aria-hidden="true">*</span></span>
+                    <select id="fornitore-input" name="fornitore" required>
+                      <option value="">Seleziona fornitore</option>
+                      <option value="Estra">Estra</option>
+                      <option value="Sev Iren">Sev Iren</option>
+                      <option value="Duferco">Duferco</option>
+                      <option value="Sorgenia">Sorgenia</option>
+                      <option value="Eni">Eni</option>
+                      <option value="Altro">Altro</option>
+                    </select>
+                  </label>
+                  <label>
+                    Ex fornitore
+                    <input name="exFornitore" type="text" placeholder="Es. A2A Energia" />
+                  </label>
+                  <label>
+                    <span>Nome offerta <span class="req" aria-hidden="true">*</span></span>
+                    <input
+                      name="nomeOfferta"
+                      type="text"
+                      placeholder="Es. Flex Business Luce"
+                      required
+                    />
+                  </label>
+                  <fieldset class="field-group full-span">
+                    <legend>Tipo operazione</legend>
+                    <div class="checkbox-grid">
+                      <label><input name="tipoOperazione" type="radio" value="switch" /> Switch</label>
+                      <label
+                        ><input name="tipoOperazione" type="radio" value="switch + voltura" /> Switch +
+                        voltura</label
+                      >
+                      <label
+                        ><input name="tipoOperazione" type="radio" value="cambio listino" /> Cambio
+                        listino</label
+                      >
+                      <label
+                        ><input name="tipoOperazione" type="radio" value="subentro" /> Subentro</label
+                      >
+                    </div>
+                  </fieldset>
+                  <label>
+                    <span>Tipo fornitura <span class="req" aria-hidden="true">*</span></span>
+                    <select name="tipoFornitura" id="tipo-fornitura" required>
+                      <option value="">Seleziona</option>
+                      <option value="luce">Luce</option>
+                      <option value="gas">Gas</option>
+                      <option value="dual">Dual</option>
+                    </select>
+                  </label>
+                  <label class="conditional-field" id="pod-field" hidden>
+                    POD
+                    <input name="pod" type="text" placeholder="IT001E..." />
+                  </label>
+                  <label class="conditional-field" id="pdr-field" hidden>
+                    PDR
+                    <input name="pdr" type="text" placeholder="Numero PDR" />
+                  </label>
+                  <label>
+                    <span>Metodo pagamento <span class="req" aria-hidden="true">*</span></span>
+                    <select name="metodoPagamento" id="metodo-pagamento" required>
+                      <option value="">Seleziona</option>
+                      <option value="bollettino">Bollettino</option>
+                      <option value="rid">RID</option>
+                    </select>
+                  </label>
+                  <label class="conditional-field" id="iban-field" hidden>
+                    IBAN
+                    <input name="iban" type="text" placeholder="IT60X..." autocomplete="off" />
+                  </label>
+                  <label class="admin-only" id="contract-agent-field" hidden>
+                    <span>Agente assegnato <span class="req" aria-hidden="true">*</span></span>
+                    <select name="agenteId" id="contract-agent-select">
+                      <option value="">Seleziona agente</option>
+                    </select>
+                  </label>
+                  <label class="full-span">
+                    Indirizzo fornitura
+                    <input name="indirizzoFornitura" type="text" placeholder="Indirizzo di fornitura" />
+                  </label>
                 </div>
-              </fieldset>
-              <label>
-                <span>Tipo fornitura <span class="req" aria-hidden="true">*</span></span>
-                <select name="tipoFornitura" id="tipo-fornitura" required>
-                  <option value="">Seleziona</option>
-                  <option value="luce">Luce</option>
-                  <option value="gas">Gas</option>
-                  <option value="dual">Dual</option>
-                </select>
-              </label>
-              <label class="conditional-field" id="pod-field" hidden>
-                POD
-                <input name="pod" type="text" placeholder="IT001E..." />
-              </label>
-              <label class="conditional-field" id="pdr-field" hidden>
-                PDR
-                <input name="pdr" type="text" placeholder="Numero PDR" />
-              </label>
-              <label>
-                <span>Metodo pagamento <span class="req" aria-hidden="true">*</span></span>
-                <select name="metodoPagamento" id="metodo-pagamento" required>
-                  <option value="">Seleziona</option>
-                  <option value="bollettino">Bollettino</option>
-                  <option value="rid">RID</option>
-                </select>
-              </label>
-              <label class="conditional-field" id="iban-field" hidden>
-                IBAN
-                <input name="iban" type="text" placeholder="IT60X..." autocomplete="off" />
-              </label>
-              <label class="admin-only" id="contract-agent-field" hidden>
-                <span>Agente assegnato <span class="req" aria-hidden="true">*</span></span>
-                <select name="agenteId" id="contract-agent-select">
-                  <option value="">Seleziona agente</option>
-                </select>
-              </label>
-              <label>
-                Indirizzo fatturazione
-                <input name="indirizzoFatturazione" type="text" placeholder="Es. Via Roma 12" />
-              </label>
-              <label>
-                Indirizzo fornitura
-                <input name="indirizzoFornitura" type="text" placeholder="Indirizzo di fornitura" />
-              </label>
+              </div>
+            </div>
+
+            <div class="form-grid">
               <div class="full-span">
                 <div class="field-with-counter" style="margin-bottom: 7px">
                   <label
@@ -768,35 +782,6 @@
           </div>
         </section>
 
-        <section class="page" id="clients">
-          <div class="content-header">
-            <div class="search-box">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon" aria-hidden="true">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-              <input type="text" id="clients-search" placeholder="Cerca per nome, P.IVA o email..." />
-            </div>
-          </div>
-          <article class="panel full-width no-padding">
-            <div class="table-container">
-              <table id="clients-table">
-                <thead>
-                  <tr>
-                    <th>Ragione Sociale</th>
-                    <th>P.IVA / CF</th>
-                    <th>Contatti</th>
-                    <th>Località</th>
-                    <th class="actions-col">Azioni</th>
-                  </tr>
-                </thead>
-                <tbody id="clients-body">
-                  <!-- Caricato via JS -->
-                </tbody>
-              </table>
-            </div>
-          </article>
-        </section>
 
         <section class="page" id="admin">
           <div class="metrics-grid" id="admin-metrics-status"></div>
@@ -1197,50 +1182,6 @@
       </section>
     </div>
 
-    <div class="modal-backdrop" id="client-modal" hidden>
-      <section class="contract-detail client-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="client-modal-title">
-        <div class="modal-head">
-          <div class="client-modal-header-info">
-            <p class="eyebrow">Anagrafica Cliente</p>
-            <h2 id="client-modal-title">Modifica Profilo</h2>
-            <p class="client-modal-subtitle" id="client-modal-subtitle" hidden></p>
-          </div>
-          <button class="icon-button" type="button" id="close-client-modal" aria-label="Chiudi">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-        <form id="edit-client-form" class="client-edit-form">
-          <input type="hidden" name="id" id="edit-client-id" />
-          <div class="client-edit-grid">
-            <label class="full-span">
-              <span>Ragione Sociale <span class="req" aria-hidden="true">*</span></span>
-              <input type="text" name="ragioneSociale" required placeholder="Es. Mario Rossi Srl" />
-            </label>
-            <label>
-              <span>P.IVA / Cod. Fiscale</span>
-              <input type="text" name="piva" placeholder="11 cifre o CF" inputmode="text" />
-            </label>
-            <label>
-              <span>Cellulare</span>
-              <input type="tel" name="cellulare" placeholder="333 1234567" inputmode="tel" />
-            </label>
-            <label class="full-span">
-              <span>Email</span>
-              <input type="email" name="email" placeholder="cliente@email.it" />
-            </label>
-            <label class="full-span">
-              <span>Indirizzo Fatturazione</span>
-              <input type="text" name="indirizzoFatturazione" placeholder="Via, civico, città, CAP" />
-            </label>
-          </div>
-          <div id="client-edit-feedback" class="client-edit-feedback" hidden></div>
-          <div class="client-edit-actions">
-            <button class="primary-button" type="submit" id="save-client-button">Salva modifiche</button>
-            <button class="secondary-button" type="button" id="cancel-client-edit">Annulla</button>
-          </div>
-        </form>
-      </section>
-    </div>
 
     <script src="config.js"></script>
     <script src="baserowClient.js"></script>

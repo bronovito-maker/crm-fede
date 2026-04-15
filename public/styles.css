@@ -976,6 +976,29 @@ body.auth-locked .app-shell {
   font-weight: 700;
 }
 
+/* Layout a due colonne per il form contratto (mobile-first, diventa 2 colonne su desktop) */
+.contract-form-cols {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.contract-form-col {
+  min-width: 0; /* previene overflow in grid */
+}
+
+.form-col-header {
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  padding-bottom: 0.75rem;
+  margin-bottom: 1rem;
+  border-bottom: 2px solid #e2e8f0;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -3068,6 +3091,11 @@ td[data-label='Cliente'] strong {
 
   .progress-focus {
     min-height: auto;
+  }
+
+  /* Form contratto: due colonne su desktop */
+  .contract-form-cols {
+    grid-template-columns: 1fr 1fr;
   }
 }
 

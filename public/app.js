@@ -232,7 +232,6 @@ const pages = {
   'switch ricorrente': 'Switch ricorrente',
   progress: 'Avanzamento',
   admin: 'Admin',
-  clients: 'Anagrafiche Clienti',
 };
 
 const statusColors = {
@@ -378,11 +377,7 @@ document.getElementById('cb-category-filter').addEventListener('change', (event)
   renderCbPage();
 });
 
-// ---- Clienti listeners ----
-document.getElementById('clients-search')?.addEventListener('input', renderClientsTable);
-document.getElementById('close-client-modal')?.addEventListener('click', closeClientModal);
-document.getElementById('cancel-client-edit')?.addEventListener('click', closeClientModal);
-document.getElementById('edit-client-form')?.addEventListener('submit', handleClientEditSubmit);
+// Setup autocomplete clienti
 setupContractClientAutocomplete();
 
 // ---- File drop zone ----
@@ -520,6 +515,18 @@ document.getElementById('contract-form').addEventListener('submit', async (event
       const payload = buildContractFormData(draft);
       if (isEditing) {
         await baserowClient.updateContract(contractEditorState.editingId, payload);
+        // Aggiorna anche l'anagrafica del cliente collegato (se esiste)
+        const editedContract = contracts.find(c => Number(c.id) === Number(contractEditorState.editingId));
+        const clienteId = editedContract?.clienteId;
+        if (clienteId) {
+          await baserowClient.updateClient(clienteId, {
+            ragioneSociale: draft.ragioneSociale,
+            piva: draft.piva,
+            email: draft.email,
+            cellulare: draft.cellulare,
+            indirizzoFatturazione: draft.indirizzoFatturazione,
+          });
+        }
       } else {
         await baserowClient.createContract(payload);
       }
@@ -660,11 +667,7 @@ function setActivePage(pageId) {
 
   if (pageId === 'new-contract') {
     syncContractEditorUi();
-    loadAndRenderClients({ silent: true }); // precarica per autocomplete
-  }
-
-  if (pageId === 'clients') {
-    loadAndRenderClients();
+    loadClients({ silent: true }); // precarica per autocomplete
   }
 }
 
@@ -1237,7 +1240,6 @@ function renderAll() {
   renderContractsTable();
   renderCbPage();
   renderProgressPage();
-  renderClientsTable();
   updateAdminVisibility();
   syncContractEditorUi();
   if (agent.ruolo === 'admin') {
@@ -2762,11 +2764,10 @@ async function initApp() {
 
 // ---- Clienti Management ----
 
-async function loadAndRenderClients({ silent = false, force = false } = {}) {
+async function loadClients({ silent = false, force = false } = {}) {
   if (clientsRefreshInFlight || typeof baserowClient === 'undefined' || !baserowClient.isConfigured()) return;
-  
+
   if (!force && clients.length > 0) {
-    renderClientsTable();
     return;
   }
 
@@ -2774,152 +2775,10 @@ async function loadAndRenderClients({ silent = false, force = false } = {}) {
   try {
     const data = await baserowClient.listClients();
     clients = Array.isArray(data) ? data : [];
-    renderClientsTable();
   } catch (error) {
     if (!silent) console.error('Errore caricamento clienti:', error);
   } finally {
     clientsRefreshInFlight = false;
-  }
-}
-
-function renderClientsTable() {
-  const body = document.getElementById('clients-body');
-  const searchInput = document.getElementById('clients-search');
-  if (!body) return;
-
-  const searchTerm = (searchInput?.value || '').toLowerCase().trim();
-  
-  const filtered = clients.filter(c => {
-    return !searchTerm || 
-           c.ragioneSociale.toLowerCase().includes(searchTerm) ||
-           c.piva.toLowerCase().includes(searchTerm) ||
-           c.email.toLowerCase().includes(searchTerm);
-  });
-
-  if (filtered.length === 0) {
-    body.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 3rem; color: #64748b;">Nessun cliente trovato.</td></tr>`;
-    return;
-  }
-
-  body.innerHTML = filtered.map(c => `
-    <tr data-client-id="${c.id}" tabindex="0">
-      <td>
-        <div class="client-name-cell">
-          <strong>${escapeHtml(c.ragioneSociale)}</strong>
-          <span class="client-id-sub">ID: ${c.id}</span>
-        </div>
-      </td>
-      <td><code class="piva-tag">${escapeHtml(c.piva)}</code></td>
-      <td>
-        <div class="contact-info">
-          <div class="contact-line">
-            <svg class="small-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-            <span>${escapeHtml(c.email || '-')}</span>
-          </div>
-          <div class="contact-line">
-            <svg class="small-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1-2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
-            <span>${escapeHtml(c.cellulare || '-')}</span>
-          </div>
-        </div>
-      </td>
-      <td class="addr-cell">${escapeHtml(c.indirizzoFatturazione || '-')}</td>
-      <td class="actions-col">
-        <button class="secondary-button compact-button edit-client-action-btn" data-id="${c.id}">
-          Modifica
-        </button>
-      </td>
-    </tr>
-  `).join('');
-
-  // Aggiungi listener per i pulsanti di modifica
-  body.querySelectorAll('.edit-client-action-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openClientModal(Number(btn.dataset.id));
-    });
-  });
-}
-
-function openClientModal(id) {
-  const client = clients.find(c => c.id === id);
-  if (!client) return;
-
-  const modal = document.getElementById('client-modal');
-  const form = document.getElementById('edit-client-form');
-  const subtitle = document.getElementById('client-modal-subtitle');
-  const feedback = document.getElementById('client-edit-feedback');
-
-  form.elements['id'].value = client.id;
-  form.elements['ragioneSociale'].value = client.ragioneSociale;
-  form.elements['piva'].value = client.piva;
-  form.elements['email'].value = client.email;
-  form.elements['cellulare'].value = client.cellulare;
-  form.elements['indirizzoFatturazione'].value = client.indirizzoFatturazione;
-
-  if (subtitle) {
-    subtitle.textContent = `ID: ${client.id}${client.piva ? ' · ' + client.piva : ''}`;
-    subtitle.hidden = false;
-  }
-
-  if (feedback) {
-    feedback.hidden = true;
-    feedback.className = 'client-edit-feedback';
-    feedback.textContent = '';
-  }
-
-  modal.hidden = false;
-  modal.classList.add('active');
-  form.elements['ragioneSociale'].focus();
-}
-
-function closeClientModal() {
-  const modal = document.getElementById('client-modal');
-  modal.hidden = true;
-  modal.classList.remove('active');
-}
-
-async function handleClientEditSubmit(e) {
-  e.preventDefault();
-  const form = e.target;
-  const id = form.elements['id'].value;
-  const submitBtn = document.getElementById('save-client-button');
-  const feedback = document.getElementById('client-edit-feedback');
-
-  const payload = {
-    ragioneSociale: form.elements['ragioneSociale'].value.trim(),
-    piva: form.elements['piva'].value.trim(),
-    email: form.elements['email'].value.trim(),
-    cellulare: form.elements['cellulare'].value.trim(),
-    indirizzoFatturazione: form.elements['indirizzoFatturazione'].value.trim(),
-  };
-
-  submitBtn.disabled = true;
-  const originalText = submitBtn.textContent;
-  submitBtn.textContent = 'Salvataggio...';
-  if (feedback) {
-    feedback.hidden = true;
-    feedback.className = 'client-edit-feedback';
-  }
-
-  try {
-    await baserowClient.updateClient(id, payload);
-    await loadAndRenderClients({ force: true, silent: true });
-    if (feedback) {
-      feedback.textContent = 'Anagrafica aggiornata con successo.';
-      feedback.className = 'client-edit-feedback is-success';
-      feedback.hidden = false;
-    }
-    setTimeout(closeClientModal, 1200);
-  } catch (error) {
-    console.error(error);
-    if (feedback) {
-      feedback.textContent = error.message || 'Errore durante il salvataggio.';
-      feedback.className = 'client-edit-feedback is-error';
-      feedback.hidden = false;
-    }
-  } finally {
-    submitBtn.disabled = false;
-    submitBtn.textContent = originalText;
   }
 }
 
