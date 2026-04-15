@@ -3150,6 +3150,44 @@ td[data-label='Cliente'] strong {
   grid-column: 1 / -1;
 }
 
+/* ---- Search box (Anagrafiche clienti) ---- */
+.content-header {
+  margin-bottom: 16px;
+}
+
+.search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  max-width: 480px;
+}
+
+.search-box .search-icon {
+  position: absolute;
+  left: 12px;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.search-box input {
+  width: 100%;
+  padding: 10px 14px 10px 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: #fff;
+  color: var(--text);
+}
+
+.search-box input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
 /* ---- Autocomplete cliente nel form contratto ---- */
 .client-lookup-wrapper {
   position: relative;

@@ -731,7 +731,8 @@ app.get('/api/clients', apiReadLimiter, requireAuth, async (req, res) => {
       const allRows = await fetchAllRows(CONFIG.clientiTableId);
       const normalized = allRows.map(normalizeClient);
       if (isAdmin) return normalized;
-      return normalized.filter(c => c.agenteId === agentId);
+      // Mostra i clienti dell'agente + quelli senza agente assegnato (es. creati manualmente)
+      return normalized.filter(c => !c.agenteId || c.agenteId === agentId);
     });
     
     res.json(clients);
