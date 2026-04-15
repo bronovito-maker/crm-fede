@@ -42,7 +42,7 @@ const defaultContracts = [
     ragioneSociale: 'Studio Verdi',
     cellulare: '+39 349 882 1044',
     tipoCliente: 'Business',
-    categoriaCliente: 'prospect',
+    categoriaCliente: 'Prospect',
     piva: '01923440982',
     email: 'amministrazione@studioverdi.it',
     fornitore: 'A2A Energia',
@@ -94,7 +94,7 @@ const defaultContracts = [
     ragioneSociale: 'Condominio Aurora',
     cellulare: '+39 02 8899 1200',
     tipoCliente: 'Condominio',
-    categoriaCliente: 'prospect',
+    categoriaCliente: 'Prospect',
     piva: '09777130159',
     email: 'aurora@amministrazioni.it',
     fornitore: 'Sorgenia',
@@ -146,7 +146,7 @@ const defaultContracts = [
     ragioneSociale: 'Gianni Costa',
     cellulare: '+39 348 900 1180',
     tipoCliente: 'Privato',
-    categoriaCliente: 'prospect',
+    categoriaCliente: 'Prospect',
     piva: '',
     email: 'gianni@email.it',
     fornitore: 'Enel Energia',
@@ -308,7 +308,7 @@ function calculateSupplyStartDate(inputDate, supplierName = '') {
   const day = date.getDate();
   const isoDate = toInputDate(date);
   const monthKey = isoDate.slice(0, 7); // YYYY-MM
-  
+
   // Cerchiamo il cutoff dinamico per questo mese
   const config = competitionData[monthKey];
   const supplierKey = normalizeSupplierKey(supplierName);
@@ -365,7 +365,9 @@ document.querySelectorAll('[data-go-page]').forEach((button) => {
 
 document.getElementById('tipo-fornitura').addEventListener('change', updateConditionalFields);
 document.getElementById('metodo-pagamento').addEventListener('change', updateConditionalFields);
-document.getElementById('fornitore-input').addEventListener('change', () => updateStartDatePrediction());
+document
+  .getElementById('fornitore-input')
+  .addEventListener('change', () => updateStartDatePrediction());
 document
   .getElementById('contract-files-input')
   .addEventListener('change', handleContractFilesSelection);
@@ -452,12 +454,6 @@ document
   .getElementById('admin-clear-selection')
   .addEventListener('click', () => clearAdminContractSelection());
 document.getElementById('admin-bulk-send').addEventListener('click', () => bulkMarkSelectedSent());
-document
-  .getElementById('admin-competence-form')
-  .addEventListener('submit', (event) => handleAdminCompetenceSubmit(event));
-document
-  .getElementById('admin-competence-load')
-  .addEventListener('click', () => loadAdminCompetenceConfig());
 document
   .getElementById('admin-supplier-cutoff-form')
   .addEventListener('submit', (event) => handleAdminSupplierCutoffSubmit(event));
@@ -859,7 +855,9 @@ function renderBarChart() {
       new Intl.DateTimeFormat('it-IT', { month: 'short' }).format(date)
     ).replace('.', '');
     const value = sumContractUnits(
-      contracts.filter((contract) => contractMonthRef(contract) === key && contract.statoContratto === 'OK')
+      contracts.filter(
+        (contract) => contractMonthRef(contract) === key && contract.statoContratto === 'OK'
+      )
     );
     return [label, value, key === currentCompetence.month];
   });
@@ -1079,7 +1077,7 @@ function renderCbPage() {
   const filteredKo = filteredMonthly.filter((contract) => contract.statoContratto === 'K.O.');
 
   document.getElementById('cb-category-filter').value =
-    selectedCategory === 'prospect' || selectedCategory === 'switch ricorrente'
+    selectedCategory === 'Prospect' || selectedCategory === 'Switch ricorrente'
       ? selectedCategory
       : 'all';
   renderMetrics('cb-metrics-money', [
@@ -1157,15 +1155,11 @@ function renderProgressPage() {
   const recurringMonthPercent = percent(recurringMonthDone, agent.targetMensile);
   const quarterDone = contracts
     .filter(
-      (contract) =>
-        contractQuarterRef(contract) === quarterKey &&
-        contract.statoContratto === 'OK'
+      (contract) => contractQuarterRef(contract) === quarterKey && contract.statoContratto === 'OK'
     )
     .reduce((sum, contract) => sum + contractUnitCount(contract), 0);
   const yearDone = contracts
-    .filter(
-      (contract) => contractYearRef(contract) === yearKey && contract.statoContratto === 'OK'
-    )
+    .filter((contract) => contractYearRef(contract) === yearKey && contract.statoContratto === 'OK')
     .reduce((sum, contract) => sum + contractUnitCount(contract), 0);
   const quarterPercent = percent(quarterDone, agent.targetTrimestrale);
   const yearPercent = percent(yearDone, agent.targetAnnuale);
@@ -1762,7 +1756,6 @@ async function renderAdminPage() {
     populateContractAgentOptions();
     renderAdminAgentList(stats, agents);
     renderAdminContracts(adminContracts, agents);
-    await loadAdminCompetenceConfig();
     await loadAdminSupplierCutoffs();
   } catch (error) {
     document.getElementById('admin-agent-list').innerHTML = `
@@ -1774,7 +1767,6 @@ async function renderAdminPage() {
     document.getElementById('admin-agent-empty').hidden = true;
     document.getElementById('admin-contracts-table').innerHTML = '';
     document.getElementById('admin-contracts-empty').hidden = false;
-    setAdminCompetenceFeedback('error', error.message || 'Competenza non disponibile.');
     setAdminSupplierCutoffFeedback('error', error.message || 'Cut-off fornitore non disponibile.');
   }
 }
@@ -2302,43 +2294,10 @@ function setAdminFeedback(type, message) {
   feedback.textContent = message;
 }
 
-function setAdminCompetenceFeedback(type, message) {
-  const feedback = document.getElementById('admin-competence-feedback');
-  feedback.className = type ? `is-${type}` : '';
-  feedback.textContent = message;
-}
-
 function setAdminSupplierCutoffFeedback(type, message) {
   const feedback = document.getElementById('admin-supplier-cutoff-feedback');
   feedback.className = type ? `is-${type}` : '';
   feedback.textContent = message;
-}
-
-async function loadAdminCompetenceConfig({ silent = false } = {}) {
-  const monthInput = document.getElementById('admin-competence-month');
-  const cutoffInput = document.getElementById('admin-competence-cutoff');
-  const currentMonth = monthInput.value || adminState.competenceMonth || monthKey(new Date());
-
-  monthInput.value = currentMonth;
-  adminState.competenceMonth = currentMonth;
-
-  try {
-    const config = await baserowClient.getAdminCompetenceConfig(currentMonth);
-    cutoffInput.value = config.cutoffDate || '';
-    adminState.competenceCutoffDate = cutoffInput.value;
-    setAdminCompetenceFeedback(
-      'success',
-      config.cutoffDate
-        ? `Cut-off ${currentMonth}: ${formatDate.format(new Date(config.cutoffDate))}`
-        : `Nessun cut-off salvato per ${currentMonth}.`
-    );
-  } catch (error) {
-    cutoffInput.value = '';
-    adminState.competenceCutoffDate = '';
-    if (!silent) {
-      setAdminCompetenceFeedback('error', error.message || 'Impossibile caricare la competenza.');
-    }
-  }
 }
 
 function renderAdminSupplierCutoffList(cutoffs) {
@@ -2438,7 +2397,8 @@ async function loadAdminSupplierCutoffs({ silent = false } = {}) {
       console.error('[ADMIN_SUPPLIER_LOAD_ERROR]', error);
       setAdminSupplierCutoffFeedback(
         'error',
-        error.message || 'Impossibile caricare i cut-off fornitore. Verifica la connessione a Baserow.'
+        error.message ||
+          'Impossibile caricare i cut-off fornitore. Verifica la connessione a Baserow.'
       );
     }
   }
@@ -2490,37 +2450,6 @@ async function handleAdminSupplierCutoffSubmit(event) {
     setAdminSupplierCutoffFeedback('success', 'Cut-off fornitore salvato.');
   } catch (error) {
     setAdminSupplierCutoffFeedback('error', error.message || 'Cut-off fornitore non salvato.');
-  } finally {
-    saveButton.disabled = false;
-  }
-}
-
-async function handleAdminCompetenceSubmit(event) {
-  event.preventDefault();
-  const form = new FormData(event.currentTarget);
-  const month = String(form.get('month') || '').trim();
-  const cutoffDate = String(form.get('cutoffDate') || '').trim();
-  const saveButton = document.getElementById('admin-competence-save');
-
-  if (!month || !cutoffDate) {
-    setAdminCompetenceFeedback('error', 'Seleziona mese e data cut-off.');
-    return;
-  }
-
-  saveButton.disabled = true;
-  setAdminCompetenceFeedback('', 'Salvataggio cut-off...');
-
-  try {
-    await baserowClient.saveAdminCompetenceConfig({ month, cutoffDate });
-    await loadCompetitionCutoffs({ silent: true });
-    adminState.competenceMonth = month;
-    adminState.competenceCutoffDate = cutoffDate;
-    await loadCurrentCompetence({ silent: true });
-    await loadAndRenderContracts({ silent: true, force: true });
-    await renderAdminPage();
-    setAdminCompetenceFeedback('success', 'Cut-off competenza salvato.');
-  } catch (error) {
-    setAdminCompetenceFeedback('error', error.message || 'Cut-off non salvato.');
   } finally {
     saveButton.disabled = false;
   }
@@ -2616,7 +2545,9 @@ function getQuarterKey(date) {
 }
 
 function currentPeriodLabel() {
-  return capitalize(formatMonth.format(dateFromMonthKey(currentCompetence.month || monthKey(today))));
+  return capitalize(
+    formatMonth.format(dateFromMonthKey(currentCompetence.month || monthKey(today)))
+  );
 }
 
 function contractUnitCount(contract) {
@@ -2624,8 +2555,8 @@ function contractUnitCount(contract) {
     return Number(contract.unitCount);
   }
   const supplyType = String(contract.tipoFornitura || '').toLowerCase();
-  const customerCategory = String(contract.categoriaCliente || '').toLowerCase();
-  return supplyType === 'dual' && customerCategory === 'prospect' ? 2 : 1;
+  const customerCategory = String(contract.categoriaCliente || '');
+  return supplyType === 'dual' && customerCategory === 'Prospect' ? 2 : 1;
 }
 
 function sumContractUnits(items) {

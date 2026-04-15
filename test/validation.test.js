@@ -9,7 +9,7 @@ const validContract = {
   ragioneSociale: 'Rossi Impianti SRL',
   cellulare: '+39 333 1234567',
   tipoCliente: 'Business',
-  categoriaCliente: 'prospect',
+  categoriaCliente: 'Prospect',
   fornitore: 'Enel Energia',
   nomeOfferta: 'Flex Business Luce',
   tipoOperazione: ['switch'],
@@ -58,7 +58,7 @@ describe('sanitizeContractInput', () => {
       const result = sanitizeContractInput(validContract);
       assert.equal(result.ragioneSociale, 'Rossi Impianti SRL');
       assert.equal(result.tipoCliente, 'Business');
-      assert.equal(result.categoriaCliente, 'prospect');
+      assert.equal(result.categoriaCliente, 'Prospect');
       assert.equal(result.tipoFornitura, 'luce');
     });
 

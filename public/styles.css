@@ -2029,7 +2029,6 @@ td[data-label='Cliente'] strong {
   line-height: 1.45;
 }
 
-
 .admin-agent-card.compact {
   gap: 14px;
 }
@@ -2454,7 +2453,6 @@ td[data-label='Cliente'] strong {
   .admin-competence-form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
 
   .admin-form-grid {
     grid-template-columns: 1fr 1fr;

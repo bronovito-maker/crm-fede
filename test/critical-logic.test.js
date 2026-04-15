@@ -42,18 +42,18 @@ const {
 
 describe('contractUnitCount', () => {
   it('conta 2 per dual + prospect', () => {
-    assert.equal(contractUnitCount({ tipoFornitura: 'dual', categoriaCliente: 'prospect' }), 2);
+    assert.equal(contractUnitCount({ tipoFornitura: 'dual', categoriaCliente: 'Prospect' }), 2);
   });
 
   it('conta 1 per dual + switch ricorrente', () => {
     assert.equal(
-      contractUnitCount({ tipoFornitura: 'dual', categoriaCliente: 'switch ricorrente' }),
+      contractUnitCount({ tipoFornitura: 'dual', categoriaCliente: 'Switch ricorrente' }),
       1
     );
   });
 
   it('conta 1 per luce + prospect', () => {
-    assert.equal(contractUnitCount({ tipoFornitura: 'luce', categoriaCliente: 'prospect' }), 1);
+    assert.equal(contractUnitCount({ tipoFornitura: 'luce', categoriaCliente: 'Prospect' }), 1);
   });
 
   it('usa unitCount pre-calcolato se presente', () => {
@@ -61,7 +61,7 @@ describe('contractUnitCount', () => {
       contractUnitCount({
         unitCount: 2,
         tipoFornitura: 'luce',
-        categoriaCliente: 'switch ricorrente',
+        categoriaCliente: 'Switch ricorrente',
       }),
       2
     );
@@ -74,7 +74,7 @@ describe('contractCommissionValue', () => {
       contractCommissionValue({
         cbMaturata: 85,
         tipoFornitura: 'dual',
-        categoriaCliente: 'prospect',
+        categoriaCliente: 'Prospect',
       }),
       170
     );
@@ -86,7 +86,7 @@ describe('contractCommissionValue', () => {
         commissionValue: 170,
         cbMaturata: 85,
         tipoFornitura: 'luce',
-        categoriaCliente: 'switch ricorrente',
+        categoriaCliente: 'Switch ricorrente',
       }),
       170
     );
@@ -121,7 +121,7 @@ describe('buildAdminStats', () => {
         annoRiferimento: year,
         statoContratto: 'OK',
         tipoFornitura: 'dual',
-        categoriaCliente: 'prospect',
+        categoriaCliente: 'Prospect',
         cbMaturata: 85,
       },
       {
@@ -131,7 +131,7 @@ describe('buildAdminStats', () => {
         annoRiferimento: year,
         statoContratto: 'Caricato',
         tipoFornitura: 'luce',
-        categoriaCliente: 'prospect',
+        categoriaCliente: 'Prospect',
         cbMaturata: 85,
       },
       {
@@ -141,7 +141,7 @@ describe('buildAdminStats', () => {
         annoRiferimento: year,
         statoContratto: 'K.O.',
         tipoFornitura: 'gas',
-        categoriaCliente: 'switch ricorrente',
+        categoriaCliente: 'Switch ricorrente',
         cbMaturata: 0,
       },
     ];
@@ -190,7 +190,7 @@ describe('buildAdminStats', () => {
         annoRiferimento: year,
         statoContratto: 'OK',
         tipoFornitura: 'luce',
-        categoriaCliente: 'prospect',
+        categoriaCliente: 'Prospect',
         cbMaturata: 85,
       },
       {
@@ -200,7 +200,7 @@ describe('buildAdminStats', () => {
         annoRiferimento: year,
         statoContratto: 'OK',
         tipoFornitura: 'dual',
-        categoriaCliente: 'prospect',
+        categoriaCliente: 'Prospect',
         cbMaturata: 85,
       },
       {
@@ -210,7 +210,7 @@ describe('buildAdminStats', () => {
         annoRiferimento: year,
         statoContratto: 'OK',
         tipoFornitura: 'gas',
-        categoriaCliente: 'switch ricorrente',
+        categoriaCliente: 'Switch ricorrente',
         cbMaturata: 85,
       },
       {
@@ -220,7 +220,7 @@ describe('buildAdminStats', () => {
         annoRiferimento: year,
         statoContratto: 'Switch - Out',
         tipoFornitura: 'luce',
-        categoriaCliente: 'switch ricorrente',
+        categoriaCliente: 'Switch ricorrente',
         cbMaturata: 0,
       },
     ];
@@ -251,7 +251,7 @@ describe('buildAdminStats', () => {
         annoRiferimento: year,
         statoContratto: 'Bozza',
         tipoFornitura: 'dual',
-        categoriaCliente: 'prospect',
+        categoriaCliente: 'Prospect',
         cbMaturata: 85,
       },
       {
@@ -261,7 +261,7 @@ describe('buildAdminStats', () => {
         annoRiferimento: year,
         statoContratto: 'Caricato',
         tipoFornitura: 'luce',
-        categoriaCliente: 'prospect',
+        categoriaCliente: 'Prospect',
         cbMaturata: 85,
       },
     ];
@@ -288,7 +288,7 @@ describe('buildAdminStats', () => {
         annoRiferimento: year,
         statoContratto: 'OK',
         tipoFornitura: 'luce',
-        categoriaCliente: 'prospect',
+        categoriaCliente: 'Prospect',
         cbMaturata: 85,
       },
     ];
@@ -604,7 +604,7 @@ describe('helper coverage', () => {
       ragione_sociale: 'Rossi SRL',
       cellulare: '333',
       tipo_cliente: { value: 'Business' },
-      categoria_cliente: { value: 'prospect' },
+      categoria_cliente: { value: 'Prospect' },
       fornitore: 'Enel',
       nome_offerta: 'Dual Test',
       tipo_operazione: [{ value: 'switch' }],
@@ -650,7 +650,7 @@ describe('helper coverage', () => {
       stato_contratto: { value: 'Inviato' },
       cb_unitaria_snapshot: '85',
       tipo_fornitura: { value: 'gas' },
-      categoria_cliente: { value: 'switch ricorrente' },
+      categoria_cliente: { value: 'Switch ricorrente' },
     });
 
     assert.equal(normalized.statoContratto, 'Inviato');
@@ -840,7 +840,7 @@ describe('HTTP routes', () => {
             ragione_sociale: 'Cliente Uno',
             stato_contratto: { value: 'OK' },
             tipo_fornitura: { value: 'dual' },
-            categoria_cliente: { value: 'prospect' },
+            categoria_cliente: { value: 'Prospect' },
             cb_unitaria_snapshot: '85',
             cb_maturata: '85',
           },
@@ -851,7 +851,7 @@ describe('HTTP routes', () => {
             ragione_sociale: 'Altro Agente',
             stato_contratto: { value: 'OK' },
             tipo_fornitura: { value: 'luce' },
-            categoria_cliente: { value: 'prospect' },
+            categoria_cliente: { value: 'Prospect' },
             cb_unitaria_snapshot: '85',
             cb_maturata: '85',
           },
@@ -943,7 +943,7 @@ describe('HTTP routes', () => {
               anno_riferimento: year,
               stato_contratto: { value: 'OK' },
               tipo_fornitura: { value: 'dual' },
-              categoria_cliente: { value: 'prospect' },
+              categoria_cliente: { value: 'Prospect' },
               cb_unitaria_snapshot: '90',
               cb_maturata: '90',
             },
@@ -955,7 +955,7 @@ describe('HTTP routes', () => {
               anno_riferimento: year,
               stato_contratto: { value: 'Caricato' },
               tipo_fornitura: { value: 'luce' },
-              categoria_cliente: { value: 'prospect' },
+              categoria_cliente: { value: 'Prospect' },
               cb_unitaria_snapshot: '85',
               cb_maturata: '85',
             },
@@ -967,7 +967,7 @@ describe('HTTP routes', () => {
               anno_riferimento: year,
               stato_contratto: { value: 'K.O.' },
               tipo_fornitura: { value: 'gas' },
-              categoria_cliente: { value: 'switch ricorrente' },
+              categoria_cliente: { value: 'Switch ricorrente' },
               cb_unitaria_snapshot: '85',
               cb_maturata: '0',
             },
@@ -1031,7 +1031,7 @@ describe('HTTP routes', () => {
         assert.deepEqual(payload.agente, [agentId]);
         assert.equal(payload.ragione_sociale, 'Rossi SRL');
         assert.equal(payload.id_contratto, 'VT-001');
-        assert.equal(payload.categoria_cliente, 'prospect');
+        assert.equal(payload.categoria_cliente, 'Prospect');
         assert.deepEqual(payload.tipo_operazione, ['switch', 'subentro']);
         assert.equal(payload.metodo_pagamento, 'rid');
         assert.equal(payload.iban, 'IT60X0542811101000000123456');
@@ -1046,7 +1046,7 @@ describe('HTTP routes', () => {
           ragione_sociale: 'Rossi SRL',
           cellulare: '3331234567',
           tipo_cliente: { value: 'Business' },
-          categoria_cliente: { value: 'prospect' },
+          categoria_cliente: { value: 'Prospect' },
           fornitore: 'Enel Energia',
           nome_offerta: 'Dual Fix',
           tipo_operazione: [{ value: 'switch' }, { value: 'subentro' }],
@@ -1076,7 +1076,7 @@ describe('HTTP routes', () => {
         ragioneSociale: 'Rossi SRL',
         cellulare: '3331234567',
         tipoCliente: 'Business',
-        categoriaCliente: 'prospect',
+        categoriaCliente: 'Prospect',
         fornitore: 'Enel Energia',
         nomeOfferta: 'Dual Fix',
         tipoOperazione: ['switch', 'subentro'],
@@ -1182,7 +1182,7 @@ describe('HTTP routes', () => {
             agente: [{ id: agentId }],
             stato_contratto: { value: 'OK' },
             tipo_fornitura: { value: 'luce' },
-            categoria_cliente: { value: 'prospect' },
+            categoria_cliente: { value: 'Prospect' },
             cb_unitaria_snapshot: '85',
             cb_maturata: '85',
           });
@@ -1193,7 +1193,7 @@ describe('HTTP routes', () => {
           agente: [{ id: agentId }],
           stato_contratto: { value: 'Caricato' },
           tipo_fornitura: { value: 'luce' },
-          categoria_cliente: { value: 'prospect' },
+          categoria_cliente: { value: 'Prospect' },
           cb_unitaria_snapshot: '85',
           cb_maturata: '85',
         });
@@ -1205,7 +1205,7 @@ describe('HTTP routes', () => {
           agente: [{ id: 99 }],
           stato_contratto: { value: 'Caricato' },
           tipo_fornitura: { value: 'luce' },
-          categoria_cliente: { value: 'prospect' },
+          categoria_cliente: { value: 'Prospect' },
           cb_unitaria_snapshot: '85',
           cb_maturata: '85',
         });
@@ -1276,7 +1276,7 @@ describe('HTTP routes', () => {
             ragione_sociale: 'Rossi SRL Aggiornata',
             stato_contratto: { value: 'OK' },
             tipo_fornitura: { value: 'luce' },
-            categoria_cliente: { value: 'prospect' },
+            categoria_cliente: { value: 'Prospect' },
             cb_unitaria_snapshot: '85',
             cb_maturata: '85',
             file_contratto: [
@@ -1298,7 +1298,7 @@ describe('HTTP routes', () => {
           ragione_sociale: 'Rossi SRL',
           cellulare: '3331234567',
           tipo_cliente: { value: 'Business' },
-          categoria_cliente: { value: 'prospect' },
+          categoria_cliente: { value: 'Prospect' },
           fornitore: 'Enel Energia',
           nome_offerta: 'Dual Fix',
           tipo_operazione: [{ value: 'switch' }],
@@ -1337,7 +1337,7 @@ describe('HTTP routes', () => {
         ragioneSociale: 'Rossi SRL Aggiornata',
         cellulare: '3331234567',
         tipoCliente: 'Business',
-        categoriaCliente: 'prospect',
+        categoriaCliente: 'Prospect',
         fornitore: 'Enel Energia',
         nomeOfferta: 'Dual Fix',
         tipoOperazione: ['switch'],
@@ -1467,7 +1467,7 @@ describe('HTTP routes', () => {
           ragione_sociale: 'Cliente Test',
           stato_contratto: { value: 'Inviato' },
           tipo_fornitura: { value: 'luce' },
-          categoria_cliente: { value: 'prospect' },
+          categoria_cliente: { value: 'Prospect' },
           cb_unitaria_snapshot: '85',
           cb_maturata: '85',
         });
@@ -1519,7 +1519,7 @@ describe('HTTP routes', () => {
           ragione_sociale: 'Cliente Test 2',
           stato_contratto: { value: 'Caricato' },
           tipo_fornitura: { value: 'luce' },
-          categoria_cliente: { value: 'prospect' },
+          categoria_cliente: { value: 'Prospect' },
           cb_unitaria_snapshot: '85',
           cb_maturata: '85',
         });
@@ -1576,7 +1576,7 @@ describe('HTTP routes', () => {
           agente: [{ id: agentId }],
           stato_contratto: { value: 'Caricato' },
           tipo_fornitura: { value: 'luce' },
-          categoria_cliente: { value: 'prospect' },
+          categoria_cliente: { value: 'Prospect' },
           cb_unitaria_snapshot: '85',
           cb_maturata: '85',
         });

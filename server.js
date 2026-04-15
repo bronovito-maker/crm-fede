@@ -34,7 +34,7 @@ const CONFIG = {
 };
 
 const allowedClientTypes = new Set(['Business', 'Privato', 'Condominio']);
-const allowedCustomerCategories = new Set(['prospect', 'switch ricorrente']);
+const allowedCustomerCategories = new Set(['Prospect', 'Switch ricorrente']);
 const allowedStatuses = new Set(['Bozza', 'Caricato', 'Inviato', 'OK', 'K.O.', 'Switch - Out']);
 const allowedOperations = new Set(['switch', 'switch + voltura', 'cambio listino', 'subentro']);
 const allowedSupplyTypes = new Set(['luce', 'gas', 'dual']);
@@ -307,18 +307,12 @@ app.get('/api/competence/current', apiReadLimiter, requireAuth, async (req, res)
 app.get('/api/competenze', apiReadLimiter, requireAuth, async (req, res) => {
   try {
     ensureConfigured();
-    const [globalMap, supplierMap] = await Promise.all([
-      CONFIG.competenzeTableId ? getCompetenceConfigMap() : Promise.resolve(new Map()),
-      CONFIG.cutoffFornitoriTableId ? getSupplierCutoffMap() : Promise.resolve(new Map()),
-    ]);
-    const monthKeys = new Set([...globalMap.keys(), ...supplierMap.keys()]);
+    const supplierMap = CONFIG.cutoffFornitoriTableId ? await getSupplierCutoffMap() : new Map();
     const result = {};
 
-    monthKeys.forEach((monthKey) => {
-      const globalCutoff = globalMap.get(monthKey)?.cutoffDate || '';
+    [...supplierMap.keys()].forEach((monthKey) => {
       const suppliers = supplierMap.get(monthKey) || new Map();
       result[monthKey] = {
-        cutoffDate: globalCutoff,
         suppliers: Object.fromEntries(
           [...suppliers.entries()].map(([supplierKey, entry]) => [supplierKey, entry.cutoffDate])
         ),
@@ -648,48 +642,6 @@ app.get('/api/admin/stats', apiReadLimiter, requireAdmin, async (req, res) => {
   }
 });
 
-app.get('/api/admin/competence-config', apiReadLimiter, requireAdmin, async (req, res) => {
-  try {
-    ensureConfigured();
-    ensureCompetenceConfigEnabled();
-    const month = normalizeCompetenceMonth(req.query.month);
-    const config = await getCompetenceConfig(month);
-    res.json({
-      month,
-      cutoffDate: config?.cutoffDate || '',
-      fallback: !config,
-    });
-  } catch (error) {
-    handleApiError(
-      res,
-      error,
-      'ADMIN_COMPETENCE_CONFIG_LOAD_FAILED',
-      'Configurazione competenza non disponibile.'
-    );
-  }
-});
-
-app.put('/api/admin/competence-config', requireAdmin, async (req, res) => {
-  try {
-    ensureConfigured();
-    ensureCompetenceConfigEnabled();
-    const month = normalizeCompetenceMonth(req.body.month);
-    const cutoffDate = normalizeCutoffDate(req.body.cutoffDate, month);
-    const updated = await upsertCompetenceConfig(month, cutoffDate);
-    invalidateCompetenceConfigCache();
-    invalidateContractsCache(req.session.agentId);
-    invalidateAdminStatsCache();
-    res.json(updated);
-  } catch (error) {
-    handleApiError(
-      res,
-      error,
-      'ADMIN_COMPETENCE_CONFIG_NOT_SAVED',
-      'Configurazione competenza non salvata.'
-    );
-  }
-});
-
 app.get('/api/admin/supplier-cutoffs', apiReadLimiter, requireAdmin, async (req, res) => {
   try {
     ensureConfigured();
@@ -718,17 +670,12 @@ app.put('/api/admin/supplier-cutoffs', requireAdmin, async (req, res) => {
     }
     const cutoffDate = normalizeCutoffDate(req.body.cutoffDate, month);
     const updated = await upsertSupplierCutoffConfig(month, supplierId, cutoffDate);
-    invalidateCompetenceConfigCache();
+    invalidateSupplierCutoffCache();
     invalidateContractsCache(req.session.agentId);
     invalidateAdminStatsCache();
     res.json(updated);
   } catch (error) {
-    handleApiError(
-      res,
-      error,
-      'ADMIN_SUPPLIER_CUTOFF_NOT_SAVED',
-      'Cut-off fornitore non salvato.'
-    );
+    handleApiError(res, error, 'ADMIN_SUPPLIER_CUTOFF_NOT_SAVED', 'Cut-off fornitore non salvato.');
   }
 });
 
@@ -924,10 +871,6 @@ function adminStatsCacheKey() {
   return 'admin:stats';
 }
 
-function competenceConfigCacheKey() {
-  return 'competence:config';
-}
-
 function supplierCutoffCacheKey() {
   return 'competence:supplier-cutoff';
 }
@@ -939,9 +882,7 @@ function invalidateContractsCache(agentId) {
 function invalidateAdminStatsCache() {
   apiCache.delete(adminStatsCacheKey());
 }
-
-function invalidateCompetenceConfigCache() {
-  apiCache.delete(competenceConfigCacheKey());
+function invalidateSupplierCutoffCache() {
   apiCache.delete(supplierCutoffCacheKey());
 }
 
@@ -1093,16 +1034,6 @@ async function listAllContracts() {
   return rows.map(normalizeContract);
 }
 
-function ensureCompetenceConfigEnabled() {
-  if (!CONFIG.competenzeTableId) {
-    throw publicError(
-      503,
-      'COMPETENCE_CONFIG_NOT_ENABLED',
-      'Tabella competenze non configurata. Imposta BASEROW_TABLE_COMPETENZE_ID.'
-    );
-  }
-}
-
 function ensureSupplierCutoffConfigEnabled() {
   if (!CONFIG.cutoffFornitoriTableId) {
     throw publicError(
@@ -1118,96 +1049,6 @@ function ensureSupplierCutoffConfigEnabled() {
       'Tabella fornitori non configurata. Imposta BASEROW_TABLE_FORNITORI_ID.'
     );
   }
-}
-
-async function listCompetenceRows() {
-  ensureCompetenceConfigEnabled();
-  const params = new URLSearchParams({
-    user_field_names: 'true',
-    order_by: `-${CONFIG.competenzeMonthField}`,
-  });
-  return fetchAllBaserowRows(CONFIG.competenzeTableId, params, 'config competenze');
-}
-
-async function getCompetenceConfigMap() {
-  return getCached(competenceConfigCacheKey(), async () => {
-    const rows = await listCompetenceRows();
-    const map = new Map();
-    const duplicates = new Map();
-
-    rows.forEach((row) => {
-      const month = normalizeCompetenceMonth(row[CONFIG.competenzeMonthField], { strict: false });
-      const cutoffDate = normalizeIsoDate(row[CONFIG.competenzeCutoffField]);
-      if (!month || !cutoffDate) return;
-      if (map.has(month)) {
-        duplicates.set(month, (duplicates.get(month) || 1) + 1);
-      }
-      map.set(month, {
-        id: Number(row.id),
-        month,
-        cutoffDate,
-      });
-    });
-
-    duplicates.forEach((count, month) => {
-      console.warn(
-        `[COMPETENCE_CONFIG] Mese duplicato ${month}: trovate ${count} configurazioni, uso l'ultima per ordine.`
-      );
-    });
-
-    return map;
-  });
-}
-
-async function getCompetenceConfig(monthKey) {
-  const map = await getCompetenceConfigMap();
-  return map.get(monthKey) || null;
-}
-
-async function upsertCompetenceConfig(monthKey, cutoffDate) {
-  const rows = await listCompetenceRows();
-  const matches = rows.filter(
-    (row) =>
-      normalizeCompetenceMonth(row[CONFIG.competenzeMonthField], { strict: false }) === monthKey
-  );
-
-  if (matches.length > 1) {
-    throw publicError(
-      409,
-      'COMPETENCE_MONTH_DUPLICATED',
-      `Trovate ${matches.length} configurazioni per ${monthKey}. Tienine una sola su Baserow e riprova.`
-    );
-  }
-
-  const current = matches.length === 1 ? { id: Number(matches[0].id) } : null;
-  const payload = {
-    [CONFIG.competenzeMonthField]: normalizeCompetenceMonthDay(monthKey),
-    [CONFIG.competenzeCutoffField]: cutoffDate,
-  };
-  const basePath = `/api/database/rows/table/${CONFIG.competenzeTableId}`;
-  console.log(`[ADMIN_COMPETENCE] Upserting for month ${monthKey}:`, { currentId: current?.id, payload });
-  
-  let response;
-  try {
-    response = current?.id
-      ? await baserowFetch(`${basePath}/${current.id}/?user_field_names=true`, {
-          method: 'PATCH',
-          body: JSON.stringify(payload),
-        })
-      : await baserowFetch(`${basePath}/?user_field_names=true`, {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        });
-    console.log(`[ADMIN_COMPETENCE] Success:`, response.id);
-  } catch (error) {
-    console.error(`[ADMIN_COMPETENCE] Error:`, error.message);
-    throw error;
-  }
-  return {
-    id: response.id,
-    month: normalizeCompetenceMonth(response[CONFIG.competenzeMonthField]),
-    cutoffDate: normalizeIsoDate(response[CONFIG.competenzeCutoffField]),
-  };
 }
 
 async function listSupplierCutoffRows() {
@@ -1241,9 +1082,7 @@ async function listSuppliers() {
 }
 
 function normalizeSupplierKey(value) {
-  return cleanText(value)
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
+  return cleanText(value).toLowerCase().replace(/\s+/g, ' ');
 }
 
 function linkedRowIds(value) {
@@ -1308,7 +1147,10 @@ async function getSupplierCutoffMap() {
 
 async function getSupplierCutoffConfig(monthKey) {
   ensureSupplierCutoffConfigEnabled();
-  const [suppliers, supplierCutoffMap] = await Promise.all([listSuppliers(), getSupplierCutoffMap()]);
+  const [suppliers, supplierCutoffMap] = await Promise.all([
+    listSuppliers(),
+    getSupplierCutoffMap(),
+  ]);
   const monthCutoffs = supplierCutoffMap.get(monthKey) || new Map();
   const supplierByKey = new Map(suppliers.map((row) => [normalizeSupplierKey(row.name), row]));
   const cutoffs = [...monthCutoffs.entries()]
@@ -1333,7 +1175,10 @@ async function getSupplierCutoffConfig(monthKey) {
 
 async function upsertSupplierCutoffConfig(monthKey, supplierId, cutoffDate) {
   ensureSupplierCutoffConfigEnabled();
-  const [supplierById, rows] = await Promise.all([listSupplierRowsById(), listSupplierCutoffRows()]);
+  const [supplierById, rows] = await Promise.all([
+    listSupplierRowsById(),
+    listSupplierCutoffRows(),
+  ]);
   const supplierName = cleanText(supplierById.get(Number(supplierId)));
   if (!supplierName) {
     throw publicError(400, 'SUPPLIER_NOT_FOUND', 'Fornitore non trovato.');
@@ -1358,7 +1203,10 @@ async function upsertSupplierCutoffConfig(monthKey, supplierId, cutoffDate) {
     [CONFIG.cutoffFornitoreField]: [Number(supplierId)],
   };
   const basePath = `/api/database/rows/table/${CONFIG.cutoffFornitoriTableId}`;
-  console.log(`[ADMIN_SUPPLIER_CUTOFF] Upserting for month ${monthKey}, supplier ${supplierId}:`, { existingId: existingRow?.id, payload });
+  console.log(`[ADMIN_SUPPLIER_CUTOFF] Upserting for month ${monthKey}, supplier ${supplierId}:`, {
+    existingId: existingRow?.id,
+    payload,
+  });
 
   let response;
   try {
@@ -1389,17 +1237,8 @@ async function upsertSupplierCutoffConfig(monthKey, supplierId, cutoffDate) {
 async function resolveCompetencePeriod(insertionDate, supplierName = '') {
   const monthKey = normalizeIsoMonthFromDate(insertionDate);
   const nextMonth = addMonthsToKey(monthKey, 1);
-  let globalMap = new Map();
   let supplierMap = new Map();
-  if (CONFIG.competenzeTableId) {
-    try {
-      globalMap = await getCompetenceConfigMap();
-    } catch (error) {
-      console.warn(
-        `[COMPETENCE_CONFIG] Cut-off non disponibile, uso fallback calendario per ${monthKey}: ${error.message}`
-      );
-    }
-  }
+
   if (CONFIG.cutoffFornitoriTableId) {
     try {
       supplierMap = await getSupplierCutoffMap();
@@ -1411,9 +1250,7 @@ async function resolveCompetencePeriod(insertionDate, supplierName = '') {
   }
 
   const supplierKey = normalizeSupplierKey(supplierName);
-  const supplierCutoff = supplierMap.get(monthKey)?.get(supplierKey)?.cutoffDate || '';
-  const globalCutoff = globalMap.get(monthKey)?.cutoffDate || '';
-  const cutoff = supplierCutoff || globalCutoff;
+  const cutoff = supplierMap.get(monthKey)?.get(supplierKey)?.cutoffDate || '';
   const competenceMonth = cutoff && insertionDate > cutoff ? nextMonth : monthKey;
   return {
     monthKey: competenceMonth,
@@ -1522,7 +1359,7 @@ function sanitizeContractInput(input, { allowDraft = false } = {}) {
     ragioneSociale: cleanText(input.ragioneSociale),
     cellulare: cleanText(input.cellulare),
     tipoCliente: cleanText(input.tipoCliente),
-    categoriaCliente: cleanText(input.categoriaCliente).toLowerCase(),
+    categoriaCliente: cleanText(input.categoriaCliente),
     fornitore: cleanText(input.fornitore),
     exFornitore: cleanText(input.exFornitore),
     nomeOfferta: cleanText(input.nomeOfferta),
@@ -1916,8 +1753,8 @@ function contractUnitCount(contract) {
     return Number(contract.unitCount);
   }
   const supplyType = cleanText(contract.tipoFornitura).toLowerCase();
-  const customerCategory = cleanText(contract.categoriaCliente).toLowerCase();
-  return supplyType === 'dual' && customerCategory === 'prospect' ? 2 : 1;
+  const customerCategory = cleanText(contract.categoriaCliente);
+  return supplyType === 'dual' && customerCategory === 'Prospect' ? 2 : 1;
 }
 
 function sumContractUnits(items) {

@@ -382,8 +382,8 @@
                 <span>Categoria cliente <span class="req" aria-hidden="true">*</span></span>
                 <select name="categoriaCliente" required>
                   <option value="">Seleziona</option>
-                  <option value="prospect">Prospect</option>
-                  <option value="switch ricorrente">Switch ricorrente</option>
+                  <option value="Prospect">Prospect</option>
+                  <option value="Switch ricorrente">Switch ricorrente</option>
                 </select>
               </label>
               <label>
@@ -760,34 +760,9 @@
               <div class="panel-heading">
                 <h2>Competenza mensile</h2>
               </div>
-              <p class="admin-form-copy" id="admin-competence-copy">
-                Imposta la data cut-off del mese. Dal giorno successivo i contratti andranno in
-                competenza mese successivo.
-              </p>
-              <form class="filters admin-toolbar admin-competence-form" id="admin-competence-form">
-                <label>
-                  Mese
-                  <input id="admin-competence-month" name="month" type="month" required />
-                </label>
-                <label>
-                  Data cut-off
-                  <input id="admin-competence-cutoff" name="cutoffDate" type="date" required />
-                </label>
-                <div class="admin-competence-actions">
-                  <button class="secondary-button compact-button" type="button" id="admin-competence-load">
-                    Carica mese
-                  </button>
-                  <button class="primary-button compact-button" type="submit" id="admin-competence-save">
-                    Salva cut-off
-                  </button>
-                </div>
-              </form>
-              <p id="admin-competence-feedback" role="status"></p>
-
-              <hr class="admin-section-divider" />
-
               <p class="admin-form-copy">
-                Cut-off per fornitore. Se impostato, ha priorità rispetto al cut-off mensile generale.
+                Imposta la data cut-off per singolo fornitore. Dal giorno successivo alla data
+                impostata, i contratti di quel fornitore andranno in competenza del mese successivo.
               </p>
               <form
                 class="filters admin-toolbar admin-competence-form"
@@ -805,12 +780,7 @@
                 </label>
                 <label>
                   Data cut-off
-                  <input
-                    id="admin-supplier-cutoff-date"
-                    name="cutoffDate"
-                    type="date"
-                    required
-                  />
+                  <input id="admin-supplier-cutoff-date" name="cutoffDate" type="date" required />
                 </label>
                 <div class="admin-competence-actions">
                   <button
