@@ -769,8 +769,15 @@ app.patch('/api/clients/:id', requireAuth, async (req, res) => {
     };
 
     const updated = await updateBaserowClient(clientId, payload);
+
+    // Propaga le modifiche anagrafiche ai contratti collegati
+    propagateClientUpdateToContracts(clientId, payload).catch(err =>
+      console.error('[propagateClientUpdateToContracts]', err)
+    );
+
     invalidateClientsCache(agentId);
     invalidateAdminStatsCache();
+    invalidateCacheByPrefix('contracts:'); // invalida contratti di tutti gli agenti
     res.json(normalizeClient(updated));
   } catch (error) {
     handleApiError(res, error, 'CLIENT_NOT_UPDATED', 'Impossibile aggiornare il cliente.');
@@ -1458,6 +1465,32 @@ async function findClientByPiva(piva) {
     )}`
   );
   return res.results && res.results[0] ? res.results[0] : null;
+}
+
+async function propagateClientUpdateToContracts(clientId, clientPayload) {
+  if (!CONFIG.contrattiTableId) return;
+  const filter = JSON.stringify({
+    filter_type: 'AND',
+    filters: [{ field: 'cliente', type: 'link_row_has', value: clientId }],
+  });
+  const res = await baserowFetch(
+    `/api/database/rows/table/${CONFIG.contrattiTableId}/?user_field_names=true` +
+    `&filters=${encodeURIComponent(filter)}&size=200`
+  );
+  const linkedContracts = Array.isArray(res.results) ? res.results : [];
+  if (linkedContracts.length === 0) return;
+
+  const contractPatch = {};
+  if (clientPayload['Ragione Sociale'] !== undefined) contractPatch.ragione_sociale = clientPayload['Ragione Sociale'];
+  if (clientPayload.piva !== undefined) contractPatch.piva = clientPayload.piva;
+  if (clientPayload.email !== undefined) contractPatch.email = clientPayload.email;
+  if (clientPayload.cellulare !== undefined) contractPatch.cellulare = clientPayload.cellulare;
+  if (clientPayload.indirizzo_fatturazione !== undefined) contractPatch.indirizzo_fatturazione = clientPayload.indirizzo_fatturazione;
+
+  await Promise.all(
+    linkedContracts.map(contract => updateBaserowContract(contract.id, contractPatch))
+  );
+  console.log(`[propagateClientUpdate] aggiornati ${linkedContracts.length} contratti per cliente ${clientId}`);
 }
 
 async function syncClientFromContract(clientData) {
