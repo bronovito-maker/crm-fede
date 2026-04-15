@@ -2846,7 +2846,9 @@ function openClientModal(id) {
 
   const modal = document.getElementById('client-modal');
   const form = document.getElementById('edit-client-form');
-  
+  const subtitle = document.getElementById('client-modal-subtitle');
+  const feedback = document.getElementById('client-edit-feedback');
+
   form.elements['id'].value = client.id;
   form.elements['ragioneSociale'].value = client.ragioneSociale;
   form.elements['piva'].value = client.piva;
@@ -2854,8 +2856,20 @@ function openClientModal(id) {
   form.elements['cellulare'].value = client.cellulare;
   form.elements['indirizzoFatturazione'].value = client.indirizzoFatturazione;
 
+  if (subtitle) {
+    subtitle.textContent = `ID: ${client.id}${client.piva ? ' · ' + client.piva : ''}`;
+    subtitle.hidden = false;
+  }
+
+  if (feedback) {
+    feedback.hidden = true;
+    feedback.className = 'client-edit-feedback';
+    feedback.textContent = '';
+  }
+
   modal.hidden = false;
   modal.classList.add('active');
+  form.elements['ragioneSociale'].focus();
 }
 
 function closeClientModal() {
@@ -2869,30 +2883,40 @@ async function handleClientEditSubmit(e) {
   const form = e.target;
   const id = form.elements['id'].value;
   const submitBtn = document.getElementById('save-client-button');
-  
+  const feedback = document.getElementById('client-edit-feedback');
+
   const payload = {
-    ragioneSociale: form.elements['ragioneSociale'].value,
-    piva: form.elements['piva'].value,
-    email: form.elements['email'].value,
-    cellulare: form.elements['cellulare'].value,
-    indirizzoFatturazione: form.elements['indirizzoFatturazione'].value,
+    ragioneSociale: form.elements['ragioneSociale'].value.trim(),
+    piva: form.elements['piva'].value.trim(),
+    email: form.elements['email'].value.trim(),
+    cellulare: form.elements['cellulare'].value.trim(),
+    indirizzoFatturazione: form.elements['indirizzoFatturazione'].value.trim(),
   };
 
   submitBtn.disabled = true;
   const originalText = submitBtn.textContent;
   submitBtn.textContent = 'Salvataggio...';
+  if (feedback) {
+    feedback.hidden = true;
+    feedback.className = 'client-edit-feedback';
+  }
 
   try {
     await baserowClient.updateClient(id, payload);
-    closeClientModal();
-    // Aggiorniamo la lista locale e ri-renderizziamo
     await loadAndRenderClients({ force: true, silent: true });
-    
-    // Feedback opzionale se implementato (es. toast)
-    console.log('Cliente aggiornato con successo');
+    if (feedback) {
+      feedback.textContent = 'Anagrafica aggiornata con successo.';
+      feedback.className = 'client-edit-feedback is-success';
+      feedback.hidden = false;
+    }
+    setTimeout(closeClientModal, 1200);
   } catch (error) {
     console.error(error);
-    alert('Errore durante il salvataggio: ' + (error.message || 'Errore sconosciuto'));
+    if (feedback) {
+      feedback.textContent = error.message || 'Errore durante il salvataggio.';
+      feedback.className = 'client-edit-feedback is-error';
+      feedback.hidden = false;
+    }
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = originalText;

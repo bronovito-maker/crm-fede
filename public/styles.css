@@ -3135,19 +3135,70 @@ td[data-label='Cliente'] strong {
   font-size: 0.8rem;
 }
 
-/* Modal refinements */
-#client-modal .modal-content {
-  max-width: 600px;
+/* ---- Client edit dialog ---- */
+.client-edit-dialog {
+  width: min(540px, 100%);
 }
 
-#client-modal .form-grid {
+.client-modal-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.client-modal-subtitle {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.client-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.client-edit-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  padding: 20px;
 }
 
-#client-modal .form-group.full-width {
+.client-edit-grid .full-span {
   grid-column: 1 / -1;
+}
+
+.client-edit-feedback {
+  margin: 0 20px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+}
+
+.client-edit-feedback.is-success {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.client-edit-feedback.is-error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.client-edit-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 16px 20px 20px;
+  border-top: 1px solid var(--line);
+  margin-top: 16px;
 }
 
 /* ---- Search box (Anagrafiche clienti) ---- */

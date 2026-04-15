@@ -728,7 +728,11 @@ app.get('/api/clients', apiReadLimiter, requireAuth, async (req, res) => {
     
     const cacheKey = clientsCacheKey(isAdmin ? 'admin' : agentId);
     const clients = await getCached(cacheKey, async () => {
-      const allRows = await fetchAllBaserowRows(CONFIG.clientiTableId);
+      const allRows = await fetchAllBaserowRows(
+        CONFIG.clientiTableId,
+        new URLSearchParams({ user_field_names: 'true' }),
+        'lista clienti'
+      );
       const normalized = allRows.map(normalizeClient);
       if (isAdmin) return normalized;
       // Mostra i clienti dell'agente + quelli senza agente assegnato (es. creati manualmente)
