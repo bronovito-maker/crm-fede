@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const crypto = require('crypto');
 const express = require('express');
+const { Resend } = require('resend');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const path = require('path');
@@ -32,6 +33,9 @@ const CONFIG = {
   clientiTableId: process.env.BASEROW_TABLE_CLIENTI_ID || '',
   sessionTtlMs: Number(process.env.SESSION_TTL_HOURS || 12) * 60 * 60 * 1000,
   cookieSecure: process.env.NODE_ENV === 'production',
+  resendApiKey: process.env.RESEND_API_KEY || '',
+  resendFromEmail: process.env.RESEND_FROM_EMAIL || '',
+  notifyEmail: process.env.NOTIFY_EMAIL || '',
 };
 
 const allowedClientTypes = new Set(['Business', 'Privato', 'Condominio']);
@@ -423,6 +427,7 @@ app.post(
       invalidateContractsCache(assignedAgent.id);
       invalidateAdminStatsCache();
       invalidateClientsCache(assignedAgent.id);
+      sendContractNotification(assignedAgent.nome, contract, saveMode).catch(() => {});
       res.status(201).json(normalizeContract(created));
     } catch (error) {
       handleApiError(res, error, 'CONTRACT_NOT_SAVED', 'Contratto non salvato.');
@@ -2256,4 +2261,58 @@ function handleApiError(res, error, code, message) {
     error: error.code || code,
     message: error.publicMessage || message,
   });
+}
+
+async function sendContractNotification(agentName, contract, saveMode) {
+  if (!CONFIG.resendApiKey || !CONFIG.notifyEmail || !CONFIG.resendFromEmail) return;
+  if (saveMode === 'draft') return;
+
+  const row = (label, value) =>
+    `<tr><td style="padding:6px 12px;color:#6b7280;font-size:13px;white-space:nowrap">${label}</td><td style="padding:6px 12px;font-size:13px;color:#111827">${value || '—'}</td></tr>`;
+
+  const html = `
+<!DOCTYPE html>
+<html lang="it">
+<head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:sans-serif">
+  <div style="max-width:560px;margin:32px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+    <div style="background:#1d4ed8;padding:20px 24px">
+      <p style="margin:0;color:#bfdbfe;font-size:12px;text-transform:uppercase;letter-spacing:.05em">CRM Fede Energia</p>
+      <h1 style="margin:4px 0 0;color:#fff;font-size:20px;font-weight:600">Nuovo contratto caricato</h1>
+    </div>
+    <div style="padding:24px">
+      <p style="margin:0 0 16px;font-size:14px;color:#374151">
+        <strong>${agentName}</strong> ha appena caricato un nuovo contratto.
+      </p>
+      <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden">
+        <tbody>
+          ${row('Ragione sociale', `<strong>${contract.ragioneSociale}</strong>`)}
+          ${row('P.IVA / CF', contract.piva)}
+          ${row('Email cliente', contract.email)}
+          ${row('Cellulare', contract.cellulare)}
+          ${row('Indirizzo fatturazione', contract.indirizzoFatturazione)}
+          ${row('Fornitore', contract.fornitore)}
+          ${row('Tipo fornitura', contract.tipoFornitura)}
+          ${row('Tipo operazione', contract.tipoOperazione)}
+          ${row('Offerta', contract.nomeOfferta)}
+          ${row('Metodo pagamento', contract.metodoPagamento)}
+          ${row('Data caricamento', todayIsoDate())}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  try {
+    const resend = new Resend(CONFIG.resendApiKey);
+    await resend.emails.send({
+      from: CONFIG.resendFromEmail,
+      to: CONFIG.notifyEmail,
+      subject: `Nuovo contratto: ${contract.ragioneSociale} — ${agentName}`,
+      html,
+    });
+  } catch (err) {
+    console.error('[notify] Errore invio mail notifica:', err.message);
+  }
 }

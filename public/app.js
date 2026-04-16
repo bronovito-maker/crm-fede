@@ -373,7 +373,7 @@ document
 document
   .getElementById('contract-files-input')
   .addEventListener('change', handleContractFilesSelection);
-document.getElementById('cb-category-filter').addEventListener('change', (event) => {
+document.getElementById('cb-category-filter').addEventListener('change', () => {
   renderCbPage();
 });
 
@@ -621,7 +621,9 @@ async function loadAndRenderContracts({ silent = false, force = false } = {}) {
   contractsRefreshInFlight = true;
 
   try {
-    contracts = await baserowClient.listContracts();
+    contracts = agent && agent.ruolo === 'admin'
+      ? await baserowClient.listAdminContracts()
+      : await baserowClient.listContracts();
     renderAll();
   } catch (error) {
     if (!silent) {
@@ -2947,7 +2949,7 @@ function setupAddressAutocomplete(inputId) {
   const input = document.getElementById(inputId);
   if (!input || !window.google?.maps?.places?.Autocomplete) return;
 
-  const autocomplete = new google.maps.places.Autocomplete(input, {
+  const autocomplete = new window.google.maps.places.Autocomplete(input, {
     componentRestrictions: { country: 'it' },
     fields: ['formatted_address'],
     types: ['address'],
