@@ -10,6 +10,8 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
 const Database = require('better-sqlite3');
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const sharp = require('sharp');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -36,7 +38,21 @@ const CONFIG = {
   resendApiKey: process.env.RESEND_API_KEY || '',
   resendFromEmail: process.env.RESEND_FROM_EMAIL || '',
   notifyEmail: process.env.NOTIFY_EMAIL || '',
+  r2AccessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+  r2SecretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
+  r2BucketName: process.env.R2_BUCKET_NAME || '',
+  r2Endpoint: process.env.R2_ENDPOINT || '',
+  r2PublicUrl: (process.env.R2_PUBLIC_URL || '').replace(/\/$/, ''),
 };
+
+const r2Client = new S3Client({
+  region: 'auto',
+  endpoint: CONFIG.r2Endpoint,
+  credentials: {
+    accessKeyId: CONFIG.r2AccessKeyId,
+    secretAccessKey: CONFIG.r2SecretAccessKey,
+  },
+});
 
 const allowedClientTypes = new Set(['Business', 'Privato', 'Condominio']);
 const allowedCustomerCategories = new Set(['Prospect', 'Switch ricorrente']);
@@ -398,10 +414,15 @@ app.post(
       }
 
       if (uploadedFiles.length) {
-        payload.file_contratto = uploadedFiles.map((uploadedFile, index) => ({
-          name: uploadedFile.name,
-          visible_name: files[index].originalname,
-        }));
+        payload.file_contratto = JSON.stringify(
+          uploadedFiles.map((f) => ({
+            name: f.name,
+            visibleName: f.visibleName,
+            url: f.url,
+            mimeType: f.mimeType,
+            size: f.size,
+          }))
+        );
       }
 
       const created = await createBaserowContract(payload);
@@ -468,11 +489,7 @@ app.patch(
       const uploadedFiles = await Promise.all(files.map(uploadContractFile));
       const retainedFileNames = normalizeRetainedFileNames(req.body.retainedFileName);
       const preservedFiles = fileValue(existing.file_contratto)
-        .filter((file) => retainedFileNames.includes(file.name))
-        .map((file) => ({
-          name: file.name,
-          visible_name: file.visibleName || file.name,
-        }));
+        .filter((file) => retainedFileNames.includes(file.name));
       const nextStatus =
         saveMode === 'draft'
           ? 'Bozza'
@@ -514,13 +531,22 @@ app.patch(
       });
 
       if (preservedFiles.length || uploadedFiles.length) {
-        payload.file_contratto = [
-          ...preservedFiles,
-          ...uploadedFiles.map((uploadedFile, index) => ({
-            name: uploadedFile.name,
-            visible_name: files[index].originalname,
+        payload.file_contratto = JSON.stringify([
+          ...preservedFiles.map((f) => ({
+            name: f.name,
+            visibleName: f.visibleName,
+            url: f.url,
+            mimeType: f.mimeType,
+            size: f.size,
           })),
-        ];
+          ...uploadedFiles.map((f) => ({
+            name: f.name,
+            visibleName: f.visibleName,
+            url: f.url,
+            mimeType: f.mimeType,
+            size: f.size,
+          })),
+        ]);
       }
 
       const updated = await updateBaserowContract(contractId, payload);
@@ -1565,26 +1591,38 @@ async function uploadContractFile(file) {
     );
   }
 
-  const formData = new FormData();
-  const blob = new Blob([file.buffer], { type: file.mimetype });
-  formData.append('file', blob, file.originalname);
+  let buffer = file.buffer;
+  let mimeType = file.mimetype;
+  let ext = file.originalname.split('.').pop().toLowerCase();
 
-  const response = await fetch(`${CONFIG.baserowBaseUrl}/api/user-files/upload-file/`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Token ${CONFIG.baserowToken}`,
-    },
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    const error = new Error(`Baserow file upload ${response.status}: ${body}`);
-    error.status = response.status;
-    throw error;
+  const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
+  if (imageTypes.has(file.mimetype)) {
+    buffer = await sharp(file.buffer)
+      .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+    mimeType = 'image/jpeg';
+    ext = 'jpg';
   }
 
-  return response.json();
+  const key = `contratti/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
+
+  await r2Client.send(
+    new PutObjectCommand({
+      Bucket: CONFIG.r2BucketName,
+      Key: key,
+      Body: buffer,
+      ContentType: mimeType,
+    })
+  );
+
+  return {
+    name: key,
+    visibleName: file.originalname,
+    url: `${CONFIG.r2PublicUrl}/${key}`,
+    mimeType,
+    size: buffer.length,
+  };
 }
 
 function sanitizeContractInput(input, { allowDraft = false } = {}) {
@@ -2149,12 +2187,20 @@ function multiSelectValue(value) {
 }
 
 function fileValue(value) {
-  return Array.isArray(value)
-    ? value.map((file) => ({
+  let parsed = value;
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(parsed)
+    ? parsed.map((file) => ({
         name: file.name || '',
-        visibleName: file.visible_name || file.name || '',
+        visibleName: file.visibleName || file.visible_name || file.name || '',
         url: file.url || '',
-        mimeType: file.mime_type || '',
+        mimeType: file.mimeType || file.mime_type || '',
         size: numberValue(file.size),
       }))
     : [];
