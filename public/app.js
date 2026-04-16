@@ -515,18 +515,6 @@ document.getElementById('contract-form').addEventListener('submit', async (event
       const payload = buildContractFormData(draft);
       if (isEditing) {
         await baserowClient.updateContract(contractEditorState.editingId, payload);
-        // Aggiorna anche l'anagrafica del cliente collegato (se esiste)
-        const editedContract = contracts.find(c => Number(c.id) === Number(contractEditorState.editingId));
-        const clienteId = editedContract?.clienteId;
-        if (clienteId) {
-          await baserowClient.updateClient(clienteId, {
-            ragioneSociale: draft.ragioneSociale,
-            piva: draft.piva,
-            email: draft.email,
-            cellulare: draft.cellulare,
-            indirizzoFatturazione: draft.indirizzoFatturazione,
-          });
-        }
       } else {
         await baserowClient.createContract(payload);
       }
