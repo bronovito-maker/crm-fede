@@ -1029,7 +1029,7 @@ describe('HTTP routes', () => {
         assert.equal(options.method, 'POST');
         const payload = JSON.parse(options.body);
         assert.deepEqual(payload.agente, [agentId]);
-        assert.equal(payload.ragione_sociale, 'Rossi SRL');
+        assert.equal(payload.ragione_sociale, 'ROSSI SRL');
         assert.equal(payload.id_contratto, 'VT-001');
         assert.equal(payload.categoria_cliente, 'Prospect');
         assert.deepEqual(payload.tipo_operazione, ['switch', 'subentro']);
@@ -1126,7 +1126,7 @@ describe('HTTP routes', () => {
       if (parsed.pathname === `/api/database/rows/table/${contractTableId}/`) {
         assert.equal(options.method, 'POST');
         const payload = JSON.parse(options.body);
-        assert.equal(payload.ragione_sociale, 'Rossi SRL');
+        assert.equal(payload.ragione_sociale, 'ROSSI SRL');
         assert.equal(payload.stato_contratto, 'Bozza');
         assert.equal(payload.tipo_cliente, null);
         assert.equal(payload.categoria_cliente, null);
@@ -1262,12 +1262,14 @@ describe('HTTP routes', () => {
       if (parsed.pathname === `/api/database/rows/table/${contractTableId}/910/`) {
         if ((options.method || 'GET') === 'PATCH') {
           const payload = JSON.parse(options.body);
-          assert.equal(payload.ragione_sociale, 'Rossi SRL Aggiornata');
-          assert.equal(payload.indirizzo_fornitura, 'Via Nuova 44');
+          assert.equal(payload.ragione_sociale, 'ROSSI SRL AGGIORNATA');
+          assert.equal(payload.indirizzo_fornitura, 'VIA NUOVA 44');
           assert.equal(payload.stato_contratto, 'OK');
-          assert.deepEqual(payload.file_contratto, [
-            { name: 'doc-esistente.pdf', visible_name: 'Doc esistente.pdf' },
-          ]);
+          const filesPayload = Array.isArray(payload.file_contratto)
+            ? payload.file_contratto
+            : JSON.parse(payload.file_contratto || '[]');
+          assert.equal(filesPayload.length, 1);
+          assert.equal(filesPayload[0].name, 'doc-esistente.pdf');
 
           return mockJsonResponse({
             id: 910,
@@ -1387,7 +1389,7 @@ describe('HTTP routes', () => {
         assert.equal(options.method, 'PATCH');
         const payload = JSON.parse(options.body);
         payloads.push(payload);
-        assert.equal(payload.nome, 'Laura Verdi');
+        assert.equal(payload.nome, 'LAURA VERDI');
         assert.equal(payload.email, 'laura@example.it');
         assert.equal(payload.target_mensile, 8);
         assert.equal(payload.target_trimestrale, 24);

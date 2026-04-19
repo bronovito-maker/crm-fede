@@ -345,6 +345,7 @@
                       <input
                         name="ragioneSociale"
                         type="text"
+                        data-uppercase="true"
                         placeholder="Es. Rossi SRL o cerca cliente esistente..."
                         autocomplete="off"
                         required
@@ -391,7 +392,13 @@
                   </label>
                   <label>
                     P.IVA - Cod. fiscale
-                    <input name="piva" type="text" inputmode="numeric" placeholder="01234567890" />
+                    <input
+                      name="piva"
+                      type="text"
+                      data-uppercase="true"
+                      inputmode="numeric"
+                      placeholder="01234567890"
+                    />
                   </label>
                   <label>
                     Email
@@ -404,7 +411,14 @@
                   </label>
                   <label class="full-span">
                     Indirizzo fatturazione
-                    <input id="indirizzo-fatturazione-input" name="indirizzoFatturazione" type="text" placeholder="Es. Via Roma 12, Milano" autocomplete="off" />
+                    <input
+                      id="indirizzo-fatturazione-input"
+                      name="indirizzoFatturazione"
+                      type="text"
+                      data-uppercase="true"
+                      placeholder="Es. Via Roma 12, Milano"
+                      autocomplete="off"
+                    />
                   </label>
                 </div>
               </div>
@@ -415,7 +429,13 @@
                 <div class="form-grid">
                   <label>
                     Id contratto
-                    <input name="idContratto" type="text" placeholder="Es. 277543" autocomplete="off" />
+                    <input
+                      name="idContratto"
+                      type="text"
+                      data-uppercase="true"
+                      placeholder="Es. 277543"
+                      autocomplete="off"
+                    />
                   </label>
                   <input name="statoContratto" type="hidden" value="Caricato" />
                   <label>
@@ -432,13 +452,19 @@
                   </label>
                   <label>
                     Ex fornitore
-                    <input name="exFornitore" type="text" placeholder="Es. A2A Energia" />
+                    <input
+                      name="exFornitore"
+                      type="text"
+                      data-uppercase="true"
+                      placeholder="Es. A2A Energia"
+                    />
                   </label>
                   <label>
                     <span>Nome offerta <span class="req" aria-hidden="true">*</span></span>
                     <input
                       name="nomeOfferta"
                       type="text"
+                      data-uppercase="true"
                       placeholder="Es. Flex Business Luce"
                       required
                     />
@@ -471,11 +497,11 @@
                   </label>
                   <label class="conditional-field" id="pod-field" hidden>
                     POD
-                    <input name="pod" type="text" placeholder="IT001E..." />
+                    <input name="pod" type="text" data-uppercase="true" placeholder="IT001E..." />
                   </label>
                   <label class="conditional-field" id="pdr-field" hidden>
                     PDR
-                    <input name="pdr" type="text" placeholder="Numero PDR" />
+                    <input name="pdr" type="text" data-uppercase="true" placeholder="Numero PDR" />
                   </label>
                   <label>
                     <span>Metodo pagamento <span class="req" aria-hidden="true">*</span></span>
@@ -497,7 +523,14 @@
                   </label>
                   <label class="full-span">
                     Indirizzo fornitura
-                    <input id="indirizzo-fornitura-input" name="indirizzoFornitura" type="text" placeholder="Indirizzo di fornitura" autocomplete="off" />
+                    <input
+                      id="indirizzo-fornitura-input"
+                      name="indirizzoFornitura"
+                      type="text"
+                      data-uppercase="true"
+                      placeholder="Indirizzo di fornitura"
+                      autocomplete="off"
+                    />
                   </label>
                 </div>
               </div>
@@ -563,6 +596,7 @@
                 Descrizione / note
                 <textarea
                   name="descrizione"
+                  data-uppercase="true"
                   rows="4"
                   placeholder="Note utili per validazione"
                 ></textarea>
@@ -1024,7 +1058,7 @@
                   <div class="admin-form-grid">
                     <label>
                       Nome
-                      <input name="nome" type="text" required />
+                      <input name="nome" type="text" data-uppercase="true" required />
                     </label>
                     <label>
                       Email

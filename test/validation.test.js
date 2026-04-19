@@ -56,7 +56,7 @@ describe('sanitizeContractInput', () => {
   describe('contratto valido', () => {
     it('accetta un contratto completo e corretto', () => {
       const result = sanitizeContractInput(validContract);
-      assert.equal(result.ragioneSociale, 'Rossi Impianti SRL');
+      assert.equal(result.ragioneSociale, 'ROSSI IMPIANTI SRL');
       assert.equal(result.tipoCliente, 'Business');
       assert.equal(result.categoriaCliente, 'Prospect');
       assert.equal(result.tipoFornitura, 'luce');
@@ -140,7 +140,7 @@ describe('sanitizeContractInput', () => {
         },
         { allowDraft: true }
       );
-      assert.equal(result.ragioneSociale, 'Rossi SRL');
+      assert.equal(result.ragioneSociale, 'ROSSI SRL');
     });
   });
 
@@ -351,7 +351,7 @@ describe('sanitizeAgentInput', () => {
   describe('agente valido', () => {
     it('accetta un agente completo e corretto', () => {
       const result = sanitizeAgentInput(validAgent, { requirePassword: true });
-      assert.equal(result.nome, 'Marco Bianchi');
+      assert.equal(result.nome, 'MARCO BIANCHI');
       assert.equal(result.ruolo, 'agente');
       assert.equal(result.cbUnitaria, 85);
       assert.equal(result.targetMensile, 28);
@@ -386,7 +386,7 @@ describe('sanitizeAgentInput', () => {
         { ...validAgent, password: '' },
         { requirePassword: false }
       );
-      assert.equal(result.nome, 'Marco Bianchi');
+      assert.equal(result.nome, 'MARCO BIANCHI');
     });
 
     it('lascia cbUnitaria a null se il campo non viene inviato', () => {

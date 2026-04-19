@@ -370,6 +370,25 @@ document.getElementById('metodo-pagamento').addEventListener('change', updateCon
 document
   .getElementById('fornitore-input')
   .addEventListener('change', () => updateStartDatePrediction());
+
+document.addEventListener('input', (event) => {
+  const field = event.target;
+  if (!field || (field.tagName !== 'INPUT' && field.tagName !== 'TEXTAREA')) {
+    return;
+  }
+  if (field.dataset.uppercase !== 'true') {
+    return;
+  }
+  const cursorStart = field.selectionStart;
+  const cursorEnd = field.selectionEnd;
+  const upper = field.value.toUpperCase();
+  if (upper === field.value) return;
+  field.value = upper;
+  if (typeof cursorStart === 'number' && typeof cursorEnd === 'number') {
+    field.setSelectionRange(cursorStart, cursorEnd);
+  }
+});
+
 document
   .getElementById('contract-files-input')
   .addEventListener('change', handleContractFilesSelection);

@@ -1627,25 +1627,25 @@ async function uploadContractFile(file) {
 
 function sanitizeContractInput(input, { allowDraft = false } = {}) {
   const contract = {
-    idContratto: cleanText(input.idContratto),
-    ragioneSociale: cleanText(input.ragioneSociale),
+    idContratto: upperText(input.idContratto),
+    ragioneSociale: upperText(input.ragioneSociale),
     cellulare: cleanText(input.cellulare),
     tipoCliente: cleanText(input.tipoCliente),
     categoriaCliente: cleanText(input.categoriaCliente),
     fornitore: cleanText(input.fornitore),
-    exFornitore: cleanText(input.exFornitore),
-    nomeOfferta: cleanText(input.nomeOfferta),
+    exFornitore: upperText(input.exFornitore),
+    nomeOfferta: upperText(input.nomeOfferta),
     tipoOperazione: normalizeOperations(input.tipoOperazione),
     tipoFornitura: cleanText(input.tipoFornitura).toLowerCase(),
-    pod: cleanText(input.pod).toUpperCase(),
-    pdr: cleanText(input.pdr),
+    pod: upperText(input.pod),
+    pdr: upperText(input.pdr),
     metodoPagamento: cleanText(input.metodoPagamento).toLowerCase(),
     iban: cleanText(input.iban).replace(/\s+/g, '').toUpperCase(),
-    piva: cleanText(input.piva),
+    piva: upperText(input.piva),
     email: cleanText(input.email).toLowerCase(),
-    indirizzoFatturazione: cleanText(input.indirizzoFatturazione),
-    indirizzoFornitura: cleanText(input.indirizzoFornitura),
-    descrizione: cleanText(input.descrizione),
+    indirizzoFatturazione: upperText(input.indirizzoFatturazione),
+    indirizzoFornitura: upperText(input.indirizzoFornitura),
+    descrizione: upperText(input.descrizione),
     dataInizioFornitura: cleanText(input.dataInizioFornitura),
   };
 
@@ -1746,7 +1746,7 @@ function sanitizeContractInput(input, { allowDraft = false } = {}) {
 function sanitizeAgentInput(input, { requirePassword }) {
   const rawCbUnitaria = cleanText(input.cbUnitaria);
   const agent = {
-    nome: cleanText(input.nome),
+    nome: upperText(input.nome),
     email: cleanText(input.email).toLowerCase(),
     password: cleanText(input.password),
     cbUnitaria: rawCbUnitaria ? numberValue(rawCbUnitaria) : null,
@@ -2262,6 +2262,10 @@ function normalizeBaserowContractPayload(payload) {
 
 function cleanText(value) {
   return String(value || '').trim();
+}
+
+function upperText(value) {
+  return cleanText(value).toUpperCase();
 }
 
 function normalizeOperations(value) {
