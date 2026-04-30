@@ -1090,6 +1090,17 @@ textarea:focus {
   display: block;
 }
 
+.address-place-widget {
+  color-scheme: light;
+  --gmpx-color-surface: #ffffff;
+  --gmpx-color-on-surface: #18202a;
+  --gmpx-color-primary: #2563eb;
+  --gmpx-font-family-base: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    sans-serif;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
 /* Google Maps PlaceAutocompleteElement — stile uguale agli input */
 gmp-place-autocomplete {
   display: block;
