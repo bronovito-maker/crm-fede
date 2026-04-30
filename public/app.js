@@ -3019,8 +3019,7 @@ function setupAddressAutocomplete(inputId) {
     widget.classList.add('address-place-widget');
 
     // Vincoli lato Italia + bias su Livorno e provincia.
-    widget.componentRestrictions = { country: 'it' };
-    widget.types = ['address'];
+    widget.includedRegionCodes = ['it'];
     widget.locationBias = livornoBounds;
     widget.placeholder = input.placeholder || 'Indirizzo';
 
