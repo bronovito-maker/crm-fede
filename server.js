@@ -739,6 +739,16 @@ app.get('/api/admin/supplier-cutoffs', apiReadLimiter, requireAdmin, async (req,
   }
 });
 
+app.get('/api/suppliers', apiReadLimiter, requireAuth, async (_req, res) => {
+  try {
+    ensureConfigured();
+    const suppliers = await listSuppliers();
+    res.json(suppliers);
+  } catch (error) {
+    handleApiError(res, error, 'SUPPLIERS_LOAD_FAILED', 'Fornitori non disponibili.');
+  }
+});
+
 app.put('/api/admin/supplier-cutoffs', requireAdmin, async (req, res) => {
   try {
     ensureConfigured();
@@ -1192,6 +1202,7 @@ async function listAllContracts() {
 }
 
 function ensureSupplierCutoffConfigEnabled() {
+  ensureSupplierTableEnabled();
   if (!CONFIG.cutoffFornitoriTableId) {
     throw publicError(
       503,
@@ -1199,6 +1210,9 @@ function ensureSupplierCutoffConfigEnabled() {
       'Tabella cut-off fornitori non configurata. Imposta BASEROW_TABLE_CUTOFF_FORNITORI_ID.'
     );
   }
+}
+
+function ensureSupplierTableEnabled() {
   if (!CONFIG.fornitoriTableId) {
     throw publicError(
       503,
@@ -1218,7 +1232,7 @@ async function listSupplierCutoffRows() {
 }
 
 async function listSupplierRowsById() {
-  ensureSupplierCutoffConfigEnabled();
+  ensureSupplierTableEnabled();
   const params = new URLSearchParams({
     user_field_names: 'true',
   });

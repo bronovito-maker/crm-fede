@@ -37,6 +37,10 @@ const baserowClient = {
     return fetchJson('/api/competenze');
   },
 
+  async listSuppliers() {
+    return fetchJson('/api/suppliers');
+  },
+
   async createContract(contract) {
     return fetchJson('/api/contracts', {
       method: 'POST',

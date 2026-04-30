@@ -223,6 +223,7 @@ const adminState = {
   agentState: 'all',
 };
 let cbCategoryFilter = 'all';
+let supplierOptionsLoaded = false;
 
 const pages = {
   dashboard: 'Dashboard',
@@ -370,6 +371,7 @@ document.getElementById('metodo-pagamento').addEventListener('change', updateCon
 document
   .getElementById('fornitore-input')
   .addEventListener('change', () => updateStartDatePrediction());
+setupSameAddressSync();
 
 document.addEventListener('input', (event) => {
   const field = event.target;
@@ -1308,6 +1310,7 @@ function populateContractForm(contract) {
   form.elements.iban.value = contract.iban || '';
   setAddressAutocompleteValue('indirizzo-fatturazione-input', contract.indirizzoFatturazione || '');
   setAddressAutocompleteValue('indirizzo-fornitura-input', contract.indirizzoFornitura || '');
+  applySameAddressStateFromValues();
   form.elements.descrizione.value = contract.descrizione || '';
   form.elements.statoContratto.value = contract.statoContratto || 'Caricato';
 
@@ -1335,6 +1338,14 @@ function resetContractEditor({ keepFeedback = false } = {}) {
   contractEditorState.originalStatus = 'Caricato';
   form.reset();
   resetAddressAutocompleteValues();
+  const sameAddressCheckbox = document.getElementById('same-address-checkbox');
+  const supplyInput = document.getElementById('indirizzo-fornitura-input');
+  if (sameAddressCheckbox) {
+    sameAddressCheckbox.checked = false;
+  }
+  if (supplyInput) {
+    supplyInput.readOnly = false;
+  }
   const dropdown = document.getElementById('client-suggestions');
   if (dropdown) dropdown.hidden = true;
   selectedContractFiles = [];
@@ -2507,6 +2518,7 @@ async function handleLogin(event) {
     });
 
     agent = session.agent;
+    await loadSuppliers({ silent: true, force: true });
     await loadCurrentCompetence({ silent: true });
     await loadCompetitionCutoffs({ silent: true });
     await loadAndRenderContracts({ silent: true, force: true });
@@ -2730,6 +2742,7 @@ async function initApp() {
       contracts = loadContracts();
       setConnectionStatus('demo', 'Modalità demo');
       setAuthLocked(false);
+      await loadSuppliers({ silent: true });
       await loadCurrentCompetence({ silent: true });
       await loadCompetitionCutoffs({ silent: true });
       renderAll();
@@ -2747,12 +2760,14 @@ async function initApp() {
         }
 
         agent = session.agent;
+        await loadSuppliers({ silent: true, force: true });
         await loadCurrentCompetence({ silent: true });
         await loadCompetitionCutoffs({ silent: true });
         await loadAndRenderContracts({ silent: true, force: true });
         document.getElementById('agent-name').textContent = agent.nome;
         setConnectionStatus('online', 'Database connesso');
         setAuthLocked(false);
+        initGoogleMapsAutocomplete();
       } catch (err) {
         console.error(err);
         agent = { ...agent, ruolo: undefined }; // revoca i permessi in caso di errore
@@ -2768,6 +2783,7 @@ async function initApp() {
       contracts = loadContracts();
       setConnectionStatus('demo', 'Modalità demo');
       setAuthLocked(false);
+      await loadSuppliers({ silent: true });
       await loadCurrentCompetence({ silent: true });
     } else {
       contracts = [];
@@ -2777,6 +2793,32 @@ async function initApp() {
     renderAll();
   } finally {
     setAppLoading(false);
+  }
+}
+
+async function loadSuppliers({ silent = false, force = false } = {}) {
+  const select = document.getElementById('fornitore-input');
+  if (!select || typeof baserowClient === 'undefined' || !baserowClient.isConfigured()) return;
+  if (supplierOptionsLoaded && !force) return;
+
+  try {
+    const suppliers = await baserowClient.listSuppliers();
+    const rows = Array.isArray(suppliers) ? suppliers : [];
+    if (!rows.length) return;
+
+    const options = rows
+      .map((row) => String(row?.name || '').trim())
+      .filter(Boolean)
+      .sort((left, right) => left.localeCompare(right, 'it'));
+
+    if (!options.length) return;
+    select.innerHTML = [
+      '<option value="">Seleziona fornitore</option>',
+      ...options.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`),
+    ].join('');
+    supplierOptionsLoaded = true;
+  } catch (error) {
+    if (!silent) console.warn('Impossibile caricare i fornitori:', error);
   }
 }
 
@@ -2867,6 +2909,7 @@ function fillClientFieldsFromLookup(client) {
   form.elements.email.value = client.email;
   form.elements.cellulare.value = client.cellulare;
   form.elements.indirizzoFatturazione.value = client.indirizzoFatturazione;
+  syncSupplyAddressIfSame();
 }
 
 initApp();
@@ -2956,10 +2999,20 @@ function setupAddressAutocomplete(inputId) {
   const input = document.getElementById(inputId);
   if (!input || !window.google?.maps?.places?.Autocomplete) return;
 
+  // Bias geografico su Livorno e provincia (non vincolante).
+  const livornoBounds = {
+    north: 43.80,
+    south: 42.70,
+    east: 10.80,
+    west: 9.50,
+  };
+
   const autocomplete = new window.google.maps.places.Autocomplete(input, {
     componentRestrictions: { country: 'it' },
     fields: ['formatted_address'],
     types: ['address'],
+    bounds: livornoBounds,
+    strictBounds: false,
   });
 
   addressAutocompleteRefs[inputId] = autocomplete;
@@ -2968,6 +3021,7 @@ function setupAddressAutocomplete(inputId) {
     const place = autocomplete.getPlace();
     if (place.formatted_address) {
       input.value = place.formatted_address;
+      syncSupplyAddressIfSame();
     }
   });
 }
@@ -2975,7 +3029,12 @@ function setupAddressAutocomplete(inputId) {
 // Usato da populateContractForm per precompilare il campo
 function setAddressAutocompleteValue(inputId, value) {
   const el = document.getElementById(inputId);
-  if (el) el.value = value;
+  if (el) {
+    el.value = value;
+    if (inputId === 'indirizzo-fatturazione-input') {
+      syncSupplyAddressIfSame();
+    }
+  }
 }
 
 // Usato da resetContractEditor per pulire i campi indirizzo
@@ -2984,4 +3043,46 @@ function resetAddressAutocompleteValues() {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+}
+
+function setupSameAddressSync() {
+  const billingInput = document.getElementById('indirizzo-fatturazione-input');
+  const supplyInput = document.getElementById('indirizzo-fornitura-input');
+  const checkbox = document.getElementById('same-address-checkbox');
+  if (!billingInput || !supplyInput || !checkbox) return;
+
+  checkbox.addEventListener('change', () => {
+    syncSupplyAddressIfSame();
+    supplyInput.readOnly = checkbox.checked;
+  });
+
+  billingInput.addEventListener('input', () => {
+    syncSupplyAddressIfSame();
+  });
+}
+
+function syncSupplyAddressIfSame() {
+  const billingInput = document.getElementById('indirizzo-fatturazione-input');
+  const supplyInput = document.getElementById('indirizzo-fornitura-input');
+  const checkbox = document.getElementById('same-address-checkbox');
+  if (!billingInput || !supplyInput || !checkbox) return;
+  if (!checkbox.checked) return;
+  supplyInput.value = billingInput.value;
+}
+
+function applySameAddressStateFromValues() {
+  const billingInput = document.getElementById('indirizzo-fatturazione-input');
+  const supplyInput = document.getElementById('indirizzo-fornitura-input');
+  const checkbox = document.getElementById('same-address-checkbox');
+  if (!billingInput || !supplyInput || !checkbox) return;
+
+  const billing = normalizeAddressValue(billingInput.value);
+  const supply = normalizeAddressValue(supplyInput.value);
+  const same = Boolean(billing && supply && billing === supply);
+  checkbox.checked = same;
+  supplyInput.readOnly = same;
+}
+
+function normalizeAddressValue(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
