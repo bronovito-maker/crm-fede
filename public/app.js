@@ -1339,13 +1339,10 @@ function resetContractEditor({ keepFeedback = false } = {}) {
   form.reset();
   resetAddressAutocompleteValues();
   const sameAddressCheckbox = document.getElementById('same-address-checkbox');
-  const supplyInput = document.getElementById('indirizzo-fornitura-input');
   if (sameAddressCheckbox) {
     sameAddressCheckbox.checked = false;
   }
-  if (supplyInput) {
-    supplyInput.readOnly = false;
-  }
+  setAddressFieldLocked('indirizzo-fornitura-input', false);
   const dropdown = document.getElementById('client-suggestions');
   if (dropdown) dropdown.hidden = true;
   selectedContractFiles = [];
@@ -3096,13 +3093,12 @@ function resetAddressAutocompleteValues() {
 
 function setupSameAddressSync() {
   const billingInput = document.getElementById('indirizzo-fatturazione-input');
-  const supplyInput = document.getElementById('indirizzo-fornitura-input');
   const checkbox = document.getElementById('same-address-checkbox');
-  if (!billingInput || !supplyInput || !checkbox) return;
+  if (!billingInput || !checkbox) return;
 
   checkbox.addEventListener('change', () => {
     syncSupplyAddressIfSame();
-    supplyInput.readOnly = checkbox.checked;
+    setAddressFieldLocked('indirizzo-fornitura-input', checkbox.checked);
   });
 
   billingInput.addEventListener('input', () => {
@@ -3111,27 +3107,41 @@ function setupSameAddressSync() {
 }
 
 function syncSupplyAddressIfSame() {
-  const billingInput = document.getElementById('indirizzo-fatturazione-input');
-  const supplyInput = document.getElementById('indirizzo-fornitura-input');
   const checkbox = document.getElementById('same-address-checkbox');
-  if (!billingInput || !supplyInput || !checkbox) return;
+  if (!checkbox) return;
   if (!checkbox.checked) return;
-  supplyInput.value = billingInput.value;
+  const billingValue = getAddressAutocompleteValue('indirizzo-fatturazione-input');
+  setAddressAutocompleteValue('indirizzo-fornitura-input', billingValue);
 }
 
 function applySameAddressStateFromValues() {
-  const billingInput = document.getElementById('indirizzo-fatturazione-input');
-  const supplyInput = document.getElementById('indirizzo-fornitura-input');
   const checkbox = document.getElementById('same-address-checkbox');
-  if (!billingInput || !supplyInput || !checkbox) return;
+  if (!checkbox) return;
 
-  const billing = normalizeAddressValue(billingInput.value);
-  const supply = normalizeAddressValue(supplyInput.value);
+  const billing = normalizeAddressValue(getAddressAutocompleteValue('indirizzo-fatturazione-input'));
+  const supply = normalizeAddressValue(getAddressAutocompleteValue('indirizzo-fornitura-input'));
   const same = Boolean(billing && supply && billing === supply);
   checkbox.checked = same;
-  supplyInput.readOnly = same;
+  setAddressFieldLocked('indirizzo-fornitura-input', same);
 }
 
 function normalizeAddressValue(value) {
   return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function getAddressAutocompleteValue(inputId) {
+  const ref = addressAutocompleteRefs[inputId];
+  const el = ref?.input || document.getElementById(inputId);
+  return String(el?.value || '');
+}
+
+function setAddressFieldLocked(inputId, locked) {
+  const ref = addressAutocompleteRefs[inputId];
+  const el = ref?.input || document.getElementById(inputId);
+  if (el) {
+    el.readOnly = locked;
+  }
+  if (ref?.mode === 'new' && ref.widget) {
+    ref.widget.disabled = locked;
+  }
 }
