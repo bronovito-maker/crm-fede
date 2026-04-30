@@ -1084,6 +1084,12 @@ textarea:focus {
   border-color: var(--primary);
 }
 
+.place-widget-wrap,
+.address-place-widget {
+  width: 100%;
+  display: block;
+}
+
 /* Google Maps PlaceAutocompleteElement — stile uguale agli input */
 gmp-place-autocomplete {
   display: block;
@@ -1965,6 +1971,19 @@ td[data-label='Cliente'] strong {
 .check-line input {
   width: auto;
   min-height: 0;
+}
+
+.same-address-line {
+  margin-top: -2px;
+  color: var(--muted);
+  font-weight: 550;
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+
+.same-address-line input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
 }
 
 .admin-actions {

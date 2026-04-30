@@ -2963,7 +2963,7 @@ async function loadCompetitionCutoffs({ silent = false } = {}) {
 
 // ---- Google Maps Places Autocomplete ----
 let mapsScriptLoaded = false;
-const addressAutocompleteRefs = {}; // { inputId: { placeEl, hiddenInput } }
+const addressAutocompleteRefs = {}; // { inputId: { mode, input, widget? } }
 
 async function initGoogleMapsAutocomplete() {
   if (mapsScriptLoaded) return;
@@ -2985,7 +2985,7 @@ async function initGoogleMapsAutocomplete() {
         }
       };
       const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&callback=_initMapsCallback`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&loading=async&libraries=places&callback=_initMapsCallback`;
       script.async = true;
       script.onerror = () => reject(new Error('Script Maps non caricato.'));
       document.head.appendChild(script);
@@ -2997,17 +2997,59 @@ async function initGoogleMapsAutocomplete() {
 
 function setupAddressAutocomplete(inputId) {
   const input = document.getElementById(inputId);
-  if (!input || !window.google?.maps?.places?.Autocomplete) return;
+  const places = window.google?.maps?.places;
+  if (!input || !places) return;
 
   // Bias geografico su Livorno e provincia (non vincolante).
   const livornoBounds = {
-    north: 43.80,
-    south: 42.70,
-    east: 10.80,
-    west: 9.50,
+    north: 43.8,
+    south: 42.7,
+    east: 10.8,
+    west: 9.5,
   };
 
-  const autocomplete = new window.google.maps.places.Autocomplete(input, {
+  if (typeof places.PlaceAutocompleteElement === 'function') {
+    const existing = document.getElementById(`${inputId}-place-widget-wrap`);
+    if (existing) existing.remove();
+
+    const wrap = document.createElement('div');
+    wrap.id = `${inputId}-place-widget-wrap`;
+    wrap.className = 'place-widget-wrap';
+    const widget = new places.PlaceAutocompleteElement();
+    widget.classList.add('address-place-widget');
+
+    // Vincoli lato Italia + bias su Livorno e provincia.
+    widget.componentRestrictions = { country: 'it' };
+    widget.types = ['address'];
+    widget.locationBias = livornoBounds;
+    widget.placeholder = input.placeholder || 'Indirizzo';
+
+    wrap.appendChild(widget);
+    input.insertAdjacentElement('afterend', wrap);
+    input.type = 'hidden';
+
+    addressAutocompleteRefs[inputId] = { mode: 'new', input, widget };
+
+    widget.addEventListener('gmp-select', async ({ placePrediction }) => {
+      if (!placePrediction?.toPlace) return;
+      try {
+        const place = placePrediction.toPlace();
+        await place.fetchFields({ fields: ['formattedAddress'] });
+        const value = String(place.formattedAddress || '').trim();
+        if (!value) return;
+        input.value = value;
+        widget.value = value;
+        syncSupplyAddressIfSame();
+      } catch (error) {
+        console.warn('[Maps] Errore selezione place:', error);
+      }
+    });
+    return;
+  }
+
+  if (typeof places.Autocomplete !== 'function') return;
+
+  const autocomplete = new places.Autocomplete(input, {
     componentRestrictions: { country: 'it' },
     fields: ['formatted_address'],
     types: ['address'],
@@ -3015,7 +3057,7 @@ function setupAddressAutocomplete(inputId) {
     strictBounds: false,
   });
 
-  addressAutocompleteRefs[inputId] = autocomplete;
+  addressAutocompleteRefs[inputId] = { mode: 'legacy', input, autocomplete };
 
   autocomplete.addListener('place_changed', () => {
     const place = autocomplete.getPlace();
@@ -3028,9 +3070,13 @@ function setupAddressAutocomplete(inputId) {
 
 // Usato da populateContractForm per precompilare il campo
 function setAddressAutocompleteValue(inputId, value) {
-  const el = document.getElementById(inputId);
+  const ref = addressAutocompleteRefs[inputId];
+  const el = ref?.input || document.getElementById(inputId);
   if (el) {
     el.value = value;
+    if (ref?.mode === 'new' && ref.widget) {
+      ref.widget.value = value;
+    }
     if (inputId === 'indirizzo-fatturazione-input') {
       syncSupplyAddressIfSame();
     }
@@ -3040,8 +3086,12 @@ function setAddressAutocompleteValue(inputId, value) {
 // Usato da resetContractEditor per pulire i campi indirizzo
 function resetAddressAutocompleteValues() {
   ['indirizzo-fatturazione-input', 'indirizzo-fornitura-input'].forEach(id => {
-    const el = document.getElementById(id);
+    const ref = addressAutocompleteRefs[id];
+    const el = ref?.input || document.getElementById(id);
     if (el) el.value = '';
+    if (ref?.mode === 'new' && ref.widget) {
+      ref.widget.value = '';
+    }
   });
 }
 
