@@ -395,6 +395,7 @@ document
   .getElementById('contract-files-input')
   .addEventListener('change', handleContractFilesSelection);
 document.getElementById('cb-category-filter').addEventListener('change', () => {
+  cbCategoryFilter = String(document.getElementById('cb-category-filter').value || 'all');
   renderCbPage();
 });
 
@@ -630,9 +631,9 @@ async function loadAndRenderContracts({ silent = false, force = false } = {}) {
   contractsRefreshInFlight = true;
 
   try {
-    contracts = agent && agent.ruolo === 'admin'
-      ? await baserowClient.listAdminContracts()
-      : await baserowClient.listContracts();
+    // Anche per admin: qui carichiamo sempre il perimetro personale.
+    // I contratti globali restano in adminState.contracts tramite renderAdminPage().
+    contracts = await baserowClient.listContracts();
     renderAll();
   } catch (error) {
     if (!silent) {
