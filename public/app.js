@@ -250,6 +250,7 @@ let currentCompetence = {
   quarter: getQuarterKey(today),
   year: String(today.getFullYear()),
 };
+let selectedViewMonth = monthKey(today);
 const isStaticFileMode = window.location.protocol === 'file:';
 const demoFallbackEnabled = Boolean(CONFIG.ENABLE_DEMO_FALLBACK || isStaticFileMode);
 const maxContractFiles = 10;
@@ -602,8 +603,30 @@ document.getElementById('contract-form').addEventListener('submit', async (event
 });
 
 ['search-input', 'month-filter', 'status-filter'].forEach((id) => {
+  if (id === 'month-filter') return;
   document.getElementById(id).addEventListener('input', renderContractsTable);
 });
+document.getElementById('month-filter').addEventListener('change', () => {
+  const monthValue = String(document.getElementById('month-filter').value || 'all');
+  if (monthValue !== 'all') {
+    selectedViewMonth = monthValue;
+    renderAll();
+    return;
+  }
+  renderContractsTable();
+});
+['dashboard-month-filter', 'cb-month-filter', 'progress-month-filter'].forEach((id) => {
+  const select = document.getElementById(id);
+  if (!select) return;
+  select.addEventListener('change', () => {
+    const monthValue = String(select.value || '').trim();
+    if (!monthValue) return;
+    selectedViewMonth = monthValue;
+    renderAll();
+  });
+});
+document.getElementById('month-prev-btn').addEventListener('click', () => shiftViewMonth(-1));
+document.getElementById('month-next-btn').addEventListener('click', () => shiftViewMonth(1));
 
 function loadContracts() {
   try {
@@ -634,6 +657,10 @@ async function loadAndRenderContracts({ silent = false, force = false } = {}) {
     // Anche per admin: qui carichiamo sempre il perimetro personale.
     // I contratti globali restano in adminState.contracts tramite renderAdminPage().
     contracts = await baserowClient.listContracts();
+    const months = getAvailableMonths();
+    if (!months.includes(selectedViewMonth)) {
+      selectedViewMonth = months[0] || currentCompetence.month || monthKey(new Date());
+    }
     renderAll();
   } catch (error) {
     if (!silent) {
@@ -660,8 +687,10 @@ function setActivePage(pageId) {
   });
   document.getElementById('page-title').textContent = pages[pageId];
 
-  // Eyebrow sempre con il mese corrente
+  // Eyebrow sempre con il mese selezionato
   document.getElementById('current-period').textContent = currentPeriodLabel();
+  updateMonthNavigationUi();
+  renderSelectedMonthLabels();
 
   // Saluto personalizzato nel titolo della dashboard
   if (pageId === 'dashboard' && agent && agent.nome) {
@@ -686,7 +715,7 @@ function setActivePage(pageId) {
 function currentMonthContracts() {
   return contracts.filter(
     (contract) =>
-      contractMonthRef(contract) === currentCompetence.month && contract.statoContratto !== 'Bozza'
+      contractMonthRef(contract) === selectedViewMonth && contract.statoContratto !== 'Bozza'
   );
 }
 
@@ -848,7 +877,8 @@ function renderDonut(summary) {
 
 function renderLineChart() {
   const monthContracts = currentMonthContracts();
-  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  const baseDate = dateFromMonthKey(selectedViewMonth || monthKey(new Date()));
+  const daysInMonth = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0).getDate();
   const step = Math.max(Math.ceil(daysInMonth / 12), 1);
   const days = Array.from(new Set([1, ...range(step, daysInMonth, step), daysInMonth])).sort(
     (a, b) => a - b
@@ -888,7 +918,7 @@ function renderBarChart() {
         (contract) => contractMonthRef(contract) === key && contract.statoContratto === 'OK'
       )
     );
-    return [label, value, key === currentCompetence.month];
+    return [label, value, key === selectedViewMonth];
   });
   const max = Math.max(...monthValues.map((value) => value[1]), 1);
 
@@ -1171,8 +1201,9 @@ function renderCbPage() {
 
 function renderProgressPage() {
   const summary = getSummary();
-  const quarterKey = currentCompetence.quarter;
-  const yearKey = currentCompetence.year;
+  const selectedDate = dateFromMonthKey(selectedViewMonth || monthKey(new Date()));
+  const quarterKey = getQuarterKey(selectedDate);
+  const yearKey = String(selectedDate.getFullYear());
   const recurringPendingDone = currentMonthContracts()
     .filter(
       (contract) =>
@@ -1227,14 +1258,9 @@ function renderProgressPage() {
 }
 
 function renderMonthFilter() {
+  const months = getAvailableMonths();
   const select = document.getElementById('month-filter');
-  const selected = select.value || 'all';
-  const months = Array.from(
-    new Set([currentCompetence.month, ...contracts.map((contract) => contractMonthRef(contract))])
-  )
-    .filter(Boolean)
-    .sort()
-    .reverse();
+  const selected = select.value || selectedViewMonth || 'all';
 
   select.innerHTML = [
     `<option value="all">Tutti i mesi</option>`,
@@ -1243,7 +1269,19 @@ function renderMonthFilter() {
         `<option value="${key}">${capitalize(formatMonth.format(dateFromMonthKey(key)))}</option>`
     ),
   ].join('');
-  select.value = months.includes(selected) || selected === 'all' ? selected : 'all';
+  select.value = months.includes(selected) || selected === 'all' ? selected : selectedViewMonth;
+
+  ['dashboard-month-filter', 'cb-month-filter', 'progress-month-filter'].forEach((id) => {
+    const synced = document.getElementById(id);
+    if (!synced) return;
+    synced.innerHTML = months
+      .map(
+        (key) =>
+          `<option value="${key}">${capitalize(formatMonth.format(dateFromMonthKey(key)))}</option>`
+      )
+      .join('');
+    synced.value = months.includes(selectedViewMonth) ? selectedViewMonth : months[0] || '';
+  });
 }
 
 function renderAll() {
@@ -2592,8 +2630,49 @@ function getQuarterKey(date) {
 
 function currentPeriodLabel() {
   return capitalize(
-    formatMonth.format(dateFromMonthKey(currentCompetence.month || monthKey(today)))
+    formatMonth.format(dateFromMonthKey(selectedViewMonth || monthKey(today)))
   );
+}
+
+function renderSelectedMonthLabels() {
+  const monthLabel = currentPeriodLabel().toLowerCase();
+  const dashboardHint = document.getElementById('dashboard-month-hint');
+  const cbHint = document.getElementById('cb-month-hint');
+  const cbEmptyTitle = document.getElementById('cb-empty-title');
+  if (dashboardHint) dashboardHint.textContent = monthLabel;
+  if (cbHint) cbHint.textContent = `CB di ${monthLabel}`;
+  if (cbEmptyTitle) cbEmptyTitle.textContent = `Nessuna CB in ${monthLabel}`;
+}
+
+function getAvailableMonths() {
+  return Array.from(
+    new Set([currentCompetence.month, ...contracts.map((contract) => contractMonthRef(contract))])
+  )
+    .filter(Boolean)
+    .sort()
+    .reverse();
+}
+
+function updateMonthNavigationUi() {
+  const months = getAvailableMonths();
+  const index = months.indexOf(selectedViewMonth);
+  const prevBtn = document.getElementById('month-prev-btn');
+  const nextBtn = document.getElementById('month-next-btn');
+  if (!prevBtn || !nextBtn) return;
+
+  prevBtn.disabled = index <= 0;
+  nextBtn.disabled = index === -1 || index >= months.length - 1;
+}
+
+function shiftViewMonth(direction) {
+  const months = getAvailableMonths();
+  if (!months.length) return;
+  const index = months.indexOf(selectedViewMonth);
+  const safeIndex = index === -1 ? 0 : index;
+  const nextIndex = safeIndex + direction;
+  if (nextIndex < 0 || nextIndex >= months.length) return;
+  selectedViewMonth = months[nextIndex];
+  renderAll();
 }
 
 function contractUnitCount(contract) {
@@ -2931,6 +3010,9 @@ async function loadCurrentCompetence({ silent = false } = {}) {
       quarter: String(period.quarter || fallback.quarter),
       year: String(period.year || fallback.year),
     };
+    if (!selectedViewMonth) {
+      selectedViewMonth = currentCompetence.month;
+    }
   } catch (error) {
     currentCompetence = fallback;
     if (!silent) {

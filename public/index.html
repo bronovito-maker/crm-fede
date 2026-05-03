@@ -198,7 +198,20 @@
       <main class="main-content" id="main-content" tabindex="-1">
         <header class="topbar">
           <div class="topbar-copy">
-            <p class="eyebrow" id="current-period">Mese corrente</p>
+            <div class="month-nav" aria-label="Navigazione mese">
+              <button
+                class="month-nav-btn"
+                type="button"
+                id="month-prev-btn"
+                aria-label="Mese precedente"
+              >
+                ‹
+              </button>
+              <p class="eyebrow" id="current-period">Mese corrente</p>
+              <button class="month-nav-btn" type="button" id="month-next-btn" aria-label="Mese successivo">
+                ›
+              </button>
+            </div>
             <h1 id="page-title">Dashboard</h1>
           </div>
           <div class="topbar-actions">
@@ -246,13 +259,16 @@
         </section>
 
         <section class="page active" id="dashboard">
+          <div class="filters">
+            <select id="dashboard-month-filter" aria-label="Seleziona mese dashboard"></select>
+          </div>
           <div class="metrics-grid" id="dashboard-metrics"></div>
 
           <div class="content-grid">
             <article class="panel">
               <div class="panel-heading">
                 <h2>Stati contratti</h2>
-                <span>mese corrente</span>
+                <span id="dashboard-month-hint">mese corrente</span>
               </div>
               <div class="donut-layout">
                 <div
@@ -676,12 +692,15 @@
         </section>
 
         <section class="page" id="cb">
+          <div class="filters">
+            <select id="cb-month-filter" aria-label="Seleziona mese client base"></select>
+          </div>
           <div class="metrics-grid" id="cb-metrics-money"></div>
           <div class="metrics-grid" id="cb-metrics-counts"></div>
           <article class="panel">
             <div class="panel-heading">
               <h2>Contratti collegati</h2>
-              <span>CB del mese</span>
+              <span id="cb-month-hint">CB del mese</span>
             </div>
             <div class="filters">
               <select id="cb-category-filter" aria-label="Filtra CB per categoria cliente">
@@ -707,7 +726,7 @@
               </table>
             </div>
             <div class="empty-state compact" id="cb-empty" hidden>
-              <strong>Nessuna CB nel mese corrente</strong>
+              <strong id="cb-empty-title">Nessuna CB nel mese corrente</strong>
               <p>I contratti validati e in attesa appariranno qui.</p>
               <button class="secondary-button" type="button" data-go-page="new-contract">
                 Nuovo contratto
@@ -717,6 +736,9 @@
         </section>
 
         <section class="page" id="progress">
+          <div class="filters">
+            <select id="progress-month-filter" aria-label="Seleziona mese avanzamento"></select>
+          </div>
           <div class="progress-hero">
             <article class="panel progress-focus">
               <div class="panel-heading">
