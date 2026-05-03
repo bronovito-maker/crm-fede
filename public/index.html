@@ -212,7 +212,10 @@
                 ›
               </button>
             </div>
-            <h1 id="page-title">Dashboard</h1>
+            <div class="page-title-row">
+              <h1 id="page-title">Dashboard</h1>
+              <span id="contracts-scope-badge" class="scope-badge admin-only" hidden></span>
+            </div>
           </div>
           <div class="topbar-actions">
             <button class="primary-button quick-action" type="button" data-go-page="new-contract">
@@ -259,9 +262,6 @@
         </section>
 
         <section class="page active" id="dashboard">
-          <div class="filters">
-            <select id="dashboard-month-filter" aria-label="Seleziona mese dashboard"></select>
-          </div>
           <div class="metrics-grid" id="dashboard-metrics"></div>
 
           <div class="content-grid">
@@ -649,6 +649,15 @@
         <section class="page" id="contracts">
           <div class="filters">
             <input id="search-input" type="search" placeholder="Cerca cliente, telefono, email" />
+            <select
+              id="contracts-scope-filter"
+              class="admin-only"
+              aria-label="Perimetro contratti admin"
+              hidden
+            >
+              <option value="mine">I miei</option>
+              <option value="all">Tutti</option>
+            </select>
             <select id="month-filter" aria-label="Filtra per mese">
               <option value="all">Tutti i mesi</option>
             </select>

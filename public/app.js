@@ -224,6 +224,7 @@ const adminState = {
 };
 let cbCategoryFilter = 'all';
 let supplierOptionsLoaded = false;
+let contractsScopeFilter = 'mine';
 
 const pages = {
   dashboard: 'Dashboard',
@@ -615,7 +616,20 @@ document.getElementById('month-filter').addEventListener('change', () => {
   }
   renderContractsTable();
 });
-['dashboard-month-filter', 'cb-month-filter', 'progress-month-filter'].forEach((id) => {
+document.getElementById('contracts-scope-filter').addEventListener('change', async () => {
+  contractsScopeFilter = String(
+    document.getElementById('contracts-scope-filter').value || 'mine'
+  );
+  if (agent?.ruolo === 'admin' && contractsScopeFilter === 'all' && !adminState.contracts.length) {
+    try {
+      adminState.contracts = await baserowClient.listAdminContracts();
+    } catch (error) {
+      setFormFeedback('error', error.message || 'Impossibile caricare i contratti globali.');
+    }
+  }
+  renderAll();
+});
+['cb-month-filter', 'progress-month-filter'].forEach((id) => {
   const select = document.getElementById(id);
   if (!select) return;
   select.addEventListener('change', () => {
@@ -699,6 +713,7 @@ function setActivePage(pageId) {
     const firstName = titleCase(agent.nome.split(' ')[0]);
     document.getElementById('page-title').textContent = `${greeting}, ${firstName}`;
   }
+  renderContractsScopeBadge(pageId);
 
   // Nascondi "Nuovo contratto" quick-action nelle pagine dove è fuori contesto
   const quickBtn = document.querySelector('.quick-action');
@@ -940,11 +955,13 @@ function renderBarChart() {
 }
 
 function renderContractsTable() {
+  const sourceContracts =
+    agent?.ruolo === 'admin' && contractsScopeFilter === 'all' ? adminState.contracts : contracts;
   const search = document.getElementById('search-input').value.toLowerCase().trim();
   const month = document.getElementById('month-filter').value;
   const status = document.getElementById('status-filter').value;
 
-  const filtered = contracts.filter((contract) => {
+  const filtered = sourceContracts.filter((contract) => {
     const matchesSearch = [
       contract.ragioneSociale,
       contract.cellulare,
@@ -979,7 +996,7 @@ function renderContractsTable() {
   // Empty state differenziato: zero contratti vs filtri senza risultati
   if (filtered.length === 0) {
     const hasFilters = search || month !== 'all' || status !== 'all';
-    const hasAnyContracts = contracts.length > 0;
+    const hasAnyContracts = sourceContracts.length > 0;
     if (!hasAnyContracts && !hasFilters) {
       emptyState.querySelector('strong').textContent = 'Nessun contratto ancora';
       emptyState.querySelector('p').textContent = 'Inizia subito inserendo il tuo primo contratto.';
@@ -1271,7 +1288,7 @@ function renderMonthFilter() {
   ].join('');
   select.value = months.includes(selected) || selected === 'all' ? selected : selectedViewMonth;
 
-  ['dashboard-month-filter', 'cb-month-filter', 'progress-month-filter'].forEach((id) => {
+  ['cb-month-filter', 'progress-month-filter'].forEach((id) => {
     const synced = document.getElementById(id);
     if (!synced) return;
     synced.innerHTML = months
@@ -1790,6 +1807,11 @@ function updateAdminVisibility() {
   document.querySelectorAll('.admin-only').forEach((element) => {
     element.hidden = agent.ruolo !== 'admin';
   });
+  const contractsScope = document.getElementById('contracts-scope-filter');
+  if (contractsScope) {
+    contractsScope.value = contractsScopeFilter;
+  }
+  renderContractsScopeBadge(document.querySelector('.page.active')?.id || 'dashboard');
   populateContractAgentOptions();
 }
 
@@ -2580,6 +2602,7 @@ async function handleLogout() {
   }
 
   contracts = [];
+  contractsScopeFilter = 'mine';
   closeContractModal();
   setActivePage('dashboard');
   setConnectionStatus('loading', 'Accesso richiesto');
@@ -2645,8 +2668,13 @@ function renderSelectedMonthLabels() {
 }
 
 function getAvailableMonths() {
+  const sourceContracts =
+    agent?.ruolo === 'admin' && contractsScopeFilter === 'all' ? adminState.contracts : contracts;
   return Array.from(
-    new Set([currentCompetence.month, ...contracts.map((contract) => contractMonthRef(contract))])
+    new Set([
+      currentCompetence.month,
+      ...sourceContracts.map((contract) => contractMonthRef(contract)),
+    ])
   )
     .filter(Boolean)
     .sort()
@@ -2673,6 +2701,15 @@ function shiftViewMonth(direction) {
   if (nextIndex < 0 || nextIndex >= months.length) return;
   selectedViewMonth = months[nextIndex];
   renderAll();
+}
+
+function renderContractsScopeBadge(activePageId) {
+  const badge = document.getElementById('contracts-scope-badge');
+  if (!badge) return;
+  const shouldShow = agent?.ruolo === 'admin' && activePageId === 'contracts';
+  badge.hidden = !shouldShow;
+  if (!shouldShow) return;
+  badge.textContent = contractsScopeFilter === 'all' ? 'Tutti' : 'I miei';
 }
 
 function contractUnitCount(contract) {
