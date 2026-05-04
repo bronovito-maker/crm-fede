@@ -1414,9 +1414,11 @@ async function resolveCompetencePeriod(insertionDate, supplierName = '') {
     try {
       supplierMap = await getSupplierCutoffMap();
     } catch (error) {
-      console.warn(
-        `[SUPPLIER_CUTOFF_CONFIG] Cut-off fornitore non disponibile per ${monthKey}: ${error.message}`
-      );
+      if (!isBaserowNotFoundError(error)) {
+        console.warn(
+          `[SUPPLIER_CUTOFF_CONFIG] Cut-off fornitore non disponibile per ${monthKey}: ${error.message}`
+        );
+      }
     }
   }
 
@@ -1578,9 +1580,17 @@ async function syncClientFromContract(clientData) {
       return created.id;
     }
   } catch (err) {
-    console.error('[syncClientFromContract] Error:', err);
+    if (!isBaserowNotFoundError(err)) {
+      console.error('[syncClientFromContract] Error:', err);
+    }
     return null;
   }
+}
+
+function isBaserowNotFoundError(error) {
+  if (!error) return false;
+  if (Number(error.status) === 404) return true;
+  return String(error.message || '').includes('Baserow API 404');
 }
 
 function normalizeClient(row) {
