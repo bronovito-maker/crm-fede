@@ -225,6 +225,7 @@ const adminState = {
 let cbCategoryFilter = 'all';
 let supplierOptionsLoaded = false;
 let contractsScopeFilter = 'mine';
+let contractsScopeFeedbackTimer = null;
 
 const pages = {
   dashboard: 'Dashboard',
@@ -618,14 +619,25 @@ document.getElementById('month-filter').addEventListener('change', () => {
   renderContractsTable();
 });
 document.getElementById('contracts-scope-filter').addEventListener('change', async () => {
+  const scopeSelect = document.getElementById('contracts-scope-filter');
   contractsScopeFilter = String(
-    document.getElementById('contracts-scope-filter').value || 'mine'
+    scopeSelect.value || 'mine'
   );
-  if (agent?.ruolo === 'admin' && contractsScopeFilter === 'all' && !adminState.contracts.length) {
+  setContractsScopeFeedback(
+    contractsScopeFilter === 'all'
+      ? 'Caricamento contratti di tutti gli agenti...'
+      : 'Filtro impostato su: I miei contratti.',
+    contractsScopeFilter === 'all' ? '' : 'success'
+  );
+  if (agent?.ruolo === 'admin' && contractsScopeFilter === 'all') {
     try {
       adminState.contracts = await baserowClient.listAdminContracts();
+      setContractsScopeFeedback('Caricati tutti i contratti.', 'success');
     } catch (error) {
       setFormFeedback('error', error.message || 'Impossibile caricare i contratti globali.');
+      contractsScopeFilter = 'mine';
+      scopeSelect.value = 'mine';
+      setContractsScopeFeedback('Fallback automatico su: I miei contratti.', 'error');
     }
   }
   renderAll();
@@ -714,8 +726,6 @@ function setActivePage(pageId) {
     const firstName = titleCase(agent.nome.split(' ')[0]);
     document.getElementById('page-title').textContent = `${greeting}, ${firstName}`;
   }
-  renderContractsScopeBadge(pageId);
-
   // Nascondi "Nuovo contratto" quick-action nelle pagine dove è fuori contesto
   const quickBtn = document.querySelector('.quick-action');
   if (quickBtn) {
@@ -1836,6 +1846,23 @@ function setFormFeedback(type, message) {
   feedback.textContent = message;
 }
 
+function setContractsScopeFeedback(message, type = '') {
+  const feedback = document.getElementById('contracts-scope-feedback');
+  if (!feedback) return;
+  feedback.className = type ? `is-${type}` : '';
+  feedback.textContent = message;
+  if (contractsScopeFeedbackTimer) {
+    clearTimeout(contractsScopeFeedbackTimer);
+  }
+  if (message) {
+    contractsScopeFeedbackTimer = setTimeout(() => {
+      feedback.className = '';
+      feedback.textContent = '';
+      contractsScopeFeedbackTimer = null;
+    }, 2600);
+  }
+}
+
 function setAppLoading(isLoading) {
   document.body.classList.toggle('app-loading', isLoading);
   const loadingState = document.getElementById('loading-state');
@@ -1866,7 +1893,6 @@ function updateAdminVisibility() {
   if (contractsScope) {
     contractsScope.value = contractsScopeFilter;
   }
-  renderContractsScopeBadge(document.querySelector('.page.active')?.id || 'dashboard');
   populateContractAgentOptions();
 }
 
@@ -2756,15 +2782,6 @@ function shiftViewMonth(direction) {
   if (nextIndex < 0 || nextIndex >= months.length) return;
   selectedViewMonth = months[nextIndex];
   renderAll();
-}
-
-function renderContractsScopeBadge(activePageId) {
-  const badge = document.getElementById('contracts-scope-badge');
-  if (!badge) return;
-  const shouldShow = agent?.ruolo === 'admin' && activePageId === 'contracts';
-  badge.hidden = !shouldShow;
-  if (!shouldShow) return;
-  badge.textContent = contractsScopeFilter === 'all' ? 'Tutti' : 'I miei';
 }
 
 function getContractOperations(contract) {

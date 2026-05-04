@@ -453,19 +453,6 @@ body.auth-locked .app-shell {
   flex-wrap: wrap;
 }
 
-.scope-badge {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid #bfd0f4;
-  border-radius: 999px;
-  padding: 4px 10px;
-  color: var(--primary-strong);
-  background: #eff6ff;
-  font-size: 0.8rem;
-  font-weight: 700;
-  line-height: 1;
-}
-
 .topbar-actions {
   display: flex;
   align-items: center;
