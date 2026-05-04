@@ -616,7 +616,7 @@ document.getElementById('month-filter').addEventListener('change', () => {
     renderAll();
     return;
   }
-  renderContractsTable();
+  renderAll();
 });
 document.getElementById('contracts-scope-filter').addEventListener('change', async () => {
   const scopeSelect = document.getElementById('contracts-scope-filter');
