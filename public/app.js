@@ -1934,6 +1934,11 @@ async function renderAdminPage() {
     adminState.stats = stats;
     adminState.agents = agents;
     adminState.contracts = adminContracts;
+    if (contractsScopeFilter === 'all') {
+      // Quando arrivano i contratti globali async, sincronizza subito la vista Contratti.
+      renderMonthFilter();
+      renderContractsTable();
+    }
     syncAdminFilterControls();
     renderAdminMetrics(stats);
     populateAdminFilterOptions(agents);
