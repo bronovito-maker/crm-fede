@@ -607,6 +607,7 @@ document.getElementById('contract-form').addEventListener('submit', async (event
   if (id === 'month-filter') return;
   document.getElementById(id).addEventListener('input', renderContractsTable);
 });
+document.getElementById('cb-search-input')?.addEventListener('input', renderCbPage);
 document.getElementById('month-filter').addEventListener('change', () => {
   const monthValue = String(document.getElementById('month-filter').value || 'all');
   if (monthValue !== 'all') {
@@ -794,40 +795,63 @@ function renderMetrics(containerId, metrics) {
 
 function renderDashboard() {
   const summary = getSummary();
+  const dashboardMonthly = summary.monthly.filter((contract) => isCountedInProgress(contract));
+  const dashboardOk = dashboardMonthly.filter((contract) => contract.statoContratto === 'OK');
+  const dashboardCaricati = dashboardMonthly.filter(
+    (contract) => contract.statoContratto === 'Caricato'
+  );
+  const dashboardInviati = dashboardMonthly.filter(
+    (contract) => contract.statoContratto === 'Inviato'
+  );
+  const dashboardScartati = dashboardMonthly.filter(
+    (contract) => contract.statoContratto === 'K.O.' || contract.statoContratto === 'Switch - Out'
+  );
+  const dashboardSummary = {
+    ...summary,
+    monthlyUnits: sumContractUnits(dashboardMonthly),
+    okUnits: sumContractUnits(dashboardOk),
+    caricatiUnits: sumContractUnits(dashboardCaricati),
+    inviatiUnits: sumContractUnits(dashboardInviati),
+    scartatiUnits: sumContractUnits(dashboardScartati),
+    cbValidata: sumContractCommissions(dashboardOk),
+    cbPotenziale: sumContractCommissions([...dashboardOk, ...dashboardCaricati, ...dashboardInviati]),
+  };
+  dashboardSummary.mancanti = Math.max(agent.targetMensile - dashboardSummary.okUnits, 0);
+  dashboardSummary.targetPercent = percent(dashboardSummary.okUnits, agent.targetMensile);
   renderMetrics('dashboard-metrics', [
     {
       label: 'Contatori inseriti',
-      value: summary.monthlyUnits,
+      value: dashboardSummary.monthlyUnits,
       accent: 'blue',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>',
     },
     {
       label: 'Contatori OK',
-      value: summary.okUnits,
+      value: dashboardSummary.okUnits,
       accent: 'green',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>',
     },
     {
       label: 'Pratiche inviate',
-      value: summary.inviati.length,
+      value: dashboardInviati.length,
       accent: 'blue',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>',
     },
     {
       label: 'Scartati / K.O.',
-      value: summary.scartatiUnits,
+      value: dashboardSummary.scartatiUnits,
       accent: 'red',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>',
     },
     {
       label: 'CB maturata',
-      value: formatCurrency(summary.cbValidata),
+      value: formatCurrency(dashboardSummary.cbValidata),
       accent: 'green',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
     },
     {
       label: 'CB potenziale',
-      value: formatCurrency(summary.cbPotenziale),
+      value: formatCurrency(dashboardSummary.cbPotenziale),
       accent: 'amber',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
     },
@@ -839,27 +863,27 @@ function renderDashboard() {
     },
     {
       label: 'Manca al target',
-      value: summary.mancanti,
-      accent: summary.mancanti === 0 ? 'green' : 'amber',
+      value: dashboardSummary.mancanti,
+      accent: dashboardSummary.mancanti === 0 ? 'green' : 'amber',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>',
     },
     {
       label: 'In attesa (Caricati + Inviati)',
-      value: summary.caricatiUnits + summary.inviatiUnits,
+      value: dashboardSummary.caricatiUnits + dashboardSummary.inviatiUnits,
       accent: 'blue',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
     },
   ]);
 
-  renderDonut(summary);
-  document.getElementById('target-percent').textContent = `${summary.targetPercent}%`;
+  renderDonut(dashboardSummary);
+  document.getElementById('target-percent').textContent = `${dashboardSummary.targetPercent}%`;
   document.getElementById('target-copy').textContent =
-    `${summary.okUnits} di ${agent.targetMensile}`;
-  document.getElementById('target-bar').style.width = `${summary.targetPercent}%`;
+    `${dashboardSummary.okUnits} di ${agent.targetMensile}`;
+  document.getElementById('target-bar').style.width = `${dashboardSummary.targetPercent}%`;
   document.getElementById('dashboard-motivation').textContent =
-    summary.mancanti === 0
+    dashboardSummary.mancanti === 0
       ? 'Target mensile raggiunto. Ora ogni contratto alza la CB.'
-      : `Ti mancano ${summary.mancanti} contratti OK per chiudere il target.`;
+      : `Ti mancano ${dashboardSummary.mancanti} contratti OK per chiudere il target.`;
   renderLineChart();
   renderBarChart();
 }
@@ -891,7 +915,7 @@ function renderDonut(summary) {
 }
 
 function renderLineChart() {
-  const monthContracts = currentMonthContracts();
+  const monthContracts = currentMonthContracts().filter((contract) => isCountedInProgress(contract));
   const baseDate = dateFromMonthKey(selectedViewMonth || monthKey(new Date()));
   const daysInMonth = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0).getDate();
   const step = Math.max(Math.ceil(daysInMonth / 12), 1);
@@ -930,7 +954,10 @@ function renderBarChart() {
     ).replace('.', '');
     const value = sumContractUnits(
       contracts.filter(
-        (contract) => contractMonthRef(contract) === key && contract.statoContratto === 'OK'
+        (contract) =>
+          contractMonthRef(contract) === key &&
+          contract.statoContratto === 'OK' &&
+          isCountedInProgress(contract)
       )
     );
     return [label, value, key === selectedViewMonth];
@@ -967,6 +994,7 @@ function renderContractsTable() {
       contract.cellulare,
       contract.email,
       contract.piva,
+      contract.idContratto,
     ]
       .join(' ')
       .toLowerCase()
@@ -1134,6 +1162,9 @@ function renderCbPage() {
   const selectedCategory = String(cbCategoryFilter || 'all')
     .trim()
     .toLowerCase();
+  const search = String(document.getElementById('cb-search-input')?.value || '')
+    .toLowerCase()
+    .trim();
   const filteredMonthly =
     selectedCategory === 'all'
       ? summary.monthly
@@ -1143,6 +1174,18 @@ function renderCbPage() {
               .trim()
               .toLowerCase() === selectedCategory
         );
+  const searchedMonthly = filteredMonthly.filter((contract) =>
+    [
+      contract.ragioneSociale,
+      contract.cellulare,
+      contract.email,
+      contract.piva,
+      contract.idContratto,
+    ]
+      .join(' ')
+      .toLowerCase()
+      .includes(search)
+  );
   const filteredOk = filteredMonthly.filter((contract) => contract.statoContratto === 'OK');
   const filteredCaricati = filteredMonthly.filter(
     (contract) => contract.statoContratto === 'Caricato'
@@ -1189,7 +1232,7 @@ function renderCbPage() {
   const tableWrap = table.closest('.table-wrap');
   const emptyState = document.getElementById('cb-empty');
 
-  table.innerHTML = filteredMonthly
+  table.innerHTML = searchedMonthly
     .map(
       (contract) => `
         <tr data-contract-id="${contract.id}" tabindex="0" aria-label="Apri dettaglio contratto ${escapeHtml(contract.ragioneSociale)}">
@@ -1212,31 +1255,43 @@ function renderCbPage() {
     });
   });
 
-  tableWrap.hidden = filteredMonthly.length === 0;
-  emptyState.hidden = filteredMonthly.length > 0;
+  tableWrap.hidden = searchedMonthly.length === 0;
+  emptyState.hidden = searchedMonthly.length > 0;
 }
 
 function renderProgressPage() {
-  const summary = getSummary();
+  const progressMonthly = currentMonthContracts().filter((contract) => isCountedInProgress(contract));
+  const progressOk = progressMonthly.filter((contract) => contract.statoContratto === 'OK');
+  const progressOkUnits = sumContractUnits(progressOk);
+  const progressMissing = Math.max(agent.targetMensile - progressOkUnits, 0);
+  const progressPercent = percent(progressOkUnits, agent.targetMensile);
   const selectedDate = dateFromMonthKey(selectedViewMonth || monthKey(new Date()));
   const quarterKey = getQuarterKey(selectedDate);
   const yearKey = String(selectedDate.getFullYear());
-  const recurringPendingDone = currentMonthContracts()
+  const recurringPendingDone = progressMonthly
     .filter(
       (contract) =>
         contract.categoriaCliente === 'Switch ricorrente' &&
         ['Caricato', 'Inviato'].includes(contract.statoContratto)
     )
     .reduce((sum, contract) => sum + contractUnitCount(contract), 0);
-  const recurringMonthDone = summary.okUnits + recurringPendingDone;
+  const recurringMonthDone = progressOkUnits + recurringPendingDone;
   const recurringMonthPercent = percent(recurringMonthDone, agent.targetMensile);
   const quarterDone = contracts
     .filter(
-      (contract) => contractQuarterRef(contract) === quarterKey && contract.statoContratto === 'OK'
+      (contract) =>
+        contractQuarterRef(contract) === quarterKey &&
+        contract.statoContratto === 'OK' &&
+        isCountedInProgress(contract)
     )
     .reduce((sum, contract) => sum + contractUnitCount(contract), 0);
   const yearDone = contracts
-    .filter((contract) => contractYearRef(contract) === yearKey && contract.statoContratto === 'OK')
+    .filter(
+      (contract) =>
+        contractYearRef(contract) === yearKey &&
+        contract.statoContratto === 'OK' &&
+        isCountedInProgress(contract)
+    )
     .reduce((sum, contract) => sum + contractUnitCount(contract), 0);
   const quarterPercent = percent(quarterDone, agent.targetTrimestrale);
   const yearPercent = percent(yearDone, agent.targetAnnuale);
@@ -1244,14 +1299,14 @@ function renderProgressPage() {
     new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate() - today.getDate() + 1,
     1
   );
-  const dailyNeed = summary.mancanti === 0 ? 0 : summary.mancanti / daysLeft;
+  const dailyNeed = progressMissing === 0 ? 0 : progressMissing / daysLeft;
 
   document.getElementById('month-target-label').textContent =
-    `${summary.okUnits}/${agent.targetMensile}`;
-  document.getElementById('month-target-percent').textContent = `${summary.targetPercent}%`;
-  document.getElementById('month-target-bar').style.width = `${summary.targetPercent}%`;
+    `${progressOkUnits}/${agent.targetMensile}`;
+  document.getElementById('month-target-percent').textContent = `${progressPercent}%`;
+  document.getElementById('month-target-bar').style.width = `${progressPercent}%`;
   document.getElementById('progress-message').textContent =
-    summary.mancanti === 0 ? 'Target raggiunto.' : `Ti mancano ${summary.mancanti} contatori.`;
+    progressMissing === 0 ? 'Target raggiunto.' : `Ti mancano ${progressMissing} contatori.`;
   document.getElementById('recurring-target').textContent =
     `${recurringMonthDone}/${agent.targetMensile} contatori`;
   document.getElementById('recurring-target-percent').textContent = `${recurringMonthPercent}%`;
@@ -2712,13 +2767,22 @@ function renderContractsScopeBadge(activePageId) {
   badge.textContent = contractsScopeFilter === 'all' ? 'Tutti' : 'I miei';
 }
 
+function getContractOperations(contract) {
+  const raw = contract?.tipoOperazione;
+  const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  return list.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
+}
+
+function isCountedInProgress(contract) {
+  return !getContractOperations(contract).includes('cambio listino');
+}
+
 function contractUnitCount(contract) {
   if (Number.isFinite(Number(contract.unitCount)) && Number(contract.unitCount) > 0) {
     return Number(contract.unitCount);
   }
   const supplyType = String(contract.tipoFornitura || '').toLowerCase();
-  const customerCategory = String(contract.categoriaCliente || '');
-  return supplyType === 'dual' && customerCategory === 'Prospect' ? 2 : 1;
+  return supplyType === 'dual' ? 2 : 1;
 }
 
 function sumContractUnits(items) {

@@ -529,7 +529,7 @@
                   </label>
                   <label class="conditional-field" id="iban-field" hidden>
                     IBAN
-                    <input name="iban" type="text" placeholder="IT60X..." autocomplete="off" />
+                    <input name="iban" type="text" data-uppercase="true" placeholder="IT60X..." autocomplete="off" />
                   </label>
                   <label class="admin-only" id="contract-agent-field" hidden>
                     <span>Agente assegnato <span class="req" aria-hidden="true">*</span></span>
@@ -712,6 +712,11 @@
               <span id="cb-month-hint">CB del mese</span>
             </div>
             <div class="filters">
+              <input
+                id="cb-search-input"
+                type="search"
+                placeholder="Cerca cliente, telefono, email, ID contratto"
+              />
               <select id="cb-category-filter" aria-label="Filtra CB per categoria cliente">
                 <option value="all">Tutti</option>
                 <option value="prospect">Prospect</option>
