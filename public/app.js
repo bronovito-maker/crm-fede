@@ -2796,7 +2796,7 @@ function getContractOperations(contract) {
 }
 
 function isCountedInProgress(contract) {
-  return !getContractOperations(contract).includes('cambio listino');
+  return String(contract?.categoriaCliente || '').trim().toLowerCase() === 'prospect';
 }
 
 function contractUnitCount(contract) {
