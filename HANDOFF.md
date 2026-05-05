@@ -1,9 +1,11 @@
 # Handoff — CRM Fede Energia
+
 > Stato al 2026-04-15. Da leggere prima di iniziare qualsiasi modifica al progetto.
 
 ---
 
 ## Come lavorare su questo progetto
+
 - Rispondere sempre in **italiano**
 - L'utente è il **product owner**, non un developer: descrive le cose in termini di business/UX
 - Modifiche **conservative**: non aggiungere feature non richieste, non refactorare codice non toccato
@@ -13,13 +15,13 @@
 
 ## Stack tecnico
 
-| Layer | Tecnologia |
-|---|---|
-| Backend | Node.js + Express (`server.js`, ~2260 righe) |
-| Frontend | Vanilla JS SPA — nessun framework (`public/app.js` ~3000 righe) |
-| Database | Baserow (REST API) — nessun ORM, chiamate HTTP dirette |
-| File upload | multer (multipart/form-data) |
-| Sicurezza | helmet (CSP), bcryptjs, express-rate-limit, sessioni in-memory |
+| Layer       | Tecnologia                                                      |
+| ----------- | --------------------------------------------------------------- |
+| Backend     | Node.js + Express (`server.js`, ~2260 righe)                    |
+| Frontend    | Vanilla JS SPA — nessun framework (`public/app.js` ~3000 righe) |
+| Database    | Baserow (REST API) — nessun ORM, chiamate HTTP dirette          |
+| File upload | multer (multipart/form-data)                                    |
+| Sicurezza   | helmet (CSP), bcryptjs, express-rate-limit, sessioni in-memory  |
 
 **Avvio dev**: `npm run dev`
 
@@ -42,14 +44,14 @@ public/
 
 ## Tabelle Baserow
 
-| Variabile .env | ID tabella | Scopo |
-|---|---|---|
-| `BASEROW_TABLE_AGENTI_ID` | 925635 | Agenti (utenti del CRM) |
-| `BASEROW_TABLE_CONTRATTI_ID` | 925638 | Contratti |
-| `BASEROW_TABLE_COMPETENZE_ID` | 928679 | Cut-off mensili competenza |
-| `BASEROW_TABLE_FORNITORI_ID` | 930259 | Fornitori disponibili |
-| `BASEROW_TABLE_CUTOFF_FORNITORI_ID` | 930260 | Cut-off per fornitore |
-| `BASEROW_TABLE_CLIENTI_ID` | 931646 | Anagrafica clienti |
+| Variabile .env                      | ID tabella | Scopo                      |
+| ----------------------------------- | ---------- | -------------------------- |
+| `BASEROW_TABLE_AGENTI_ID`           | 925635     | Agenti (utenti del CRM)    |
+| `BASEROW_TABLE_CONTRATTI_ID`        | 925638     | Contratti                  |
+| `BASEROW_TABLE_COMPETENZE_ID`       | 928679     | Cut-off mensili competenza |
+| `BASEROW_TABLE_FORNITORI_ID`        | 930259     | Fornitori disponibili      |
+| `BASEROW_TABLE_CUTOFF_FORNITORI_ID` | 930260     | Cut-off per fornitore      |
+| `BASEROW_TABLE_CLIENTI_ID`          | 931646     | Anagrafica clienti         |
 
 ---
 
@@ -70,16 +72,20 @@ Sessioni **in-memory** sul server (nessun Redis/DB separato). Cookie `session_to
 ## Funzionalità implementate
 
 ### Form contratto a 2 colonne
+
 Il form "Nuovo contratto" / "Modifica contratto" è layout a 2 colonne:
+
 - **Colonna sinistra — Anagrafica Cliente**: ragioneSociale, cellulare, tipoCliente, categoriaCliente, piva, email, indirizzoFatturazione
 - **Colonna destra — Dati Contratto**: idContratto, fornitore, exFornitore, nomeOfferta, tipoOperazione, tipoFornitura, POD, PDR, metodoPagamento, IBAN, agenteId (solo admin), indirizzoFornitura
 - **Full-width sotto**: Documenti contratto, Note/descrizione
 - CSS: `.contract-form-cols` — grid 1 colonna su mobile, 2 colonne a ≥ 1024px
 
 ### Anagrafica integrata nel contratto (pagina Anagrafiche eliminata)
+
 Non esiste più una pagina separata "Anagrafiche". Modificare un contratto aggiorna automaticamente anche l'anagrafica del cliente collegato via `PATCH /api/clients/:clienteId`. Il server propaga la modifica a tutti i contratti dello stesso cliente tramite `propagateClientUpdateToContracts`.
 
 ### Validazioni form contratto (`validateContractDraft` in app.js)
+
 - **Salva bozza**: richiede almeno uno tra ragioneSociale, cellulare, email, P.IVA
 - **Salva contratto** (submit completo): tutti i campi obbligatori + **almeno 1 allegato** (documento obbligatorio)
 - **POD obbligatorio** quando tipoFornitura = `"luce"` o `"dual"`
@@ -90,6 +96,7 @@ Non esiste più una pagina separata "Anagrafiche". Modificare un contratto aggio
 I campi POD e PDR sono anche gestiti da `toggleField()` che imposta `input.required = true/false` quando i campi diventano visibili/nascosti.
 
 ### Google Maps Places Autocomplete
+
 - Applicato a: `#indirizzo-fatturazione-input` e `#indirizzo-fornitura-input`
 - API usata: `PlaceAutocompleteElement` (nuova API Google, non deprecata)
 - Restrizione: solo Italia, tipo "address"
@@ -104,17 +111,20 @@ I campi POD e PDR sono anche gestiti da `toggleField()` che imposta `input.requi
   - `resetAddressAutocompleteValues()` — pulisce i campi quando si resetta il form
 
 ### Login con supporto password manager
+
 - `id="login-email"` e `id="login-password"` sugli input
 - `autocomplete="username"` sull'email (riconosciuto da Apple Passwords, Chrome, Firefox)
 - `autocomplete="current-password"` sulla password
 - Label con `for` esplicito collegato all'`id`
 
 ### Sincronizzazione cliente ↔ contratto
+
 - **Creazione contratto** → `syncClientFromContract` (server.js) crea/aggiorna il record Clienti (match su P.IVA)
   - Include i campi: `tipo_cliente`, `categoria_cliente` (campi Single Select in Baserow)
 - **Modifica contratto** → aggiorna il contratto + aggiorna il cliente + propaga a tutti i contratti collegati
 
 ### Valori case-sensitive importanti
+
 `categoriaCliente` ha valori **case-sensitive**: `"Prospect"` e `"Switch ricorrente"` (P maiuscola, S maiuscola). Il server li valida così. Non chiamare `.toLowerCase()` su questi valori.
 
 ---
@@ -130,13 +140,16 @@ I campi POD e PDR sono anche gestiti da `toggleField()` che imposta `input.requi
 ## Attività pendenti / da verificare
 
 ### Da testare dopo l'ultima sessione di sviluppo
+
 - [ ] **Google Maps autocomplete**: verificare che funzioni dopo il riavvio del server (fix CSP + migrazione a `PlaceAutocompleteElement` con callback). Aprire DevTools → cercare errori `[Maps]`.
 - [ ] **`gmp-place-autocomplete` styling su Safari iOS**: il CSS `::part(input)` richiede supporto CSS Shadow Parts — testare su dispositivo reale.
 
 ### Azione manuale richiesta in Baserow
+
 - [ ] Creare nella tabella **Clienti** (ID 931646) i campi `tipo_cliente` e `categoria_cliente` come **Single Select**. Il server è già pronto a scriverli ma i campi non esistono ancora in Baserow.
 
 ### Bug risolti — da confermare
+
 - [x] **"Categoria cliente non valida"** durante creazione contratto: era causato da `.toLowerCase()` sul valore `categoriaCliente` in `buildContractDraft`. Fix applicato. Se ricompare: hard refresh del browser (Cmd+Shift+R).
 - [x] **Debug logs rimossi** da app.js (erano stati aggiunti temporaneamente per diagnosticare il bug sopra).
 

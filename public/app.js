@@ -223,6 +223,7 @@ const adminState = {
   agentState: 'all',
 };
 let cbCategoryFilter = 'all';
+let cbOperationFilter = 'all';
 let supplierOptionsLoaded = false;
 let contractsScopeFilter = 'mine';
 let contractsScopeFeedbackTimer = null;
@@ -399,6 +400,12 @@ document
   .addEventListener('change', handleContractFilesSelection);
 document.getElementById('cb-category-filter').addEventListener('change', () => {
   cbCategoryFilter = String(document.getElementById('cb-category-filter').value || 'all');
+  renderCbPage();
+});
+document.getElementById('cb-operation-filter').addEventListener('change', () => {
+  cbOperationFilter = String(document.getElementById('cb-operation-filter').value || 'all')
+    .trim()
+    .toLowerCase();
   renderCbPage();
 });
 
@@ -611,6 +618,9 @@ document.getElementById('contract-form').addEventListener('submit', async (event
 document
   .getElementById('contracts-category-filter')
   ?.addEventListener('change', renderContractsTable);
+document
+  .getElementById('contracts-operation-filter')
+  ?.addEventListener('change', renderContractsTable);
 document.getElementById('cb-search-input')?.addEventListener('input', renderCbPage);
 document.getElementById('month-filter').addEventListener('change', () => {
   const monthValue = String(document.getElementById('month-filter').value || 'all');
@@ -623,9 +633,7 @@ document.getElementById('month-filter').addEventListener('change', () => {
 });
 document.getElementById('contracts-scope-filter').addEventListener('change', async () => {
   const scopeSelect = document.getElementById('contracts-scope-filter');
-  contractsScopeFilter = String(
-    scopeSelect.value || 'mine'
-  );
+  contractsScopeFilter = String(scopeSelect.value || defaultContractsScopeForAgent());
   setContractsScopeFeedback(
     contractsScopeFilter === 'all'
       ? 'Caricamento contratti di tutti gli agenti...'
@@ -638,9 +646,12 @@ document.getElementById('contracts-scope-filter').addEventListener('change', asy
       setContractsScopeFeedback('Caricati tutti i contratti.', 'success');
     } catch (error) {
       setFormFeedback('error', error.message || 'Impossibile caricare i contratti globali.');
-      contractsScopeFilter = 'mine';
-      scopeSelect.value = 'mine';
-      setContractsScopeFeedback('Fallback automatico su: I miei contratti.', 'error');
+      // Manteniamo "Tutti" come default anche in caso di errore, con fallback dati locali.
+      adminState.contracts = contracts.slice();
+      setContractsScopeFeedback(
+        'Impossibile caricare tutti i contratti: uso temporaneo dei soli tuoi.',
+        'error'
+      );
     }
   }
   renderAll();
@@ -827,7 +838,11 @@ function renderDashboard() {
     inviatiUnits: sumContractUnits(dashboardInviati),
     scartatiUnits: sumContractUnits(dashboardScartati),
     cbValidata: sumContractCommissions(dashboardOk),
-    cbPotenziale: sumContractCommissions([...dashboardOk, ...dashboardCaricati, ...dashboardInviati]),
+    cbPotenziale: sumContractCommissions([
+      ...dashboardOk,
+      ...dashboardCaricati,
+      ...dashboardInviati,
+    ]),
   };
   dashboardSummary.mancanti = Math.max(agent.targetMensile - dashboardSummary.okUnits, 0);
   dashboardSummary.targetPercent = percent(dashboardSummary.okUnits, agent.targetMensile);
@@ -928,7 +943,9 @@ function renderDonut(summary) {
 }
 
 function renderLineChart() {
-  const monthContracts = currentMonthContracts().filter((contract) => isCountedInProgress(contract));
+  const monthContracts = currentMonthContracts().filter((contract) =>
+    isCountedInProgress(contract)
+  );
   const baseDate = dateFromMonthKey(selectedViewMonth || monthKey(new Date()));
   const daysInMonth = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0).getDate();
   const step = Math.max(Math.ceil(daysInMonth / 12), 1);
@@ -1000,7 +1017,14 @@ function renderContractsTable() {
   const search = document.getElementById('search-input').value.toLowerCase().trim();
   const month = document.getElementById('month-filter').value;
   const status = document.getElementById('status-filter').value;
-  const selectedCategory = String(document.getElementById('contracts-category-filter')?.value || 'all')
+  const selectedCategory = String(
+    document.getElementById('contracts-category-filter')?.value || 'all'
+  )
+    .trim()
+    .toLowerCase();
+  const selectedOperation = String(
+    document.getElementById('contracts-operation-filter')?.value || 'all'
+  )
     .trim()
     .toLowerCase();
   const category = agent?.ruolo === 'admin' ? selectedCategory : 'all';
@@ -1023,7 +1047,8 @@ function renderContractsTable() {
       String(contract.categoriaCliente || '')
         .trim()
         .toLowerCase() === category;
-    return matchesSearch && matchesMonth && matchesStatus && matchesCategory;
+    const matchesOperation = contractMatchesOperationFilter(contract, selectedOperation);
+    return matchesSearch && matchesMonth && matchesStatus && matchesCategory && matchesOperation;
   });
 
   const table = document.getElementById('contracts-table');
@@ -1045,7 +1070,12 @@ function renderContractsTable() {
 
   // Empty state differenziato: zero contratti vs filtri senza risultati
   if (filtered.length === 0) {
-    const hasFilters = search || month !== 'all' || status !== 'all' || category !== 'all';
+    const hasFilters =
+      search ||
+      month !== 'all' ||
+      status !== 'all' ||
+      category !== 'all' ||
+      selectedOperation !== 'all';
     const hasAnyContracts = sourceContracts.length > 0;
     if (!hasAnyContracts && !hasFilters) {
       emptyState.querySelector('strong').textContent = 'Nessun contratto ancora';
@@ -1184,18 +1214,21 @@ function renderCbPage() {
   const selectedCategory = String(cbCategoryFilter || 'all')
     .trim()
     .toLowerCase();
+  const selectedOperation = String(cbOperationFilter || 'all')
+    .trim()
+    .toLowerCase();
   const search = String(document.getElementById('cb-search-input')?.value || '')
     .toLowerCase()
     .trim();
-  const filteredMonthly =
-    selectedCategory === 'all'
-      ? summary.monthly
-      : summary.monthly.filter(
-          (contract) =>
-            String(contract.categoriaCliente || '')
-              .trim()
-              .toLowerCase() === selectedCategory
-        );
+  const filteredMonthly = summary.monthly.filter((contract) => {
+    const matchesCategory =
+      selectedCategory === 'all' ||
+      String(contract.categoriaCliente || '')
+        .trim()
+        .toLowerCase() === selectedCategory;
+    const matchesOperation = contractMatchesOperationFilter(contract, selectedOperation);
+    return matchesCategory && matchesOperation;
+  });
   const searchedMonthly = filteredMonthly.filter((contract) =>
     [
       contract.ragioneSociale,
@@ -1221,6 +1254,14 @@ function renderCbPage() {
     selectedCategory === 'prospect' || selectedCategory === 'switch ricorrente'
       ? selectedCategory
       : 'all';
+  document.getElementById('cb-operation-filter').value = [
+    'switch',
+    'switch + voltura',
+    'cambio listino',
+    'subentro',
+  ].includes(selectedOperation)
+    ? selectedOperation
+    : 'all';
   renderMetrics('cb-metrics-money', [
     {
       label: 'CB del mese',
@@ -1282,23 +1323,33 @@ function renderCbPage() {
 }
 
 function renderProgressPage() {
-  const progressMonthly = currentMonthContracts().filter((contract) => isCountedInProgress(contract));
+  const progressMonthly = currentMonthContracts().filter((contract) =>
+    isCountedInMonthlyOverallProgress(contract)
+  );
   const progressOk = progressMonthly.filter((contract) => contract.statoContratto === 'OK');
+  const prospectMonthly = currentMonthContracts().filter((contract) =>
+    isCountedInProgress(contract)
+  );
+  const prospectOk = prospectMonthly.filter((contract) => contract.statoContratto === 'OK');
   const progressOkUnits = sumContractUnits(progressOk);
-  const progressMissing = Math.max(agent.targetMensile - progressOkUnits, 0);
-  const progressPercent = percent(progressOkUnits, agent.targetMensile);
+  const prospectOkUnits = sumContractUnits(prospectOk);
   const selectedDate = dateFromMonthKey(selectedViewMonth || monthKey(new Date()));
   const quarterKey = getQuarterKey(selectedDate);
   const yearKey = String(selectedDate.getFullYear());
   const recurringPendingDone = progressMonthly
     .filter(
       (contract) =>
-        contract.categoriaCliente === 'Switch ricorrente' &&
+        String(contract.categoriaCliente || '')
+          .trim()
+          .toLowerCase() === 'switch ricorrente' &&
+        !isCambioListinoOperation(contract) &&
         ['Caricato', 'Inviato'].includes(contract.statoContratto)
     )
     .reduce((sum, contract) => sum + contractUnitCount(contract), 0);
-  const recurringMonthDone = progressOkUnits + recurringPendingDone;
-  const recurringMonthPercent = percent(recurringMonthDone, agent.targetMensile);
+  const overallMonthDone = progressOkUnits + recurringPendingDone;
+  const progressMissing = Math.max(agent.targetMensile - overallMonthDone, 0);
+  const progressPercent = percent(overallMonthDone, agent.targetMensile);
+  const recurringMonthPercent = percent(prospectOkUnits, agent.targetMensile);
   const quarterDone = contracts
     .filter(
       (contract) =>
@@ -1324,19 +1375,16 @@ function renderProgressPage() {
   const dailyNeed = progressMissing === 0 ? 0 : progressMissing / daysLeft;
 
   document.getElementById('month-target-label').textContent =
-    `${progressOkUnits}/${agent.targetMensile}`;
+    `${overallMonthDone}/${agent.targetMensile}`;
   document.getElementById('month-target-percent').textContent = `${progressPercent}%`;
   document.getElementById('month-target-bar').style.width = `${progressPercent}%`;
   document.getElementById('progress-message').textContent =
     progressMissing === 0 ? 'Target raggiunto.' : `Ti mancano ${progressMissing} contatori.`;
   document.getElementById('recurring-target').textContent =
-    `${recurringMonthDone}/${agent.targetMensile} contatori`;
+    `${prospectOkUnits}/${agent.targetMensile} contatori`;
   document.getElementById('recurring-target-percent').textContent = `${recurringMonthPercent}%`;
   document.getElementById('recurring-target-bar').style.width = `${recurringMonthPercent}%`;
-  document.getElementById('recurring-target-note').textContent =
-    recurringPendingDone === 0
-      ? 'Nessun ricorrente in corso.'
-      : `Include ${recurringPendingDone} contatori ricorrenti.`;
+  document.getElementById('recurring-target-note').textContent = 'Conteggia solo clienti Prospect.';
   document.getElementById('quarter-target').textContent =
     `${quarterDone}/${agent.targetTrimestrale} contatori`;
   document.getElementById('quarter-target-percent').textContent = `${quarterPercent}%`;
@@ -1895,6 +1943,10 @@ function setConnectionStatus(status, label) {
     <span class="status-dot"></span>
     <span>${escapeHtml(label)}</span>
   `;
+}
+
+function defaultContractsScopeForAgent() {
+  return agent?.ruolo === 'admin' ? 'all' : 'mine';
 }
 
 function updateAdminVisibility() {
@@ -2682,7 +2734,7 @@ async function handleLogin(event) {
     });
 
     agent = session.agent;
-    contractsScopeFilter = agent.ruolo === 'admin' ? 'all' : 'mine';
+    contractsScopeFilter = defaultContractsScopeForAgent();
     await loadSuppliers({ silent: true, force: true });
     await loadCurrentCompetence({ silent: true });
     await loadCompetitionCutoffs({ silent: true });
@@ -2759,9 +2811,7 @@ function getQuarterKey(date) {
 }
 
 function currentPeriodLabel() {
-  return capitalize(
-    formatMonth.format(dateFromMonthKey(selectedViewMonth || monthKey(today)))
-  );
+  return capitalize(formatMonth.format(dateFromMonthKey(selectedViewMonth || monthKey(today))));
 }
 
 function renderSelectedMonthLabels() {
@@ -2811,7 +2861,38 @@ function shiftViewMonth(direction) {
 }
 
 function isCountedInProgress(contract) {
-  return String(contract?.categoriaCliente || '').trim().toLowerCase() === 'prospect';
+  return (
+    String(contract?.categoriaCliente || '')
+      .trim()
+      .toLowerCase() === 'prospect' && !isCambioListinoOperation(contract)
+  );
+}
+
+function isCountedInMonthlyOverallProgress(contract) {
+  const category = String(contract?.categoriaCliente || '')
+    .trim()
+    .toLowerCase();
+  return (
+    (category === 'prospect' || category === 'switch ricorrente') &&
+    !isCambioListinoOperation(contract)
+  );
+}
+
+function isCambioListinoOperation(contract) {
+  return contractMatchesOperationFilter(contract, 'cambio listino');
+}
+
+function contractMatchesOperationFilter(contract, selectedOperation) {
+  if (selectedOperation === 'all') return true;
+  const operations = Array.isArray(contract?.tipoOperazione)
+    ? contract.tipoOperazione
+    : [contract?.tipoOperazione];
+  return operations.some(
+    (operation) =>
+      String(operation || '')
+        .trim()
+        .toLowerCase() === selectedOperation
+  );
 }
 
 function contractUnitCount(contract) {
@@ -2975,6 +3056,7 @@ async function initApp() {
         }
 
         agent = session.agent;
+        contractsScopeFilter = defaultContractsScopeForAgent();
         await loadSuppliers({ silent: true, force: true });
         await loadCurrentCompetence({ silent: true });
         await loadCompetitionCutoffs({ silent: true });
@@ -3040,7 +3122,12 @@ async function loadSuppliers({ silent = false, force = false } = {}) {
 // ---- Clienti Management ----
 
 async function loadClients({ silent = false, force = false } = {}) {
-  if (clientsRefreshInFlight || typeof baserowClient === 'undefined' || !baserowClient.isConfigured()) return;
+  if (
+    clientsRefreshInFlight ||
+    typeof baserowClient === 'undefined' ||
+    !baserowClient.isConfigured()
+  )
+    return;
 
   if (!force && clients.length > 0) {
     return;
@@ -3071,10 +3158,7 @@ function setupContractClientAutocomplete() {
       return;
     }
     const matches = clients
-      .filter(
-        (c) =>
-          c.ragioneSociale.toLowerCase().includes(q) || c.piva.toLowerCase().includes(q)
-      )
+      .filter((c) => c.ragioneSociale.toLowerCase().includes(q) || c.piva.toLowerCase().includes(q))
       .slice(0, 8);
 
     if (matches.length === 0) {
@@ -3302,7 +3386,7 @@ function setAddressAutocompleteValue(inputId, value) {
 
 // Usato da resetContractEditor per pulire i campi indirizzo
 function resetAddressAutocompleteValues() {
-  ['indirizzo-fatturazione-input', 'indirizzo-fornitura-input'].forEach(id => {
+  ['indirizzo-fatturazione-input', 'indirizzo-fornitura-input'].forEach((id) => {
     const ref = addressAutocompleteRefs[id];
     const el = ref?.input || document.getElementById(id);
     if (el) el.value = '';
@@ -3339,7 +3423,9 @@ function applySameAddressStateFromValues() {
   const checkbox = document.getElementById('same-address-checkbox');
   if (!checkbox) return;
 
-  const billing = normalizeAddressValue(getAddressAutocompleteValue('indirizzo-fatturazione-input'));
+  const billing = normalizeAddressValue(
+    getAddressAutocompleteValue('indirizzo-fatturazione-input')
+  );
   const supply = normalizeAddressValue(getAddressAutocompleteValue('indirizzo-fornitura-input'));
   const same = Boolean(billing && supply && billing === supply);
   checkbox.checked = same;
@@ -3347,7 +3433,10 @@ function applySameAddressStateFromValues() {
 }
 
 function normalizeAddressValue(value) {
-  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
 }
 
 function getAddressAutocompleteValue(inputId) {

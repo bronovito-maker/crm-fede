@@ -196,7 +196,13 @@ app.use(
         scriptSrc: ["'self'", 'https://maps.googleapis.com', 'https://maps.gstatic.com'],
         // 'unsafe-inline' necessario per colori dinamici dei grafici (inline style nei legend dot)
         styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-        imgSrc: ["'self'", 'data:', 'https://images.unsplash.com', 'https://maps.gstatic.com', 'https://*.googleapis.com'],
+        imgSrc: [
+          "'self'",
+          'data:',
+          'https://images.unsplash.com',
+          'https://maps.gstatic.com',
+          'https://*.googleapis.com',
+        ],
         connectSrc: ["'self'", 'https://maps.googleapis.com', 'https://places.googleapis.com'],
         fontSrc: ["'self'", 'https://fonts.gstatic.com'],
         frameSrc: ["'none'"],
@@ -426,7 +432,7 @@ app.post(
       }
 
       const created = await createBaserowContract(payload);
-      
+
       // Assicuriamoci che il cliente sia sincronizzato/creato
       const clientData = {
         ragioneSociale: contract.ragioneSociale,
@@ -436,10 +442,10 @@ app.post(
         indirizzoFatturazione: contract.indirizzoFatturazione,
         tipoCliente: contract.tipoCliente,
         categoriaCliente: contract.categoriaCliente,
-        agenteId: assignedAgentId
+        agenteId: assignedAgentId,
       };
       const clientId = await syncClientFromContract(clientData);
-      
+
       // Ricolleghiamo il contratto al cliente (se non già fatto nel payload)
       if (clientId) {
         await updateBaserowContract(created.id, { cliente: [clientId] });
@@ -488,8 +494,9 @@ app.patch(
       const files = Array.isArray(req.files) ? req.files : [];
       const uploadedFiles = await Promise.all(files.map(uploadContractFile));
       const retainedFileNames = normalizeRetainedFileNames(req.body.retainedFileName);
-      const preservedFiles = fileValue(existing.file_contratto)
-        .filter((file) => retainedFileNames.includes(file.name));
+      const preservedFiles = fileValue(existing.file_contratto).filter((file) =>
+        retainedFileNames.includes(file.name)
+      );
       const nextStatus =
         saveMode === 'draft'
           ? 'Bozza'
@@ -560,12 +567,12 @@ app.patch(
         indirizzoFatturazione: contract.indirizzoFatturazione,
         tipoCliente: contract.tipoCliente,
         categoriaCliente: contract.categoriaCliente,
-        agenteId: assignedAgentId
+        agenteId: assignedAgentId,
       };
       const clientId = await syncClientFromContract(clientData);
-      
+
       // Se il contratto non era collegato o è cambiato il cliente
-      if (clientId && (!existing.cliente || !existing.cliente.some(c => c.id === clientId))) {
+      if (clientId && (!existing.cliente || !existing.cliente.some((c) => c.id === clientId))) {
         await updateBaserowContract(contractId, { cliente: [clientId] });
       }
 
@@ -573,7 +580,7 @@ app.patch(
       invalidateContractsCache(assignedAgent.id);
       invalidateAdminStatsCache();
       invalidateClientsCache(assignedAgentId);
-      
+
       res.json(normalizeContract(updated));
     } catch (error) {
       handleApiError(res, error, 'CONTRACT_NOT_UPDATED', 'Contratto non aggiornato.');
@@ -777,7 +784,7 @@ app.get('/api/clients', apiReadLimiter, requireAuth, async (req, res) => {
     const agentId = req.session.agentId;
     const currentUser = await getCurrentAgent(agentId);
     const isAdmin = currentUser.ruolo === 'admin';
-    
+
     const cacheKey = clientsCacheKey(isAdmin ? 'admin' : agentId);
     const clients = await getCached(cacheKey, async () => {
       const allRows = await fetchAllBaserowRows(
@@ -788,9 +795,9 @@ app.get('/api/clients', apiReadLimiter, requireAuth, async (req, res) => {
       const normalized = allRows.map(normalizeClient);
       if (isAdmin) return normalized;
       // Mostra i clienti dell'agente + quelli senza agente assegnato (es. creati manualmente)
-      return normalized.filter(c => !c.agenteId || c.agenteId === agentId);
+      return normalized.filter((c) => !c.agenteId || c.agenteId === agentId);
     });
-    
+
     res.json(clients);
   } catch (error) {
     handleApiError(res, error, 'CLIENTS_LOAD_FAILED', 'Impossibile caricare i clienti.');
@@ -803,11 +810,11 @@ app.patch('/api/clients/:id', requireAuth, async (req, res) => {
     const clientId = Number(req.params.id);
     const agentId = req.session.agentId;
     const currentUser = await getCurrentAgent(agentId);
-    
+
     // Verifica proprietà o admin
     const clientRow = await getBaserowClient(clientId);
     const client = normalizeClient(clientRow);
-    
+
     if (currentUser.ruolo !== 'admin' && client.agenteId !== agentId) {
       throw publicError(403, 'CLIENT_FORBIDDEN', 'Accesso negato a questo cliente.');
     }
@@ -823,7 +830,7 @@ app.patch('/api/clients/:id', requireAuth, async (req, res) => {
     const updated = await updateBaserowClient(clientId, payload);
 
     // Propaga le modifiche anagrafiche ai contratti collegati
-    propagateClientUpdateToContracts(clientId, payload).catch(err =>
+    propagateClientUpdateToContracts(clientId, payload).catch((err) =>
       console.error('[propagateClientUpdateToContracts]', err)
     );
 
@@ -1533,22 +1540,26 @@ async function propagateClientUpdateToContracts(clientId, clientPayload) {
   });
   const res = await baserowFetch(
     `/api/database/rows/table/${CONFIG.contrattiTableId}/?user_field_names=true` +
-    `&filters=${encodeURIComponent(filter)}&size=200`
+      `&filters=${encodeURIComponent(filter)}&size=200`
   );
   const linkedContracts = Array.isArray(res.results) ? res.results : [];
   if (linkedContracts.length === 0) return;
 
   const contractPatch = {};
-  if (clientPayload['Ragione Sociale'] !== undefined) contractPatch.ragione_sociale = clientPayload['Ragione Sociale'];
+  if (clientPayload['Ragione Sociale'] !== undefined)
+    contractPatch.ragione_sociale = clientPayload['Ragione Sociale'];
   if (clientPayload.piva !== undefined) contractPatch.piva = clientPayload.piva;
   if (clientPayload.email !== undefined) contractPatch.email = clientPayload.email;
   if (clientPayload.cellulare !== undefined) contractPatch.cellulare = clientPayload.cellulare;
-  if (clientPayload.indirizzo_fatturazione !== undefined) contractPatch.indirizzo_fatturazione = clientPayload.indirizzo_fatturazione;
+  if (clientPayload.indirizzo_fatturazione !== undefined)
+    contractPatch.indirizzo_fatturazione = clientPayload.indirizzo_fatturazione;
 
   await Promise.all(
-    linkedContracts.map(contract => updateBaserowContract(contract.id, contractPatch))
+    linkedContracts.map((contract) => updateBaserowContract(contract.id, contractPatch))
   );
-  console.log(`[propagateClientUpdate] aggiornati ${linkedContracts.length} contratti per cliente ${clientId}`);
+  console.log(
+    `[propagateClientUpdate] aggiornati ${linkedContracts.length} contratti per cliente ${clientId}`
+  );
 }
 
 async function syncClientFromContract(clientData) {

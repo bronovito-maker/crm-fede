@@ -208,7 +208,12 @@
                 ‹
               </button>
               <p class="eyebrow" id="current-period">Mese corrente</p>
-              <button class="month-nav-btn" type="button" id="month-next-btn" aria-label="Mese successivo">
+              <button
+                class="month-nav-btn"
+                type="button"
+                id="month-next-btn"
+                aria-label="Mese successivo"
+              >
                 ›
               </button>
             </div>
@@ -487,17 +492,20 @@
                   <fieldset class="field-group full-span">
                     <legend>Tipo operazione</legend>
                     <div class="checkbox-grid">
-                      <label><input name="tipoOperazione" type="radio" value="switch" /> Switch</label>
                       <label
-                        ><input name="tipoOperazione" type="radio" value="switch + voltura" /> Switch +
-                        voltura</label
+                        ><input name="tipoOperazione" type="radio" value="switch" /> Switch</label
+                      >
+                      <label
+                        ><input name="tipoOperazione" type="radio" value="switch + voltura" />
+                        Switch + voltura</label
                       >
                       <label
                         ><input name="tipoOperazione" type="radio" value="cambio listino" /> Cambio
                         listino</label
                       >
                       <label
-                        ><input name="tipoOperazione" type="radio" value="subentro" /> Subentro</label
+                        ><input name="tipoOperazione" type="radio" value="subentro" />
+                        Subentro</label
                       >
                     </div>
                   </fieldset>
@@ -528,7 +536,13 @@
                   </label>
                   <label class="conditional-field" id="iban-field" hidden>
                     IBAN
-                    <input name="iban" type="text" data-uppercase="true" placeholder="IT60X..." autocomplete="off" />
+                    <input
+                      name="iban"
+                      type="text"
+                      data-uppercase="true"
+                      placeholder="IT60X..."
+                      autocomplete="off"
+                    />
                   </label>
                   <label class="admin-only" id="contract-agent-field" hidden>
                     <span>Agente assegnato <span class="req" aria-hidden="true">*</span></span>
@@ -679,6 +693,13 @@
               <option value="prospect">Prospect</option>
               <option value="switch ricorrente">Switch ricorrenti</option>
             </select>
+            <select id="contracts-operation-filter" aria-label="Filtra per tipo operazione">
+              <option value="all">Tutte le operazioni</option>
+              <option value="switch">Switch</option>
+              <option value="switch + voltura">Switch + voltura</option>
+              <option value="cambio listino">Cambio listino</option>
+              <option value="subentro">Subentro</option>
+            </select>
           </div>
           <p id="contracts-scope-feedback" role="status" aria-live="polite"></p>
 
@@ -732,6 +753,13 @@
                 <option value="prospect">Prospect</option>
                 <option value="switch ricorrente">Switch ricorrenti</option>
               </select>
+              <select id="cb-operation-filter" aria-label="Filtra CB per tipo operazione">
+                <option value="all">Tutte le operazioni</option>
+                <option value="switch">Switch</option>
+                <option value="switch + voltura">Switch + voltura</option>
+                <option value="cambio listino">Cambio listino</option>
+                <option value="subentro">Subentro</option>
+              </select>
             </div>
             <div class="table-wrap flat">
               <table>
@@ -766,7 +794,7 @@
           <div class="progress-hero">
             <article class="panel progress-focus">
               <div class="panel-heading">
-                <h2>Avanzamento del mese</h2>
+                <h2>Avanzamento del mese (tutti i tipi di contratti)</h2>
                 <span id="month-target-label"></span>
               </div>
               <strong id="month-target-percent"></strong>
@@ -810,7 +838,7 @@
                   <line x1="8" y1="2" x2="8" y2="6" />
                   <line x1="3" y1="10" x2="21" y2="10" />
                 </svg>
-                <h2>Mese ricorrente</h2>
+                <h2>Target nuovi contratti mensili</h2>
               </div>
               <p class="target-line" id="recurring-target"></p>
               <strong class="target-percent-small" id="recurring-target-percent"></strong>
@@ -834,7 +862,7 @@
                   <path d="M3 3v18h18" />
                   <path d="m19 9-5 5-4-4-3 3" />
                 </svg>
-                <h2>Trimestre</h2>
+                <h2>Target nuovi contratti trimestrali</h2>
               </div>
               <p class="target-line" id="quarter-target"></p>
               <strong class="target-percent-small" id="quarter-target-percent"></strong>
@@ -857,7 +885,7 @@
                   <circle cx="12" cy="12" r="10" />
                   <polyline points="12 6 12 12 16 14" />
                 </svg>
-                <h2>Anno</h2>
+                <h2>Target nuovi contratti annuali</h2>
               </div>
               <p class="target-line" id="year-target"></p>
               <strong class="target-percent-small" id="year-target-percent"></strong>
@@ -867,7 +895,6 @@
             </article>
           </div>
         </section>
-
 
         <section class="page" id="admin">
           <div class="metrics-grid" id="admin-metrics-status"></div>
@@ -1267,7 +1294,6 @@
         </div>
       </section>
     </div>
-
 
     <script src="config.js"></script>
     <script src="baserowClient.js"></script>
