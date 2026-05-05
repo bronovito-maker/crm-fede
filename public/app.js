@@ -604,10 +604,13 @@ document.getElementById('contract-form').addEventListener('submit', async (event
   setTimeout(() => setActivePage('contracts'), 350);
 });
 
-['search-input', 'month-filter', 'status-filter'].forEach((id) => {
+['search-input', 'month-filter', 'status-filter', 'contracts-category-filter'].forEach((id) => {
   if (id === 'month-filter') return;
   document.getElementById(id).addEventListener('input', renderContractsTable);
 });
+document
+  .getElementById('contracts-category-filter')
+  ?.addEventListener('change', renderContractsTable);
 document.getElementById('cb-search-input')?.addEventListener('input', renderCbPage);
 document.getElementById('month-filter').addEventListener('change', () => {
   const monthValue = String(document.getElementById('month-filter').value || 'all');
@@ -997,6 +1000,10 @@ function renderContractsTable() {
   const search = document.getElementById('search-input').value.toLowerCase().trim();
   const month = document.getElementById('month-filter').value;
   const status = document.getElementById('status-filter').value;
+  const selectedCategory = String(document.getElementById('contracts-category-filter')?.value || 'all')
+    .trim()
+    .toLowerCase();
+  const category = agent?.ruolo === 'admin' ? selectedCategory : 'all';
 
   const filtered = sourceContracts.filter((contract) => {
     const matchesSearch = [
@@ -1011,7 +1018,12 @@ function renderContractsTable() {
       .includes(search);
     const matchesMonth = month === 'all' || contractMonthRef(contract) === month;
     const matchesStatus = status === 'all' || contract.statoContratto === status;
-    return matchesSearch && matchesMonth && matchesStatus;
+    const matchesCategory =
+      category === 'all' ||
+      String(contract.categoriaCliente || '')
+        .trim()
+        .toLowerCase() === category;
+    return matchesSearch && matchesMonth && matchesStatus && matchesCategory;
   });
 
   const table = document.getElementById('contracts-table');
@@ -1033,7 +1045,7 @@ function renderContractsTable() {
 
   // Empty state differenziato: zero contratti vs filtri senza risultati
   if (filtered.length === 0) {
-    const hasFilters = search || month !== 'all' || status !== 'all';
+    const hasFilters = search || month !== 'all' || status !== 'all' || category !== 'all';
     const hasAnyContracts = sourceContracts.length > 0;
     if (!hasAnyContracts && !hasFilters) {
       emptyState.querySelector('strong').textContent = 'Nessun contratto ancora';
@@ -1893,6 +1905,10 @@ function updateAdminVisibility() {
   if (contractsScope) {
     contractsScope.value = contractsScopeFilter;
   }
+  const contractsCategory = document.getElementById('contracts-category-filter');
+  if (contractsCategory && agent.ruolo !== 'admin') {
+    contractsCategory.value = 'all';
+  }
   populateContractAgentOptions();
 }
 
@@ -1909,6 +1925,7 @@ function populateContractAgentOptions() {
   const options = (adminState.agents.length ? adminState.agents : [agent])
     .slice()
     .sort((left, right) => left.nome.localeCompare(right.nome, 'it'));
+  const previousValue = String(select.value || '').trim();
 
   select.innerHTML = [
     '<option value="">Seleziona agente</option>',
@@ -1920,7 +1937,10 @@ function populateContractAgentOptions() {
     ),
   ].join('');
   select.required = true;
-  select.value = String(agent.id);
+  const hasPreviousValue = previousValue
+    ? options.some((agentRow) => String(agentRow.id) === previousValue)
+    : false;
+  select.value = hasPreviousValue ? previousValue : String(agent.id);
 }
 
 async function renderAdminPage() {
@@ -2662,6 +2682,7 @@ async function handleLogin(event) {
     });
 
     agent = session.agent;
+    contractsScopeFilter = agent.ruolo === 'admin' ? 'all' : 'mine';
     await loadSuppliers({ silent: true, force: true });
     await loadCurrentCompetence({ silent: true });
     await loadCompetitionCutoffs({ silent: true });
@@ -2787,12 +2808,6 @@ function shiftViewMonth(direction) {
   if (nextIndex < 0 || nextIndex >= months.length) return;
   selectedViewMonth = months[nextIndex];
   renderAll();
-}
-
-function getContractOperations(contract) {
-  const raw = contract?.tipoOperazione;
-  const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
-  return list.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
 }
 
 function isCountedInProgress(contract) {
