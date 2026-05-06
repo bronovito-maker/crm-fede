@@ -753,7 +753,7 @@ function setActivePage(pageId) {
 }
 
 function currentMonthContracts() {
-  return contracts.filter(
+  return visibleContractsByScope().filter(
     (contract) =>
       contractMonthRef(contract) === selectedViewMonth && contract.statoContratto !== 'Bozza'
   );
@@ -1323,47 +1323,36 @@ function renderCbPage() {
 }
 
 function renderProgressPage() {
-  const progressMonthly = currentMonthContracts().filter((contract) =>
-    isCountedInMonthlyOverallProgress(contract)
+  const progressMonthly = currentMonthContracts().filter(
+    (contract) =>
+      isCountedInMonthlyOverallProgress(contract) && isContractOperationalForProgress(contract)
   );
-  const progressOk = progressMonthly.filter((contract) => contract.statoContratto === 'OK');
-  const prospectMonthly = currentMonthContracts().filter((contract) =>
-    isCountedInProgress(contract)
+  const prospectMonthly = currentMonthContracts().filter(
+    (contract) => isCountedInProgress(contract) && isContractOperationalForProgress(contract)
   );
-  const prospectOk = prospectMonthly.filter((contract) => contract.statoContratto === 'OK');
-  const progressOkUnits = sumContractUnits(progressOk);
-  const prospectOkUnits = sumContractUnits(prospectOk);
+  const progressUnits = sumContractUnits(progressMonthly);
+  const prospectUnits = sumContractUnits(prospectMonthly);
   const selectedDate = dateFromMonthKey(selectedViewMonth || monthKey(new Date()));
   const quarterKey = getQuarterKey(selectedDate);
   const yearKey = String(selectedDate.getFullYear());
-  const recurringPendingDone = progressMonthly
-    .filter(
-      (contract) =>
-        String(contract.categoriaCliente || '')
-          .trim()
-          .toLowerCase() === 'switch ricorrente' &&
-        !isCambioListinoOperation(contract) &&
-        ['Caricato', 'Inviato'].includes(contract.statoContratto)
-    )
-    .reduce((sum, contract) => sum + contractUnitCount(contract), 0);
-  const overallMonthDone = progressOkUnits + recurringPendingDone;
+  const overallMonthDone = progressUnits;
   const progressMissing = Math.max(agent.targetMensile - overallMonthDone, 0);
   const progressPercent = percent(overallMonthDone, agent.targetMensile);
-  const recurringMonthPercent = percent(prospectOkUnits, agent.targetMensile);
-  const quarterDone = contracts
+  const recurringMonthPercent = percent(prospectUnits, agent.targetMensile);
+  const quarterDone = visibleContractsByScope()
     .filter(
       (contract) =>
         contractQuarterRef(contract) === quarterKey &&
-        contract.statoContratto === 'OK' &&
-        isCountedInProgress(contract)
+        isCountedInProgress(contract) &&
+        isContractOperationalForProgress(contract)
     )
     .reduce((sum, contract) => sum + contractUnitCount(contract), 0);
-  const yearDone = contracts
+  const yearDone = visibleContractsByScope()
     .filter(
       (contract) =>
         contractYearRef(contract) === yearKey &&
-        contract.statoContratto === 'OK' &&
-        isCountedInProgress(contract)
+        isCountedInProgress(contract) &&
+        isContractOperationalForProgress(contract)
     )
     .reduce((sum, contract) => sum + contractUnitCount(contract), 0);
   const quarterPercent = percent(quarterDone, agent.targetTrimestrale);
@@ -1381,7 +1370,7 @@ function renderProgressPage() {
   document.getElementById('progress-message').textContent =
     progressMissing === 0 ? 'Target raggiunto.' : `Ti mancano ${progressMissing} contatori.`;
   document.getElementById('recurring-target').textContent =
-    `${prospectOkUnits}/${agent.targetMensile} contatori`;
+    `${prospectUnits}/${agent.targetMensile} contatori`;
   document.getElementById('recurring-target-percent').textContent = `${recurringMonthPercent}%`;
   document.getElementById('recurring-target-bar').style.width = `${recurringMonthPercent}%`;
   document.getElementById('recurring-target-note').textContent = 'Conteggia solo clienti Prospect.';
@@ -2880,6 +2869,16 @@ function isCountedInMonthlyOverallProgress(contract) {
 
 function isCambioListinoOperation(contract) {
   return contractMatchesOperationFilter(contract, 'cambio listino');
+}
+
+function isContractOperationalForProgress(contract) {
+  return ['OK', 'Caricato', 'Inviato'].includes(String(contract?.statoContratto || '').trim());
+}
+
+function visibleContractsByScope() {
+  return agent?.ruolo === 'admin' && contractsScopeFilter === 'all'
+    ? adminState.contracts
+    : contracts;
 }
 
 function contractMatchesOperationFilter(contract, selectedOperation) {
