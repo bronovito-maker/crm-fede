@@ -41,26 +41,30 @@ const {
 } = require('../server');
 
 describe('contractUnitCount', () => {
-  it('conta 2 per dual + prospect', () => {
-    assert.equal(contractUnitCount({ tipoFornitura: 'dual', categoriaCliente: 'Prospect' }), 2);
+  it('conta 2 per dual + switch', () => {
+    assert.equal(contractUnitCount({ tipoFornitura: 'dual', tipoOperazione: ['switch'] }), 2);
   });
 
-  it('conta 1 per dual + switch ricorrente', () => {
+  it('conta 2 per dual + switch + voltura', () => {
     assert.equal(
-      contractUnitCount({ tipoFornitura: 'dual', categoriaCliente: 'Switch ricorrente' }),
-      1
+      contractUnitCount({ tipoFornitura: 'dual', tipoOperazione: ['switch + voltura'] }),
+      2
     );
   });
 
-  it('conta 1 per luce + prospect', () => {
-    assert.equal(contractUnitCount({ tipoFornitura: 'luce', categoriaCliente: 'Prospect' }), 1);
+  it('conta 2 per dual + subentro', () => {
+    assert.equal(contractUnitCount({ tipoFornitura: 'dual', tipoOperazione: ['subentro'] }), 2);
   });
 
-  it('usa unitCount pre-calcolato se presente', () => {
+  it('conta 1 per luce', () => {
+    assert.equal(contractUnitCount({ tipoFornitura: 'luce', tipoOperazione: ['switch'] }), 1);
+  });
+
+  it('usa unitCount pre-calcolato se manca tipoFornitura', () => {
     assert.equal(
       contractUnitCount({
         unitCount: 2,
-        tipoFornitura: 'luce',
+        tipoFornitura: '',
         categoriaCliente: 'Switch ricorrente',
       }),
       2
@@ -69,12 +73,12 @@ describe('contractUnitCount', () => {
 });
 
 describe('contractCommissionValue', () => {
-  it('raddoppia la provvigione per dual + prospect', () => {
+  it('raddoppia la provvigione per dual', () => {
     assert.equal(
       contractCommissionValue({
         cbMaturata: 85,
         tipoFornitura: 'dual',
-        categoriaCliente: 'Prospect',
+        tipoOperazione: ['subentro'],
       }),
       170
     );
@@ -122,6 +126,7 @@ describe('buildAdminStats', () => {
         statoContratto: 'OK',
         tipoFornitura: 'dual',
         categoriaCliente: 'Prospect',
+        tipoOperazione: ['switch'],
         cbMaturata: 85,
       },
       {
@@ -201,6 +206,7 @@ describe('buildAdminStats', () => {
         statoContratto: 'OK',
         tipoFornitura: 'dual',
         categoriaCliente: 'Prospect',
+        tipoOperazione: ['switch'],
         cbMaturata: 85,
       },
       {
@@ -840,6 +846,7 @@ describe('HTTP routes', () => {
             ragione_sociale: 'Cliente Uno',
             stato_contratto: { value: 'OK' },
             tipo_fornitura: { value: 'dual' },
+            tipo_operazione: [{ value: 'switch' }],
             categoria_cliente: { value: 'Prospect' },
             cb_unitaria_snapshot: '85',
             cb_maturata: '85',
@@ -943,6 +950,7 @@ describe('HTTP routes', () => {
               anno_riferimento: year,
               stato_contratto: { value: 'OK' },
               tipo_fornitura: { value: 'dual' },
+              tipo_operazione: [{ value: 'switch' }],
               categoria_cliente: { value: 'Prospect' },
               cb_unitaria_snapshot: '90',
               cb_maturata: '90',

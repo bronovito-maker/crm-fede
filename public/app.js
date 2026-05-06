@@ -2895,11 +2895,17 @@ function contractMatchesOperationFilter(contract, selectedOperation) {
 }
 
 function contractUnitCount(contract) {
+  const supplyType = String(contract.tipoFornitura || '').toLowerCase();
+  if (supplyType === 'dual') {
+    return 2;
+  }
+  if (supplyType) {
+    return 1;
+  }
   if (Number.isFinite(Number(contract.unitCount)) && Number(contract.unitCount) > 0) {
     return Number(contract.unitCount);
   }
-  const supplyType = String(contract.tipoFornitura || '').toLowerCase();
-  return supplyType === 'dual' ? 2 : 1;
+  return 1;
 }
 
 function sumContractUnits(items) {

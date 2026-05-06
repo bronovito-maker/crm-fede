@@ -1721,35 +1721,6 @@ td[data-label='Cliente'] strong {
   color: #0891b2;
 }
 
-.progress-rules {
-  margin-top: 4px;
-}
-
-.progress-rules-table-wrap {
-  overflow-x: auto;
-}
-
-.progress-rules-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
-}
-
-.progress-rules-table th,
-.progress-rules-table td {
-  border-bottom: 1px solid var(--line);
-  padding: 10px 8px;
-  text-align: left;
-  vertical-align: top;
-}
-
-.progress-rules-table th {
-  color: var(--muted);
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-
 .target-note {
   font-size: 0.88rem;
 }

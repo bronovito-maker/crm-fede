@@ -2057,12 +2057,17 @@ function percent(done, target) {
 }
 
 function contractUnitCount(contract) {
+  const supplyType = cleanText(contract.tipoFornitura).toLowerCase();
+  if (supplyType === 'dual') {
+    return 2;
+  }
+  if (supplyType) {
+    return 1;
+  }
   if (Number.isFinite(Number(contract.unitCount)) && Number(contract.unitCount) > 0) {
     return Number(contract.unitCount);
   }
-  const supplyType = cleanText(contract.tipoFornitura).toLowerCase();
-  const customerCategory = cleanText(contract.categoriaCliente);
-  return supplyType === 'dual' && customerCategory === 'Prospect' ? 2 : 1;
+  return 1;
 }
 
 function sumContractUnits(items) {
