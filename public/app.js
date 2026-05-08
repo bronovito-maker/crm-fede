@@ -634,19 +634,28 @@ document.getElementById('month-filter').addEventListener('change', () => {
 document.getElementById('contracts-scope-filter').addEventListener('change', async () => {
   const scopeSelect = document.getElementById('contracts-scope-filter');
   contractsScopeFilter = String(scopeSelect.value || defaultContractsScopeForAgent());
+  const selectedAgentId = selectedAdminContractsAgentId();
+  const isAdminGlobalScope = agent?.ruolo === 'admin' && contractsScopeFilter !== 'mine';
   setContractsScopeFeedback(
-    contractsScopeFilter === 'all'
-      ? 'Caricamento contratti di tutti gli agenti...'
+    isAdminGlobalScope
+      ? selectedAgentId
+        ? 'Caricamento contratti per agente selezionato...'
+        : 'Caricamento contratti di tutti gli agenti...'
       : 'Filtro impostato su: I miei contratti.',
-    contractsScopeFilter === 'all' ? '' : 'success'
+    isAdminGlobalScope ? '' : 'success'
   );
-  if (agent?.ruolo === 'admin' && contractsScopeFilter === 'all') {
+  if (isAdminGlobalScope) {
     try {
       adminState.contracts = await baserowClient.listAdminContracts();
-      setContractsScopeFeedback('Caricati tutti i contratti.', 'success');
+      setContractsScopeFeedback(
+        selectedAgentId
+          ? 'Contratti caricati per agente selezionato.'
+          : 'Caricati tutti i contratti.',
+        'success'
+      );
     } catch (error) {
       setFormFeedback('error', error.message || 'Impossibile caricare i contratti globali.');
-      // Manteniamo "Tutti" come default anche in caso di errore, con fallback dati locali.
+      // Manteniamo il filtro selezionato anche in caso di errore, con fallback dati locali.
       adminState.contracts = contracts.slice();
       setContractsScopeFeedback(
         'Impossibile caricare tutti i contratti: uso temporaneo dei soli tuoi.',
@@ -1012,8 +1021,8 @@ function renderBarChart() {
 }
 
 function renderContractsTable() {
-  const sourceContracts =
-    agent?.ruolo === 'admin' && contractsScopeFilter === 'all' ? adminState.contracts : contracts;
+  const sourceContracts = visibleContractsByScope();
+  const selectedScopeAgentId = selectedAdminContractsAgentId();
   const search = document.getElementById('search-input').value.toLowerCase().trim();
   const month = document.getElementById('month-filter').value;
   const status = document.getElementById('status-filter').value;
@@ -1048,7 +1057,16 @@ function renderContractsTable() {
         .trim()
         .toLowerCase() === category;
     const matchesOperation = contractMatchesOperationFilter(contract, selectedOperation);
-    return matchesSearch && matchesMonth && matchesStatus && matchesCategory && matchesOperation;
+    const matchesScopeAgent =
+      !selectedScopeAgentId || Number(contract.agenteId) === Number(selectedScopeAgentId);
+    return (
+      matchesSearch &&
+      matchesMonth &&
+      matchesStatus &&
+      matchesCategory &&
+      matchesOperation &&
+      matchesScopeAgent
+    );
   });
 
   const table = document.getElementById('contracts-table');
@@ -1942,6 +1960,7 @@ function updateAdminVisibility() {
   document.querySelectorAll('.admin-only').forEach((element) => {
     element.hidden = agent.ruolo !== 'admin';
   });
+  populateContractsScopeFilterOptions();
   const contractsScope = document.getElementById('contracts-scope-filter');
   if (contractsScope) {
     contractsScope.value = contractsScopeFilter;
@@ -1995,7 +2014,7 @@ async function renderAdminPage() {
     adminState.stats = stats;
     adminState.agents = agents;
     adminState.contracts = adminContracts;
-    if (contractsScopeFilter === 'all') {
+    if (agent?.ruolo === 'admin' && contractsScopeFilter !== 'mine') {
       // Quando arrivano i contratti globali async, sincronizza subito la vista Contratti.
       renderMonthFilter();
       renderContractsTable();
@@ -2876,9 +2895,38 @@ function isContractOperationalForProgress(contract) {
 }
 
 function visibleContractsByScope() {
-  return agent?.ruolo === 'admin' && contractsScopeFilter === 'all'
+  return agent?.ruolo === 'admin' && contractsScopeFilter !== 'mine'
     ? adminState.contracts
     : contracts;
+}
+
+function selectedAdminContractsAgentId() {
+  if (agent?.ruolo !== 'admin') return null;
+  const value = String(contractsScopeFilter || '').trim();
+  if (!value.startsWith('agent:')) return null;
+  const parsed = Number(value.slice('agent:'.length));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function populateContractsScopeFilterOptions() {
+  const select = document.getElementById('contracts-scope-filter');
+  if (!select || agent?.ruolo !== 'admin') return;
+  const previousValue = String(contractsScopeFilter || 'all').trim();
+  const options = (adminState.agents.length ? adminState.agents : [agent])
+    .slice()
+    .sort((left, right) => left.nome.localeCompare(right.nome, 'it'));
+
+  select.innerHTML = [
+    '<option value="all">Tutti</option>',
+    ...options.map((agentRow) => {
+      const suffix = agentRow.attivo === false ? ' (disattivo)' : '';
+      return `<option value="agent:${agentRow.id}">${escapeHtml(agentRow.nome)}${suffix}</option>`;
+    }),
+  ].join('');
+
+  const allowedValues = new Set(['all', ...options.map((agentRow) => `agent:${agentRow.id}`)]);
+  contractsScopeFilter = allowedValues.has(previousValue) ? previousValue : 'all';
+  select.value = contractsScopeFilter;
 }
 
 function contractMatchesOperationFilter(contract, selectedOperation) {
