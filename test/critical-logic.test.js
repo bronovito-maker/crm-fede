@@ -163,9 +163,10 @@ describe('buildAdminStats', () => {
     assert.equal(result.agents[0].contratti, 4);
     assert.equal(result.agents[0].ok, 2);
     assert.equal(result.agents[0].caricati, 1);
+    assert.equal(result.agents[0].targetMensileDone, 3);
     assert.equal(result.agents[0].cbValidata, 170);
     assert.equal(result.agents[0].cbPotenziale, 255);
-    assert.equal(result.agents[0].percentualeTargetMensile, 40);
+    assert.equal(result.agents[0].percentualeTargetMensile, 60);
   });
 
   it('separa correttamente mese trimestre e anno nei target admin', () => {
@@ -241,11 +242,69 @@ describe('buildAdminStats', () => {
     assert.equal(mario.ok, 1);
     assert.equal(mario.okTrimestre, 3);
     assert.equal(mario.okAnno, 4);
+    assert.equal(mario.targetMensileDone, 1);
+    assert.equal(mario.targetTrimestraleDone, 3);
+    assert.equal(mario.targetAnnualeDone, 3);
     assert.equal(mario.percentualeTargetMensile, 20);
     assert.equal(mario.percentualeTargetTrimestrale, 25);
-    assert.equal(mario.percentualeTargetAnnuale, 8);
+    assert.equal(mario.percentualeTargetAnnuale, 6);
     assert.equal(laura.contratti, 0);
     assert.equal(laura.percentualeTargetMensile, 0);
+  });
+
+  it('conteggia nei target admin solo prospect operativi e mai cambio listino', () => {
+    const contracts = [
+      {
+        agenteId: 1,
+        dataInserimento: `${month}-02`,
+        trimestreRiferimento: quarter,
+        annoRiferimento: year,
+        statoContratto: 'Caricato',
+        tipoFornitura: 'dual',
+        categoriaCliente: 'Prospect',
+        tipoOperazione: ['switch'],
+        cbMaturata: 85,
+      },
+      {
+        agenteId: 1,
+        dataInserimento: `${month}-03`,
+        trimestreRiferimento: quarter,
+        annoRiferimento: year,
+        statoContratto: 'Inviato',
+        tipoFornitura: 'luce',
+        categoriaCliente: 'Prospect',
+        tipoOperazione: ['cambio listino'],
+        cbMaturata: 85,
+      },
+      {
+        agenteId: 1,
+        dataInserimento: `${month}-04`,
+        trimestreRiferimento: quarter,
+        annoRiferimento: year,
+        statoContratto: 'OK',
+        tipoFornitura: 'gas',
+        categoriaCliente: 'Switch ricorrente',
+        tipoOperazione: ['switch'],
+        cbMaturata: 85,
+      },
+      {
+        agenteId: 1,
+        dataInserimento: `${month}-05`,
+        trimestreRiferimento: quarter,
+        annoRiferimento: year,
+        statoContratto: 'K.O.',
+        tipoFornitura: 'gas',
+        categoriaCliente: 'Prospect',
+        tipoOperazione: ['subentro'],
+        cbMaturata: 85,
+      },
+    ];
+
+    const result = buildAdminStats(agents, contracts);
+
+    assert.equal(result.agents[0].targetMensileDone, 2);
+    assert.equal(result.agents[0].percentualeTargetMensile, 40);
+    assert.equal(result.totals.targetMensileDone, 2);
   });
 
   it('ignora le bozze nei conteggi e nelle statistiche admin', () => {
@@ -1002,7 +1061,16 @@ describe('HTTP routes', () => {
     assert.equal(response.body.totals.cbPotenziale, 265);
     assert.equal(response.body.agents.length, 2);
     assert.equal(response.body.agents[0].ok, 2);
+    assert.equal(response.body.agents[0].targetMensileDone, 2);
     assert.equal(response.body.agents[1].caricati, 1);
+    assert.equal(response.body.agents[1].targetMensileDone, 1);
+  });
+
+  it('GET /api/config richiede una sessione autenticata', async () => {
+    const response = await requestJson(app, 'GET', '/api/config');
+
+    assert.equal(response.status, 401);
+    assert.equal(response.body.error, 'AUTH_REQUIRED');
   });
 
   it('POST /api/contracts crea un contratto con payload normalizzato', async () => {

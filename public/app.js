@@ -2014,10 +2014,14 @@ async function renderAdminPage() {
     adminState.stats = stats;
     adminState.agents = agents;
     adminState.contracts = adminContracts;
+    populateContractsScopeFilterOptions();
     if (agent?.ruolo === 'admin' && contractsScopeFilter !== 'mine') {
-      // Quando arrivano i contratti globali async, sincronizza subito la vista Contratti.
+      // Quando arrivano i contratti globali async, sincronizza tutte le viste che usano lo scope.
       renderMonthFilter();
+      renderDashboard();
       renderContractsTable();
+      renderCbPage();
+      renderProgressPage();
     }
     syncAdminFilterControls();
     renderAdminMetrics(stats);
@@ -2104,11 +2108,11 @@ function renderAdminAgentList(stats, agents) {
             </div>
           </header>
           <div class="admin-stat-grid">
-            <div><span>Contratti</span><strong>${row.contratti || 0}</strong></div>
-            <div><span>Contatori</span><strong>${row.pratiche || row.contratti || 0}</strong></div>
-            <div><span>Mese</span><strong>${row.ok || 0}/${agentRow.targetMensile || 0}</strong><small>${row.percentualeTargetMensile || 0}%</small></div>
-            <div><span>Trimestre</span><strong>${row.okTrimestre || 0}/${agentRow.targetTrimestrale || 0}</strong><small>${row.percentualeTargetTrimestrale || 0}%</small></div>
-            <div><span>Anno</span><strong>${row.okAnno || 0}/${agentRow.targetAnnuale || 0}</strong><small>${row.percentualeTargetAnnuale || 0}%</small></div>
+            <div><span>Pratiche</span><strong>${row.pratiche || 0}</strong></div>
+            <div><span>Contatori</span><strong>${row.contratti || 0}</strong></div>
+            <div><span>Mese</span><strong>${row.targetMensileDone || 0}/${agentRow.targetMensile || 0}</strong><small>${row.percentualeTargetMensile || 0}%</small></div>
+            <div><span>Trimestre</span><strong>${row.targetTrimestraleDone || 0}/${agentRow.targetTrimestrale || 0}</strong><small>${row.percentualeTargetTrimestrale || 0}%</small></div>
+            <div><span>Anno</span><strong>${row.targetAnnualeDone || 0}/${agentRow.targetAnnuale || 0}</strong><small>${row.percentualeTargetAnnuale || 0}%</small></div>
             <div><span>CB validata</span><strong>${formatCurrency(row.cbValidata || 0)}</strong></div>
             <div><span>CB potenziale</span><strong>${formatCurrency(row.cbPotenziale || 0)}</strong></div>
           </div>
@@ -2833,8 +2837,7 @@ function renderSelectedMonthLabels() {
 }
 
 function getAvailableMonths() {
-  const sourceContracts =
-    agent?.ruolo === 'admin' && contractsScopeFilter === 'all' ? adminState.contracts : contracts;
+  const sourceContracts = visibleContractsByScope();
   return Array.from(
     new Set([
       currentCompetence.month,
@@ -2895,9 +2898,18 @@ function isContractOperationalForProgress(contract) {
 }
 
 function visibleContractsByScope() {
-  return agent?.ruolo === 'admin' && contractsScopeFilter !== 'mine'
-    ? adminState.contracts
-    : contracts;
+  if (agent?.ruolo !== 'admin' || contractsScopeFilter === 'mine') {
+    return contracts;
+  }
+
+  const selectedAgentId = selectedAdminContractsAgentId();
+  if (!selectedAgentId) {
+    return adminState.contracts;
+  }
+
+  return adminState.contracts.filter(
+    (contract) => Number(contract.agenteId) === Number(selectedAgentId)
+  );
 }
 
 function selectedAdminContractsAgentId() {

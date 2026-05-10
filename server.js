@@ -234,7 +234,7 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-app.get('/api/config', (req, res) => {
+app.get('/api/config', requireAuth, (req, res) => {
   res.json({
     googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || '',
   });
@@ -1973,6 +1973,9 @@ function buildAdminStats(agents, contracts, competence = {}) {
       (contract) => contract.statoContratto === 'OK'
     );
     const okAnno = agentYearContracts.filter((contract) => contract.statoContratto === 'OK');
+    const targetMensile = agentContracts.filter(isCountedInTargetProgress);
+    const targetTrimestrale = agentQuarterContracts.filter(isCountedInTargetProgress);
+    const targetAnnuale = agentYearContracts.filter(isCountedInTargetProgress);
     const caricati = agentContracts.filter((contract) => contract.statoContratto === 'Caricato');
     const inviati = agentContracts.filter((contract) => contract.statoContratto === 'Inviato');
     const ko = agentContracts.filter((contract) => contract.statoContratto === 'K.O.');
@@ -1983,6 +1986,9 @@ function buildAdminStats(agents, contracts, competence = {}) {
     const okUnits = sumContractUnits(ok);
     const okTrimestreUnits = sumContractUnits(okTrimestre);
     const okAnnoUnits = sumContractUnits(okAnno);
+    const targetMensileUnits = sumContractUnits(targetMensile);
+    const targetTrimestraleUnits = sumContractUnits(targetTrimestrale);
+    const targetAnnualeUnits = sumContractUnits(targetAnnuale);
     const caricatiUnits = sumContractUnits(caricati);
     const inviatiUnits = sumContractUnits(inviati);
     const koUnits = sumContractUnits(ko);
@@ -2004,17 +2010,23 @@ function buildAdminStats(agents, contracts, competence = {}) {
       ok: okUnits,
       okTrimestre: okTrimestreUnits,
       okAnno: okAnnoUnits,
+      targetMensileDone: targetMensileUnits,
+      targetTrimestraleDone: targetTrimestraleUnits,
+      targetAnnualeDone: targetAnnualeUnits,
       caricati: caricatiUnits,
       inviati: inviatiUnits,
       ko: koUnits,
       switchOut: switchOutUnits,
       cbValidata,
       cbPotenziale,
-      percentualeTargetMensile: percent(okUnits, agent.targetMensile),
-      percentualeTargetTrimestrale: percent(okTrimestreUnits, agent.targetTrimestrale),
-      percentualeTargetAnnuale: percent(okAnnoUnits, agent.targetAnnuale),
+      percentualeTargetMensile: percent(targetMensileUnits, agent.targetMensile),
+      percentualeTargetTrimestrale: percent(targetTrimestraleUnits, agent.targetTrimestrale),
+      percentualeTargetAnnuale: percent(targetAnnualeUnits, agent.targetAnnuale),
     };
   });
+  const targetMensileContracts = monthlyContracts.filter(isCountedInTargetProgress);
+  const targetTrimestraleContracts = quarterContracts.filter(isCountedInTargetProgress);
+  const targetAnnualeContracts = yearContracts.filter(isCountedInTargetProgress);
 
   return {
     month,
@@ -2036,6 +2048,9 @@ function buildAdminStats(agents, contracts, competence = {}) {
       switchOut: sumContractUnits(
         monthlyContracts.filter((contract) => contract.statoContratto === 'Switch - Out')
       ),
+      targetMensileDone: sumContractUnits(targetMensileContracts),
+      targetTrimestraleDone: sumContractUnits(targetTrimestraleContracts),
+      targetAnnualeDone: sumContractUnits(targetAnnualeContracts),
       cbValidata: monthlyContracts
         .filter((contract) => contract.statoContratto === 'OK')
         .reduce((sum, contract) => sum + contractCommissionValue(contract), 0),
@@ -2054,6 +2069,22 @@ function currentMonthKey() {
 
 function percent(done, target) {
   return target ? Math.min(Math.round((done / target) * 100), 100) : 0;
+}
+
+function isCountedInTargetProgress(contract) {
+  return (
+    ['OK', 'Caricato', 'Inviato'].includes(String(contract?.statoContratto || '').trim()) &&
+    cleanText(contract?.categoriaCliente).toLowerCase() === 'prospect' &&
+    !contractHasOperation(contract, 'cambio listino')
+  );
+}
+
+function contractHasOperation(contract, expectedOperation) {
+  const operations = Array.isArray(contract?.tipoOperazione)
+    ? contract.tipoOperazione
+    : [contract?.tipoOperazione];
+  const expected = cleanText(expectedOperation).toLowerCase();
+  return operations.some((operation) => cleanText(operation).toLowerCase() === expected);
 }
 
 function contractUnitCount(contract) {
@@ -2357,8 +2388,11 @@ async function sendContractNotification(agentName, contract, saveMode) {
   if (!CONFIG.resendApiKey || !CONFIG.notifyEmail || !CONFIG.resendFromEmail) return;
   if (saveMode === 'draft') return;
 
-  const row = (label, value) =>
-    `<tr><td style="padding:6px 12px;color:#6b7280;font-size:13px;white-space:nowrap">${label}</td><td style="padding:6px 12px;font-size:13px;color:#111827">${value || '—'}</td></tr>`;
+  const row = (label, value, { strong = false } = {}) => {
+    const safeValue = escapeHtml(value || '—');
+    const content = strong && value ? `<strong>${safeValue}</strong>` : safeValue;
+    return `<tr><td style="padding:6px 12px;color:#6b7280;font-size:13px;white-space:nowrap">${escapeHtml(label)}</td><td style="padding:6px 12px;font-size:13px;color:#111827">${content}</td></tr>`;
+  };
 
   const html = `
 <!DOCTYPE html>
@@ -2372,11 +2406,11 @@ async function sendContractNotification(agentName, contract, saveMode) {
     </div>
     <div style="padding:24px">
       <p style="margin:0 0 16px;font-size:14px;color:#374151">
-        <strong>${agentName}</strong> ha appena caricato un nuovo contratto.
+        <strong>${escapeHtml(agentName)}</strong> ha appena caricato un nuovo contratto.
       </p>
       <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden">
         <tbody>
-          ${row('Ragione sociale', `<strong>${contract.ragioneSociale}</strong>`)}
+          ${row('Ragione sociale', contract.ragioneSociale, { strong: true })}
           ${row('P.IVA / CF', contract.piva)}
           ${row('Email cliente', contract.email)}
           ${row('Cellulare', contract.cellulare)}
@@ -2399,10 +2433,27 @@ async function sendContractNotification(agentName, contract, saveMode) {
     await resend.emails.send({
       from: CONFIG.resendFromEmail,
       to: CONFIG.notifyEmail,
-      subject: `Nuovo contratto: ${contract.ragioneSociale} — ${agentName}`,
+      subject: `Nuovo contratto: ${cleanSubjectText(contract.ragioneSociale)} — ${cleanSubjectText(agentName)}`,
       html,
     });
   } catch (err) {
     console.error('[notify] Errore invio mail notifica:', err.message);
   }
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => {
+    const entities = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;',
+    };
+    return entities[char];
+  });
+}
+
+function cleanSubjectText(value) {
+  return cleanText(value).replace(/[\r\n]+/g, ' ');
 }
