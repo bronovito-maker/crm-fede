@@ -137,6 +137,7 @@ describe('buildAdminStats', () => {
         statoContratto: 'Caricato',
         tipoFornitura: 'luce',
         categoriaCliente: 'Prospect',
+        tipoOperazione: ['switch'],
         cbMaturata: 85,
       },
       {
@@ -197,6 +198,7 @@ describe('buildAdminStats', () => {
         statoContratto: 'OK',
         tipoFornitura: 'luce',
         categoriaCliente: 'Prospect',
+        tipoOperazione: ['switch'],
         cbMaturata: 85,
       },
       {
@@ -298,13 +300,35 @@ describe('buildAdminStats', () => {
         tipoOperazione: ['subentro'],
         cbMaturata: 85,
       },
+      {
+        agenteId: 1,
+        dataInserimento: `${month}-06`,
+        trimestreRiferimento: quarter,
+        annoRiferimento: year,
+        statoContratto: 'OK',
+        tipoFornitura: 'gas',
+        categoriaCliente: 'Prospect',
+        tipoOperazione: ['subentro'],
+        cbMaturata: 85,
+      },
+      {
+        agenteId: 1,
+        dataInserimento: `${month}-07`,
+        trimestreRiferimento: quarter,
+        annoRiferimento: year,
+        statoContratto: 'Inviato',
+        tipoFornitura: 'gas',
+        categoriaCliente: 'Prospect',
+        tipoOperazione: ['switch + voltura'],
+        cbMaturata: 85,
+      },
     ];
 
     const result = buildAdminStats(agents, contracts);
 
-    assert.equal(result.agents[0].targetMensileDone, 2);
-    assert.equal(result.agents[0].percentualeTargetMensile, 40);
-    assert.equal(result.totals.targetMensileDone, 2);
+    assert.equal(result.agents[0].targetMensileDone, 4);
+    assert.equal(result.agents[0].percentualeTargetMensile, 80);
+    assert.equal(result.totals.targetMensileDone, 4);
   });
 
   it('ignora le bozze nei conteggi e nelle statistiche admin', () => {
@@ -1022,6 +1046,7 @@ describe('HTTP routes', () => {
               anno_riferimento: year,
               stato_contratto: { value: 'Caricato' },
               tipo_fornitura: { value: 'luce' },
+              tipo_operazione: [{ value: 'switch' }],
               categoria_cliente: { value: 'Prospect' },
               cb_unitaria_snapshot: '85',
               cb_maturata: '85',

@@ -58,6 +58,7 @@ const allowedClientTypes = new Set(['Business', 'Privato', 'Condominio']);
 const allowedCustomerCategories = new Set(['Prospect', 'Switch ricorrente']);
 const allowedStatuses = new Set(['Bozza', 'Caricato', 'Inviato', 'OK', 'K.O.', 'Switch - Out']);
 const allowedOperations = new Set(['switch', 'switch + voltura', 'cambio listino', 'subentro']);
+const targetProgressOperations = new Set(['switch', 'switch + voltura', 'subentro']);
 const allowedSupplyTypes = new Set(['luce', 'gas', 'dual']);
 const allowedPaymentMethods = new Set(['bollettino', 'rid']);
 const maxContractFiles = 10;
@@ -2075,7 +2076,14 @@ function isCountedInTargetProgress(contract) {
   return (
     ['OK', 'Caricato', 'Inviato'].includes(String(contract?.statoContratto || '').trim()) &&
     cleanText(contract?.categoriaCliente).toLowerCase() === 'prospect' &&
-    !contractHasOperation(contract, 'cambio listino')
+    hasTargetProgressOperation(contract)
+  );
+}
+
+function hasTargetProgressOperation(contract) {
+  if (contractHasOperation(contract, 'cambio listino')) return false;
+  return [...targetProgressOperations].some((operation) =>
+    contractHasOperation(contract, operation)
   );
 }
 

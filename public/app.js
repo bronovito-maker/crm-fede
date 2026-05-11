@@ -768,8 +768,14 @@ function currentMonthContracts() {
   );
 }
 
-function getSummary() {
-  const monthly = currentMonthContracts();
+function currentPersonalMonthContracts() {
+  return contracts.filter(
+    (contract) =>
+      contractMonthRef(contract) === selectedViewMonth && contract.statoContratto !== 'Bozza'
+  );
+}
+
+function getSummary(monthly = currentMonthContracts()) {
   const ok = monthly.filter((contract) => contract.statoContratto === 'OK');
   const caricati = monthly.filter((contract) => contract.statoContratto === 'Caricato');
   const inviati = monthly.filter((contract) => contract.statoContratto === 'Inviato');
@@ -1228,7 +1234,7 @@ function statusClass(status) {
 }
 
 function renderCbPage() {
-  const summary = getSummary();
+  const summary = getSummary(currentPersonalMonthContracts());
   const selectedCategory = String(cbCategoryFilter || 'all')
     .trim()
     .toLowerCase();
@@ -2875,7 +2881,7 @@ function isCountedInProgress(contract) {
   return (
     String(contract?.categoriaCliente || '')
       .trim()
-      .toLowerCase() === 'prospect' && !isCambioListinoOperation(contract)
+      .toLowerCase() === 'prospect' && isCountedProgressOperation(contract)
   );
 }
 
@@ -2885,7 +2891,16 @@ function isCountedInMonthlyOverallProgress(contract) {
     .toLowerCase();
   return (
     (category === 'prospect' || category === 'switch ricorrente') &&
-    !isCambioListinoOperation(contract)
+    isCountedProgressOperation(contract)
+  );
+}
+
+function isCountedProgressOperation(contract) {
+  return (
+    !isCambioListinoOperation(contract) &&
+    ['switch', 'switch + voltura', 'subentro'].some((operation) =>
+      contractMatchesOperationFilter(contract, operation)
+    )
   );
 }
 
