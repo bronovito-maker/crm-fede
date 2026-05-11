@@ -661,26 +661,30 @@
 
         <section class="page" id="contracts">
           <div class="filters">
-            <input id="search-input" type="search" placeholder="Cerca cliente, telefono, email" />
+            <input
+              id="search-input"
+              type="search"
+              placeholder="Cerca cliente, telefono, email, ID"
+            />
             <select
               id="contracts-scope-filter"
               class="admin-only"
               aria-label="Perimetro contratti admin"
               hidden
             >
-              <option value="all">Tutti</option>
+              <option value="all">Agenti: tutti</option>
             </select>
             <select id="month-filter" aria-label="Filtra per mese">
-              <option value="all">Tutti i mesi</option>
+              <option value="all">Mese: tutti</option>
             </select>
             <select id="status-filter" aria-label="Filtra per stato">
-              <option value="all">Tutti gli stati</option>
-              <option value="Bozza">Bozza</option>
-              <option value="OK">OK</option>
-              <option value="Caricato">Caricato</option>
-              <option value="Inviato">Inviato</option>
-              <option value="K.O.">K.O.</option>
-              <option value="Switch - Out">Switch - Out</option>
+              <option value="all">Stato: tutti</option>
+              <option value="Bozza">Stato: Bozza</option>
+              <option value="OK">Stato: OK</option>
+              <option value="Caricato">Stato: Caricato</option>
+              <option value="Inviato">Stato: Inviato</option>
+              <option value="K.O.">Stato: K.O.</option>
+              <option value="Switch - Out">Stato: Switch Out</option>
             </select>
             <select
               id="contracts-category-filter"
@@ -688,16 +692,16 @@
               aria-label="Filtra per categoria cliente"
               hidden
             >
-              <option value="all">Tutti</option>
-              <option value="prospect">Prospect</option>
-              <option value="switch ricorrente">Switch ricorrenti</option>
+              <option value="all">Clienti: tutti</option>
+              <option value="prospect">Clienti: Prospect</option>
+              <option value="switch ricorrente">Clienti: Switch ricorrenti</option>
             </select>
             <select id="contracts-operation-filter" aria-label="Filtra per tipo operazione">
-              <option value="all">Tutte le operazioni</option>
-              <option value="switch">Switch</option>
-              <option value="switch + voltura">Switch + voltura</option>
-              <option value="cambio listino">Cambio listino</option>
-              <option value="subentro">Subentro</option>
+              <option value="all">Operaz.: tutte</option>
+              <option value="switch">Operaz.: Switch</option>
+              <option value="switch + voltura">Operaz.: Switch + voltura</option>
+              <option value="cambio listino">Operaz.: Cambio listino</option>
+              <option value="subentro">Operaz.: Subentro</option>
             </select>
           </div>
           <p id="contracts-scope-feedback" role="status" aria-live="polite"></p>
@@ -748,16 +752,16 @@
                 placeholder="Cerca cliente, telefono, email, ID contratto"
               />
               <select id="cb-category-filter" aria-label="Filtra CB per categoria cliente">
-                <option value="all">Tutti</option>
-                <option value="prospect">Prospect</option>
-                <option value="switch ricorrente">Switch ricorrenti</option>
+                <option value="all">Clienti: tutti</option>
+                <option value="prospect">Clienti: Prospect</option>
+                <option value="switch ricorrente">Clienti: Switch ricorrenti</option>
               </select>
               <select id="cb-operation-filter" aria-label="Filtra CB per tipo operazione">
-                <option value="all">Tutte le operazioni</option>
-                <option value="switch">Switch</option>
-                <option value="switch + voltura">Switch + voltura</option>
-                <option value="cambio listino">Cambio listino</option>
-                <option value="subentro">Subentro</option>
+                <option value="all">Operaz.: tutte</option>
+                <option value="switch">Operaz.: Switch</option>
+                <option value="switch + voltura">Operaz.: Switch + voltura</option>
+                <option value="cambio listino">Operaz.: Cambio listino</option>
+                <option value="subentro">Operaz.: Subentro</option>
               </select>
             </div>
             <div class="table-wrap flat">

@@ -228,6 +228,8 @@ let supplierOptionsLoaded = false;
 let contractsScopeFilter = 'mine';
 let contractsScopeFeedbackTimer = null;
 let activePage = 'dashboard';
+let adminDataLoaded = false;
+let adminDataRefreshPromise = null;
 
 const pages = {
   dashboard: 'Dashboard',
@@ -646,23 +648,7 @@ document.getElementById('contracts-scope-filter').addEventListener('change', asy
     isAdminGlobalScope ? '' : 'success'
   );
   if (isAdminGlobalScope) {
-    try {
-      adminState.contracts = await baserowClient.listAdminContracts();
-      setContractsScopeFeedback(
-        selectedAgentId
-          ? 'Contratti caricati per agente selezionato.'
-          : 'Caricati tutti i contratti.',
-        'success'
-      );
-    } catch (error) {
-      setFormFeedback('error', error.message || 'Impossibile caricare i contratti globali.');
-      // Manteniamo il filtro selezionato anche in caso di errore, con fallback dati locali.
-      adminState.contracts = contracts.slice();
-      setContractsScopeFeedback(
-        'Impossibile caricare tutti i contratti: uso temporaneo dei soli tuoi.',
-        'error'
-      );
-    }
+    await ensureAdminContractsScopeReady();
   }
   renderAll();
 });
@@ -705,8 +691,8 @@ async function loadAndRenderContracts({ silent = false, force = false } = {}) {
   contractsRefreshInFlight = true;
 
   try {
-    // Anche per admin: qui carichiamo sempre il perimetro personale.
-    // I contratti globali restano in adminState.contracts tramite renderAdminPage().
+    // Anche per admin: qui carichiamo sempre e solo il perimetro personale.
+    // I dati globali admin vengono caricati solo da Admin o Contratti quando servono.
     contracts = await baserowClient.listContracts();
     const months = getAvailableMonths();
     if (!months.includes(selectedViewMonth)) {
@@ -761,6 +747,14 @@ function setActivePage(pageId) {
   if (pageId === 'new-contract') {
     syncContractEditorUi();
     loadClients({ silent: true }); // precarica per autocomplete
+  }
+
+  if (pageId === 'contracts') {
+    ensureAdminContractsScopeReady();
+  }
+
+  if (pageId === 'admin') {
+    renderAdminPage();
   }
 }
 
@@ -1414,10 +1408,10 @@ function renderMonthFilter() {
   const selected = select.value || selectedViewMonth || 'all';
 
   select.innerHTML = [
-    `<option value="all">Tutti i mesi</option>`,
+    `<option value="all">Mese: tutti</option>`,
     ...months.map(
       (key) =>
-        `<option value="${key}">${capitalize(formatMonth.format(dateFromMonthKey(key)))}</option>`
+        `<option value="${key}">Mese: ${capitalize(formatMonth.format(dateFromMonthKey(key)))}</option>`
     ),
   ].join('');
   select.value = months.includes(selected) || selected === 'all' ? selected : selectedViewMonth;
@@ -1428,7 +1422,7 @@ function renderMonthFilter() {
     synced.innerHTML = months
       .map(
         (key) =>
-          `<option value="${key}">${capitalize(formatMonth.format(dateFromMonthKey(key)))}</option>`
+          `<option value="${key}">Mese: ${capitalize(formatMonth.format(dateFromMonthKey(key)))}</option>`
       )
       .join('');
     synced.value = months.includes(selectedViewMonth) ? selectedViewMonth : months[0] || '';
@@ -1443,9 +1437,6 @@ function renderAll() {
   renderProgressPage();
   updateAdminVisibility();
   syncContractEditorUi();
-  if (agent.ruolo === 'admin') {
-    renderAdminPage();
-  }
 }
 
 function allKnownContracts() {
@@ -1958,6 +1949,16 @@ function defaultContractsScopeForAgent() {
   return agent?.ruolo === 'admin' ? 'all' : 'mine';
 }
 
+function resetAdminDataCache() {
+  adminDataLoaded = false;
+  adminDataRefreshPromise = null;
+  adminState.stats = null;
+  adminState.agents = [];
+  adminState.contracts = [];
+  adminState.selectedContractIds = [];
+  adminState.supplierCutoffBySupplier = {};
+}
+
 function updateAdminVisibility() {
   document.querySelectorAll('.admin-only').forEach((element) => {
     element.hidden = agent.ruolo !== 'admin';
@@ -2005,33 +2006,20 @@ function populateContractAgentOptions() {
   select.value = hasPreviousValue ? previousValue : String(agent.id);
 }
 
-async function renderAdminPage() {
+async function renderAdminPage({ force = false } = {}) {
   if (agent?.ruolo !== 'admin') return;
   try {
-    const [stats, agents, adminContracts] = await Promise.all([
-      baserowClient.getAdminStats(),
-      baserowClient.listAdminAgents(),
-      baserowClient.listAdminContracts(),
-    ]);
-    adminState.stats = stats;
-    adminState.agents = agents;
-    adminState.contracts = adminContracts;
+    const { stats, agents, adminContracts } = await refreshAdminData({ force });
     populateContractsScopeFilterOptions();
-    if (agent?.ruolo === 'admin' && contractsScopeFilter !== 'mine') {
-      // Quando arrivano i contratti globali async, sincronizza tutte le viste che usano lo scope.
-      renderMonthFilter();
-      renderDashboard();
-      renderContractsTable();
-      renderCbPage();
-      renderProgressPage();
-    }
     syncAdminFilterControls();
     renderAdminMetrics(stats);
     populateAdminFilterOptions(agents);
     populateContractAgentOptions();
     renderAdminAgentList(stats, agents);
     renderAdminContracts(adminContracts, agents);
-    await loadAdminSupplierCutoffs();
+    if (activePage === 'admin') {
+      await loadAdminSupplierCutoffs({ silent: true });
+    }
   } catch (error) {
     document.getElementById('admin-agent-list').innerHTML = `
       <div class="empty-state compact">
@@ -2044,6 +2032,69 @@ async function renderAdminPage() {
     document.getElementById('admin-contracts-empty').hidden = false;
     setAdminSupplierCutoffFeedback('error', error.message || 'Cut-off fornitore non disponibile.');
   }
+}
+
+async function ensureAdminContractsScopeReady({ force = false } = {}) {
+  if (agent?.ruolo !== 'admin' || contractsScopeFilter === 'mine') return;
+  const selectedAgentId = selectedAdminContractsAgentId();
+
+  try {
+    await refreshAdminData({ force });
+    populateContractsScopeFilterOptions();
+    renderMonthFilter();
+    renderContractsTable();
+    setContractsScopeFeedback(
+      selectedAgentId
+        ? 'Contratti caricati per agente selezionato.'
+        : 'Caricati tutti i contratti.',
+      'success'
+    );
+  } catch (error) {
+    setFormFeedback('error', error.message || 'Impossibile caricare i contratti globali.');
+    // Manteniamo il filtro selezionato anche in caso di errore, con fallback dati locali.
+    adminState.contracts = contracts.slice();
+    adminState.agents = adminState.agents.length ? adminState.agents : [agent];
+    setContractsScopeFeedback(
+      'Impossibile caricare tutti i contratti: uso temporaneo dei soli tuoi.',
+      'error'
+    );
+    renderMonthFilter();
+    renderContractsTable();
+  }
+}
+
+async function refreshAdminData({ force = false } = {}) {
+  if (agent?.ruolo !== 'admin') return null;
+  if (!force && adminDataLoaded && adminState.stats) {
+    return {
+      stats: adminState.stats,
+      agents: adminState.agents,
+      adminContracts: adminState.contracts,
+    };
+  }
+
+  if (adminDataRefreshPromise) {
+    if (!force) return adminDataRefreshPromise;
+    await adminDataRefreshPromise.catch(() => {});
+  }
+
+  adminDataRefreshPromise = Promise.all([
+    baserowClient.getAdminStats(),
+    baserowClient.listAdminAgents(),
+    baserowClient.listAdminContracts(),
+  ])
+    .then(([stats, agents, adminContracts]) => {
+      adminState.stats = stats;
+      adminState.agents = agents;
+      adminState.contracts = adminContracts;
+      adminDataLoaded = true;
+      return { stats, agents, adminContracts };
+    })
+    .finally(() => {
+      adminDataRefreshPromise = null;
+    });
+
+  return adminDataRefreshPromise;
 }
 
 function renderAdminMetrics(stats) {
@@ -2247,7 +2298,7 @@ function renderAdminContracts(adminContracts, agents) {
       try {
         await baserowClient.updateAdminContractSent(contractId, nextValue);
         await loadAndRenderContracts({ silent: true, force: true });
-        await renderAdminPage();
+        await renderAdminPage({ force: true });
       } catch (error) {
         setAdminFeedback('error', error.message || 'Stato contratto non aggiornato.');
       } finally {
@@ -2416,7 +2467,7 @@ async function bulkMarkSelectedSent() {
     await Promise.all(ids.map((id) => baserowClient.updateAdminContractSent(id, true)));
     adminState.selectedContractIds = [];
     await loadAndRenderContracts({ silent: true, force: true });
-    await renderAdminPage();
+    await renderAdminPage({ force: true });
     setAdminFeedback('success', `${ids.length} contratti segnati come inviati.`);
   } catch (error) {
     setAdminFeedback('error', error.message || 'Aggiornamento multiplo non riuscito.');
@@ -2552,7 +2603,7 @@ async function handleAdminAgentSubmit(event) {
       setAdminFeedback('success', 'Agente creato.');
       resetAdminAgentForm();
     }
-    await renderAdminPage();
+    await renderAdminPage({ force: true });
     if (agentId) {
       resetAdminAgentForm();
     }
@@ -2748,6 +2799,7 @@ async function handleLogin(event) {
     });
 
     agent = session.agent;
+    resetAdminDataCache();
     contractsScopeFilter = defaultContractsScopeForAgent();
     await loadSuppliers({ silent: true, force: true });
     await loadCurrentCompetence({ silent: true });
@@ -2775,6 +2827,7 @@ async function handleLogout() {
   }
 
   contracts = [];
+  resetAdminDataCache();
   contractsScopeFilter = 'mine';
   closeContractModal();
   setActivePage('dashboard');
@@ -2931,10 +2984,10 @@ function populateContractsScopeFilterOptions() {
     .sort((left, right) => left.nome.localeCompare(right.nome, 'it'));
 
   select.innerHTML = [
-    '<option value="all">Tutti</option>',
+    '<option value="all">Agenti: tutti</option>',
     ...options.map((agentRow) => {
       const suffix = agentRow.attivo === false ? ' (disattivo)' : '';
-      return `<option value="agent:${agentRow.id}">${escapeHtml(agentRow.nome)}${suffix}</option>`;
+      return `<option value="agent:${agentRow.id}">Agente: ${escapeHtml(agentRow.nome)}${suffix}</option>`;
     }),
   ].join('');
 
@@ -3123,6 +3176,7 @@ async function initApp() {
         }
 
         agent = session.agent;
+        resetAdminDataCache();
         contractsScopeFilter = defaultContractsScopeForAgent();
         await loadSuppliers({ silent: true, force: true });
         await loadCurrentCompetence({ silent: true });
