@@ -227,6 +227,7 @@ let cbOperationFilter = 'all';
 let supplierOptionsLoaded = false;
 let contractsScopeFilter = 'mine';
 let contractsScopeFeedbackTimer = null;
+let activePage = 'dashboard';
 
 const pages = {
   dashboard: 'Dashboard',
@@ -723,6 +724,7 @@ async function loadAndRenderContracts({ silent = false, force = false } = {}) {
 }
 
 function setActivePage(pageId) {
+  activePage = pageId;
   document
     .querySelectorAll('.page')
     .forEach((page) => page.classList.toggle('active', page.id === pageId));
@@ -739,6 +741,7 @@ function setActivePage(pageId) {
 
   // Eyebrow sempre con il mese selezionato
   document.getElementById('current-period').textContent = currentPeriodLabel();
+  renderMonthFilter();
   updateMonthNavigationUi();
   renderSelectedMonthLabels();
 
@@ -762,13 +765,6 @@ function setActivePage(pageId) {
 }
 
 function currentMonthContracts() {
-  return visibleContractsByScope().filter(
-    (contract) =>
-      contractMonthRef(contract) === selectedViewMonth && contract.statoContratto !== 'Bozza'
-  );
-}
-
-function currentPersonalMonthContracts() {
   return contracts.filter(
     (contract) =>
       contractMonthRef(contract) === selectedViewMonth && contract.statoContratto !== 'Bozza'
@@ -1234,7 +1230,7 @@ function statusClass(status) {
 }
 
 function renderCbPage() {
-  const summary = getSummary(currentPersonalMonthContracts());
+  const summary = getSummary();
   const selectedCategory = String(cbCategoryFilter || 'all')
     .trim()
     .toLowerCase();
@@ -1363,7 +1359,7 @@ function renderProgressPage() {
   const progressMissing = Math.max(agent.targetMensile - overallMonthDone, 0);
   const progressPercent = percent(overallMonthDone, agent.targetMensile);
   const recurringMonthPercent = percent(prospectUnits, agent.targetMensile);
-  const quarterDone = visibleContractsByScope()
+  const quarterDone = contracts
     .filter(
       (contract) =>
         contractQuarterRef(contract) === quarterKey &&
@@ -1371,7 +1367,7 @@ function renderProgressPage() {
         isContractOperationalForProgress(contract)
     )
     .reduce((sum, contract) => sum + contractUnitCount(contract), 0);
-  const yearDone = visibleContractsByScope()
+  const yearDone = contracts
     .filter(
       (contract) =>
         contractYearRef(contract) === yearKey &&
@@ -2843,7 +2839,7 @@ function renderSelectedMonthLabels() {
 }
 
 function getAvailableMonths() {
-  const sourceContracts = visibleContractsByScope();
+  const sourceContracts = activePage === 'contracts' ? visibleContractsByScope() : contracts;
   return Array.from(
     new Set([
       currentCompetence.month,
