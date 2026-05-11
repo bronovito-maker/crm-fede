@@ -2248,10 +2248,10 @@ function renderAdminContracts(adminContracts, agents) {
   const daInviareOra = okDaInviare + caricatiDaGestire;
 
   counters.innerHTML = [
-    adminCounterCard('Da inviare ora', daInviareOra, 'urgent'),
-    adminCounterCard('OK da inviare', okDaInviare, 'attention'),
-    adminCounterCard('Caricati da gestire', caricatiDaGestire, 'warning'),
-    adminCounterCard('Già inviati', inviati, 'neutral'),
+    adminCounterCard('Pratiche da inviare', daInviareOra, 'urgent'),
+    adminCounterCard('Pratiche OK da inviare', okDaInviare, 'attention'),
+    adminCounterCard('Pratiche caricate da gestire', caricatiDaGestire, 'warning'),
+    adminCounterCard('Pratiche già inviate', inviati, 'neutral'),
   ].join('');
 
   adminState.selectedContractIds = adminState.selectedContractIds
