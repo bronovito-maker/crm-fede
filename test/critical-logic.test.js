@@ -254,7 +254,7 @@ describe('buildAdminStats', () => {
     assert.equal(laura.percentualeTargetMensile, 0);
   });
 
-  it('conteggia nei target admin solo prospect operativi e mai cambio listino', () => {
+  it('conteggia nei target admin solo prospect operativi ed esclude cambio listino', () => {
     const contracts = [
       {
         agenteId: 1,
@@ -322,13 +322,23 @@ describe('buildAdminStats', () => {
         tipoOperazione: ['switch + voltura'],
         cbMaturata: 85,
       },
+      {
+        agenteId: 1,
+        dataInserimento: `${month}-08`,
+        trimestreRiferimento: quarter,
+        annoRiferimento: year,
+        statoContratto: 'OK',
+        tipoFornitura: 'gas',
+        categoriaCliente: 'Prospect',
+        cbMaturata: 85,
+      },
     ];
 
     const result = buildAdminStats(agents, contracts);
 
-    assert.equal(result.agents[0].targetMensileDone, 4);
-    assert.equal(result.agents[0].percentualeTargetMensile, 80);
-    assert.equal(result.totals.targetMensileDone, 4);
+    assert.equal(result.agents[0].targetMensileDone, 5);
+    assert.equal(result.agents[0].percentualeTargetMensile, 100);
+    assert.equal(result.totals.targetMensileDone, 5);
   });
 
   it('ignora le bozze nei conteggi e nelle statistiche admin', () => {

@@ -2881,7 +2881,7 @@ function isCountedInProgress(contract) {
   return (
     String(contract?.categoriaCliente || '')
       .trim()
-      .toLowerCase() === 'prospect' && isCountedProgressOperation(contract)
+      .toLowerCase() === 'prospect' && !isCambioListinoOperation(contract)
   );
 }
 
@@ -2891,16 +2891,7 @@ function isCountedInMonthlyOverallProgress(contract) {
     .toLowerCase();
   return (
     (category === 'prospect' || category === 'switch ricorrente') &&
-    isCountedProgressOperation(contract)
-  );
-}
-
-function isCountedProgressOperation(contract) {
-  return (
-    !isCambioListinoOperation(contract) &&
-    ['switch', 'switch + voltura', 'subentro'].some((operation) =>
-      contractMatchesOperationFilter(contract, operation)
-    )
+    !isCambioListinoOperation(contract)
   );
 }
 
