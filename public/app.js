@@ -751,7 +751,7 @@ function setActivePage(pageId) {
 
   if (pageId === 'new-contract') {
     syncContractEditorUi();
-    ensureAdminAgentsReady();
+    ensureAdminAgentsReady({ force: true });
     loadClients({ silent: true }); // precarica per autocomplete
   }
 
@@ -1118,7 +1118,7 @@ function contractRow(contract) {
       <td data-label="Data inserimento">${formatDate.format(new Date(contract.dataInserimento))}</td>
       <td data-label="Inizio fornitura">${supplyDate}</td>
       <td data-label="Stato">${statusBadge(contract.statoContratto)}</td>
-      <td data-label="Luce/Dual/Gas">${escapeHtml(capitalize(contract.tipoFornitura || 'Non inserita'))}</td>
+      <td data-label="Fornitura">${escapeHtml(capitalize(contract.tipoFornitura || 'Non inserita'))}</td>
       <td data-label="ID contratto">${escapeHtml(contract.idContratto || 'ID non inserito')}</td>
       <td data-label="Telefono">${escapeHtml(contract.cellulare)}</td>
     </tr>
@@ -2029,6 +2029,13 @@ function populateContractAgentOptions(preferredValue = '') {
   }
 
   const hasFullAgentList = adminAgentsLoaded && adminState.agents.length > 0;
+  if (!hasFullAgentList && adminAgentsRefreshPromise) {
+    select.innerHTML = '<option value="">Caricamento agenti...</option>';
+    select.required = true;
+    select.disabled = true;
+    return;
+  }
+
   const options = (hasFullAgentList ? adminState.agents : [agent])
     .slice()
     .sort((left, right) => left.nome.localeCompare(right.nome, 'it'));
@@ -2054,6 +2061,7 @@ function populateContractAgentOptions(preferredValue = '') {
       : []),
   ].join('');
   select.required = true;
+  select.disabled = false;
 
   if (requestedValue && (optionValues.has(requestedValue) || needsPendingOption)) {
     select.value = requestedValue;
@@ -2088,6 +2096,7 @@ async function ensureAdminAgentsReady({ force = false } = {}) {
     })
     .catch((error) => {
       console.warn('Impossibile caricare la lista agenti admin:', error);
+      adminAgentsLoaded = false;
       populateContractAgentOptions();
       return adminState.agents;
     })
