@@ -915,6 +915,7 @@ describe('HTTP routes', () => {
   afterEach(async () => {
     global.fetch = originalFetch;
     invalidateContractsCache(1);
+    invalidateContractsCache(2);
     invalidateContractsCache(7);
     invalidateAdminStatsCache();
   });
@@ -1207,6 +1208,8 @@ describe('HTTP routes', () => {
 
     assert.equal(response.status, 201);
     assert.equal(response.body.id, 501);
+    assert.equal(response.body.agenteId, agentId);
+    assert.equal(response.body.agenteNome, 'Agente Test');
     assert.equal(response.body.unitCount, 2);
     assert.equal(response.body.commissionValue, 170);
     assert.ok(calls.length >= 3);
@@ -1272,8 +1275,85 @@ describe('HTTP routes', () => {
     });
 
     assert.equal(response.status, 201);
+    assert.equal(response.body.agenteId, agentId);
+    assert.equal(response.body.agenteNome, 'Agente Test');
     assert.equal(response.body.statoContratto, 'Bozza');
     assert.equal(response.body.cbMaturata, 0);
+  });
+
+  it('POST /api/contracts permette all admin di assegnare una bozza a un altro agente', async () => {
+    const adminId = 1;
+    const assignedAgentId = 2;
+    const agentTableId = process.env.BASEROW_TABLE_AGENTI_ID;
+    const contractTableId = process.env.BASEROW_TABLE_CONTRATTI_ID;
+
+    global.fetch = async (url, options = {}) => {
+      const parsed = new URL(url);
+
+      if (parsed.pathname === `/api/database/rows/table/${agentTableId}/${adminId}/`) {
+        return mockJsonResponse({
+          id: adminId,
+          nome: 'Admin Uno',
+          email: 'admin@example.it',
+          ruolo: { value: 'admin' },
+          attivo: true,
+          cb_unitaria: '90',
+          target_mensile: '5',
+          target_trimestrale: '12',
+          target_annuale: '48',
+        });
+      }
+
+      if (parsed.pathname === `/api/database/rows/table/${agentTableId}/${assignedAgentId}/`) {
+        return mockJsonResponse({
+          id: assignedAgentId,
+          nome: 'Agente Due',
+          email: 'agente2@example.it',
+          ruolo: { value: 'agente' },
+          attivo: true,
+          cb_unitaria: '75',
+          target_mensile: '6',
+          target_trimestrale: '18',
+          target_annuale: '72',
+        });
+      }
+
+      if (parsed.pathname === `/api/database/rows/table/${contractTableId}/`) {
+        assert.equal(options.method, 'POST');
+        const payload = JSON.parse(options.body);
+        assert.deepEqual(payload.agente, [assignedAgentId]);
+        assert.equal(payload.ragione_sociale, 'UNIPORT');
+        assert.equal(payload.stato_contratto, 'Bozza');
+        assert.equal(payload.cb_unitaria_snapshot, 75);
+
+        return mockJsonResponse({
+          id: 778,
+          agente: [{ id: assignedAgentId }],
+          data_inserimento: '2026-05-12',
+          ragione_sociale: 'UNIPORT',
+          stato_contratto: { value: 'Bozza' },
+          cb_unitaria_snapshot: '75',
+          cb_maturata: '0',
+        });
+      }
+
+      return mockJsonResponse({ detail: 'not found' }, { status: 404 });
+    };
+
+    const response = await invokeRouteJson(app, '/api/contracts', 'post', {
+      session: { agentId: adminId },
+      body: {
+        saveMode: 'draft',
+        agenteId: String(assignedAgentId),
+        ragioneSociale: 'UNIPORT',
+      },
+      files: [],
+    });
+
+    assert.equal(response.status, 201);
+    assert.equal(response.body.agenteId, assignedAgentId);
+    assert.equal(response.body.agenteNome, 'Agente Due');
+    assert.equal(response.body.statoContratto, 'Bozza');
   });
 
   it('PATCH /api/contracts/:id/status aggiorna lo stato solo se il contratto appartiene all agente', async () => {

@@ -230,6 +230,8 @@ let contractsScopeFeedbackTimer = null;
 let activePage = 'dashboard';
 let adminDataLoaded = false;
 let adminDataRefreshPromise = null;
+let adminAgentsLoaded = false;
+let adminAgentsRefreshPromise = null;
 
 const pages = {
   dashboard: 'Dashboard',
@@ -553,6 +555,9 @@ document.getElementById('contract-form').addEventListener('submit', async (event
       } else {
         await baserowClient.createContract(payload);
       }
+      if (agent.ruolo === 'admin') {
+        invalidateAdminContractsCache();
+      }
       await loadAndRenderContracts({ silent: true, force: true });
       setFormFeedback(
         'success',
@@ -746,6 +751,7 @@ function setActivePage(pageId) {
 
   if (pageId === 'new-contract') {
     syncContractEditorUi();
+    ensureAdminAgentsReady();
     loadClients({ silent: true }); // precarica per autocomplete
   }
 
@@ -1112,8 +1118,8 @@ function contractRow(contract) {
       <td data-label="Data inserimento">${formatDate.format(new Date(contract.dataInserimento))}</td>
       <td data-label="Inizio fornitura">${supplyDate}</td>
       <td data-label="Stato">${statusBadge(contract.statoContratto)}</td>
-      <td data-label="Tipo">${escapeHtml(contract.tipoCliente)}</td>
-      <td data-label="CB">${formatCurrency(contractCommissionValue(contract))}</td>
+      <td data-label="Luce/Dual/Gas">${escapeHtml(capitalize(contract.tipoFornitura || 'Non inserita'))}</td>
+      <td data-label="ID contratto">${escapeHtml(contract.idContratto || 'ID non inserito')}</td>
       <td data-label="Telefono">${escapeHtml(contract.cellulare)}</td>
     </tr>
   `;
@@ -1129,7 +1135,7 @@ function openContractModal(contractLike) {
     detailItem('Cliente', contract.ragioneSociale),
     detailItem('ID contratto', contract.idContratto || 'Non inserito'),
     detailItem('Stato', capitalize(contract.statoContratto)),
-    detailItem('Agente', contract.agenteNome || 'Sconosciuto'),
+    detailItem('Agente', contract.agenteNome || agentNameById(contract.agenteId) || 'Sconosciuto'),
     detailItem('Data inserimento', formatDate.format(new Date(contract.dataInserimento))),
     detailItem(
       'Inizio fornitura',
@@ -1443,6 +1449,23 @@ function allKnownContracts() {
   return [...contracts, ...adminState.contracts].filter(Boolean);
 }
 
+function agentRowById(agentId) {
+  const numericId = Number(agentId);
+  if (!Number.isFinite(numericId)) return null;
+  if (agent && Number(agent.id) === numericId) return agent;
+  return adminState.agents.find((agentRow) => Number(agentRow.id) === numericId) || null;
+}
+
+function agentNameById(agentId) {
+  return agentRowById(agentId)?.nome || '';
+}
+
+function agentCommissionById(agentId) {
+  const agentRow = agentRowById(agentId);
+  const value = Number(agentRow?.cbUnitaria);
+  return Number.isFinite(value) ? value : Number(agent?.cbUnitaria || 0);
+}
+
 function findContractById(contractLike) {
   if (contractLike && typeof contractLike === 'object') return contractLike;
   return allKnownContracts().find((item) => Number(item.id) === Number(contractLike));
@@ -1502,7 +1525,11 @@ function populateContractForm(contract) {
   });
 
   if (agent.ruolo === 'admin' && form.elements.agenteId) {
-    form.elements.agenteId.value = contract.agenteId ? String(contract.agenteId) : String(agent.id);
+    const contractAgentId = contract.agenteId ? String(contract.agenteId) : String(agent.id);
+    form.elements.agenteId.dataset.pendingValue = contractAgentId;
+    populateContractAgentOptions(contractAgentId);
+    form.elements.agenteId.value = contractAgentId;
+    ensureAdminAgentsReady();
   }
 
   selectedContractFiles = [];
@@ -1530,7 +1557,8 @@ function resetContractEditor({ keepFeedback = false } = {}) {
   existingContractFiles = [];
   renderSelectedContractFiles();
   if (agent.ruolo === 'admin' && form.elements.agenteId) {
-    form.elements.agenteId.value = String(agent.id);
+    populateContractAgentOptions(String(agent.id));
+    ensureAdminAgentsReady();
   }
   form.elements.statoContratto.value = 'Caricato';
   updateConditionalFields();
@@ -1540,9 +1568,12 @@ function resetContractEditor({ keepFeedback = false } = {}) {
   }
 }
 
-function startEditingContract(contractLike) {
+async function startEditingContract(contractLike) {
   const contract = findContractById(contractLike);
   if (!contract) return;
+  if (agent?.ruolo === 'admin') {
+    await ensureAdminAgentsReady();
+  }
 
   contractEditorState.editingId = Number(contract.id);
   contractEditorState.originalStatus = contract.statoContratto || 'Caricato';
@@ -1555,10 +1586,10 @@ function startEditingContract(contractLike) {
     .scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function startEditingCurrentContract() {
+async function startEditingCurrentContract() {
   const contractId = Number(document.getElementById('edit-contract-button').dataset.contractId);
   if (!contractId) return;
-  startEditingContract(contractId);
+  await startEditingContract(contractId);
 }
 
 async function handleDeleteCurrentContract() {
@@ -1607,11 +1638,13 @@ function buildContractDraft(form, saveMode = 'submit') {
     agent.ruolo === 'admin'
       ? Number.parseInt(String(form.get('agenteId') || ''), 10) || agent.id
       : agent.id;
+  const assignedCommission = agentCommissionById(assignedAgentId);
 
   return {
     id: Date.now(),
     saveMode,
     agenteId: assignedAgentId,
+    agenteNome: agentNameById(assignedAgentId) || agent.nome,
     dataInserimento: dateInserimento,
     dataInizioFornitura: calculateSupplyStartDate(dateInserimento, fornitore),
     idContratto: String(form.get('idContratto')).trim(),
@@ -1636,9 +1669,9 @@ function buildContractDraft(form, saveMode = 'submit') {
     fileContratto: selectedContractFiles.slice(),
     existingFileContratto: existingContractFiles.slice(),
     statoContratto: stato,
-    cbUnitariaSnapshot: agent.cbUnitaria,
+    cbUnitariaSnapshot: assignedCommission,
     cbMaturata:
-      stato === 'Bozza' || stato === 'K.O.' || stato === 'Switch - Out' ? 0 : agent.cbUnitaria,
+      stato === 'Bozza' || stato === 'K.O.' || stato === 'Switch - Out' ? 0 : assignedCommission,
   };
 }
 
@@ -1952,11 +1985,20 @@ function defaultContractsScopeForAgent() {
 function resetAdminDataCache() {
   adminDataLoaded = false;
   adminDataRefreshPromise = null;
+  adminAgentsLoaded = false;
+  adminAgentsRefreshPromise = null;
   adminState.stats = null;
   adminState.agents = [];
   adminState.contracts = [];
   adminState.selectedContractIds = [];
   adminState.supplierCutoffBySupplier = {};
+}
+
+function invalidateAdminContractsCache() {
+  adminDataLoaded = false;
+  adminState.stats = null;
+  adminState.contracts = [];
+  adminState.selectedContractIds = [];
 }
 
 function updateAdminVisibility() {
@@ -1975,20 +2017,27 @@ function updateAdminVisibility() {
   populateContractAgentOptions();
 }
 
-function populateContractAgentOptions() {
+function populateContractAgentOptions(preferredValue = '') {
   const select = document.getElementById('contract-agent-select');
   if (!select) return;
 
   if (agent.ruolo !== 'admin') {
     select.innerHTML = '';
     select.required = false;
+    delete select.dataset.pendingValue;
     return;
   }
 
-  const options = (adminState.agents.length ? adminState.agents : [agent])
+  const hasFullAgentList = adminAgentsLoaded && adminState.agents.length > 0;
+  const options = (hasFullAgentList ? adminState.agents : [agent])
     .slice()
     .sort((left, right) => left.nome.localeCompare(right.nome, 'it'));
-  const previousValue = String(select.value || '').trim();
+  const requestedValue = String(
+    preferredValue || select.dataset.pendingValue || select.value || ''
+  ).trim();
+  const optionValues = new Set(options.map((agentRow) => String(agentRow.id)));
+  const needsPendingOption =
+    requestedValue && !optionValues.has(requestedValue) && !hasFullAgentList;
 
   select.innerHTML = [
     '<option value="">Seleziona agente</option>',
@@ -1998,12 +2047,55 @@ function populateContractAgentOptions() {
           agentRow.attivo === false ? ' (disattivo)' : ''
         }</option>`
     ),
+    ...(needsPendingOption
+      ? [
+          `<option value="${escapeHtml(requestedValue)}">Agente selezionato (${escapeHtml(requestedValue)})</option>`,
+        ]
+      : []),
   ].join('');
   select.required = true;
-  const hasPreviousValue = previousValue
-    ? options.some((agentRow) => String(agentRow.id) === previousValue)
-    : false;
-  select.value = hasPreviousValue ? previousValue : String(agent.id);
+
+  if (requestedValue && (optionValues.has(requestedValue) || needsPendingOption)) {
+    select.value = requestedValue;
+    if (needsPendingOption) {
+      select.dataset.pendingValue = requestedValue;
+    } else {
+      delete select.dataset.pendingValue;
+    }
+    return;
+  }
+
+  select.value = String(agent.id);
+  delete select.dataset.pendingValue;
+}
+
+async function ensureAdminAgentsReady({ force = false } = {}) {
+  if (agent?.ruolo !== 'admin') return [];
+  if (!force && adminAgentsLoaded) return adminState.agents;
+  if (typeof baserowClient === 'undefined' || !baserowClient.isConfigured()) {
+    return adminState.agents;
+  }
+  if (adminAgentsRefreshPromise) return adminAgentsRefreshPromise;
+
+  adminAgentsRefreshPromise = baserowClient
+    .listAdminAgents()
+    .then((agents) => {
+      adminState.agents = Array.isArray(agents) ? agents : [];
+      adminAgentsLoaded = true;
+      populateContractsScopeFilterOptions();
+      populateContractAgentOptions();
+      return adminState.agents;
+    })
+    .catch((error) => {
+      console.warn('Impossibile caricare la lista agenti admin:', error);
+      populateContractAgentOptions();
+      return adminState.agents;
+    })
+    .finally(() => {
+      adminAgentsRefreshPromise = null;
+    });
+
+  return adminAgentsRefreshPromise;
 }
 
 async function renderAdminPage({ force = false } = {}) {
@@ -2088,6 +2180,7 @@ async function refreshAdminData({ force = false } = {}) {
       adminState.agents = agents;
       adminState.contracts = adminContracts;
       adminDataLoaded = true;
+      adminAgentsLoaded = true;
       return { stats, agents, adminContracts };
     })
     .finally(() => {

@@ -455,7 +455,7 @@ app.post(
       invalidateAdminStatsCache();
       invalidateClientsCache(assignedAgent.id);
       sendContractNotification(assignedAgent.nome, contract, saveMode).catch(() => {});
-      res.status(201).json(normalizeContract(created));
+      res.status(201).json(normalizeContractForAssignedAgent(created, assignedAgent));
     } catch (error) {
       handleApiError(res, error, 'CONTRACT_NOT_SAVED', 'Contratto non salvato.');
     }
@@ -579,9 +579,10 @@ app.patch(
       invalidateContractsCache(existingAgentId);
       invalidateContractsCache(assignedAgent.id);
       invalidateAdminStatsCache();
+      invalidateClientsCache(existingAgentId);
       invalidateClientsCache(assignedAgentId);
 
-      res.json(normalizeContract(updated));
+      res.json(normalizeContractForAssignedAgent(updated, assignedAgent));
     } catch (error) {
       handleApiError(res, error, 'CONTRACT_NOT_UPDATED', 'Contratto non aggiornato.');
     }
@@ -1923,6 +1924,15 @@ function normalizeContract(row) {
     ...normalized,
     unitCount: contractUnitCount(normalized),
     commissionValue: contractCommissionValue(normalized),
+  };
+}
+
+function normalizeContractForAssignedAgent(row, assignedAgent) {
+  const normalized = normalizeContract(row);
+  return {
+    ...normalized,
+    agenteId: Number(assignedAgent?.id) || normalized.agenteId,
+    agenteNome: assignedAgent?.nome || normalized.agenteNome,
   };
 }
 
