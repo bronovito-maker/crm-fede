@@ -1109,7 +1109,7 @@ function renderContractsTable() {
   }
 }
 
-function renderContractsSummary(filteredContracts, sourceContracts, monthFilter) {
+function renderContractsSummary(filteredContracts, _sourceContracts, monthFilter) {
   const summary = document.getElementById('contracts-summary');
   if (!summary) return;
   if (agent?.ruolo !== 'admin') {
@@ -1117,9 +1117,7 @@ function renderContractsSummary(filteredContracts, sourceContracts, monthFilter)
     return;
   }
 
-  const okFilteredCount = filteredContracts.filter(
-    (contract) => String(contract.statoContratto || '').trim() === 'OK'
-  ).length;
+  const filteredUnits = sumContractUnits(filteredContracts);
   const monthLabel =
     monthFilter && monthFilter !== 'all'
       ? capitalize(formatMonth.format(dateFromMonthKey(monthFilter)))
@@ -1127,9 +1125,9 @@ function renderContractsSummary(filteredContracts, sourceContracts, monthFilter)
 
   summary.innerHTML = `
     <article class="metric-card accent-green">
-      <span>Contratti OK (filtri attivi)</span>
-      <strong>${okFilteredCount}</strong>
-      <small>Perimetro: ${escapeHtml(monthLabel)} · Totale risultati filtrati: ${filteredContracts.length}/${sourceContracts.length}</small>
+      <span>Conteggio contratti filtrati</span>
+      <strong>${filteredUnits}</strong>
+      <small>Perimetro: ${escapeHtml(monthLabel)}</small>
     </article>
   `;
 }
