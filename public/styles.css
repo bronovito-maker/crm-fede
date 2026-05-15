@@ -1935,6 +1935,7 @@ td[data-label='Cliente'] strong {
   overflow-wrap: anywhere;
   color: var(--text);
   line-height: 1.45;
+  white-space: pre-line;
 }
 
 .detail-item a {
@@ -2056,6 +2057,67 @@ td[data-label='Cliente'] strong {
 .same-address-line input[type='checkbox'] {
   width: 16px;
   height: 16px;
+}
+
+.multipod-toggle-line {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.multipod-toggle-line input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+}
+
+.multipod-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.multipod-section {
+  display: grid;
+  gap: 10px;
+}
+
+.multipod-section-head,
+.multipod-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.multipod-section-head strong,
+.multipod-row-head strong {
+  color: var(--text);
+}
+
+.multipod-list {
+  display: grid;
+  gap: 10px;
+}
+
+.multipod-row {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.multipod-row-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.multipod-row-grid label {
+  font-size: 0.9rem;
 }
 
 .admin-actions {

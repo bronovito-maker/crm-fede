@@ -60,6 +60,17 @@ describe('contractUnitCount', () => {
     assert.equal(contractUnitCount({ tipoFornitura: 'luce', tipoOperazione: ['switch'] }), 1);
   });
 
+  it('conta i punti multipod salvati su POD e PDR', () => {
+    assert.equal(
+      contractUnitCount({
+        tipoFornitura: 'dual',
+        pod: 'POD 1: IT001E111\nPOD 2: IT001E222',
+        pdr: 'PDR 1: 123456',
+      }),
+      3
+    );
+  });
+
   it('usa unitCount pre-calcolato se manca tipoFornitura', () => {
     assert.equal(
       contractUnitCount({

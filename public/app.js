@@ -376,6 +376,10 @@ document.querySelectorAll('[data-go-page]').forEach((button) => {
 });
 
 document.getElementById('tipo-fornitura').addEventListener('change', updateConditionalFields);
+document.getElementById('multipod-checkbox')?.addEventListener('change', updateConditionalFields);
+document.querySelectorAll('[data-multipod-add]').forEach((button) => {
+  button.addEventListener('click', () => addMultipodRow(button.dataset.multipodAdd));
+});
 document.getElementById('metodo-pagamento').addEventListener('change', updateConditionalFields);
 document
   .getElementById('fornitore-input')
@@ -1521,6 +1525,7 @@ function syncContractEditorUi() {
 
 function populateContractForm(contract) {
   const form = document.getElementById('contract-form');
+  const multipodRows = parseMultipodRowsFromContract(contract);
   form.elements.ragioneSociale.value = contract.ragioneSociale || '';
   form.elements.cellulare.value = contract.cellulare || '';
   form.elements.tipoCliente.value = contract.tipoCliente || '';
@@ -1541,6 +1546,7 @@ function populateContractForm(contract) {
   applySameAddressStateFromValues();
   form.elements.descrizione.value = contract.descrizione || '';
   form.elements.statoContratto.value = contract.statoContratto || 'Caricato';
+  setMultipodRows(multipodRows);
 
   document.querySelectorAll('input[name="tipoOperazione"]').forEach((input) => {
     input.checked = Array.isArray(contract.tipoOperazione)
@@ -1574,6 +1580,7 @@ function resetContractEditor({ keepFeedback = false } = {}) {
   if (sameAddressCheckbox) {
     sameAddressCheckbox.checked = false;
   }
+  setMultipodRows({ pod: [], pdr: [] });
   setAddressFieldLocked('indirizzo-fornitura-input', false);
   const dropdown = document.getElementById('client-suggestions');
   if (dropdown) dropdown.hidden = true;
@@ -1658,6 +1665,20 @@ function buildContractDraft(form, saveMode = 'submit') {
   const stato = saveMode === 'draft' ? 'Bozza' : normalizeStatus(form.get('statoContratto'));
   const dateInserimento = toInputDate(today);
   const fornitore = String(form.get('fornitore')).trim();
+  const tipoFornitura = String(form.get('tipoFornitura')).trim();
+  const multipodEnabled = isMultipodEnabled();
+  const multipodRows = multipodEnabled ? collectMultipodRows() : { pod: [], pdr: [] };
+  if (multipodEnabled && tipoFornitura === 'luce') multipodRows.pdr = [];
+  if (multipodEnabled && tipoFornitura === 'gas') multipodRows.pod = [];
+  const pod = multipodEnabled
+    ? serializeMultipodCodes('pod', multipodRows.pod)
+    : String(form.get('pod')).trim();
+  const pdr = multipodEnabled
+    ? serializeMultipodCodes('pdr', multipodRows.pdr)
+    : String(form.get('pdr')).trim();
+  const indirizzoFornitura = multipodEnabled
+    ? serializeMultipodAddresses(multipodRows)
+    : String(form.get('indirizzoFornitura')).trim();
   const assignedAgentId =
     agent.ruolo === 'admin'
       ? Number.parseInt(String(form.get('agenteId') || ''), 10) || agent.id
@@ -1680,15 +1701,17 @@ function buildContractDraft(form, saveMode = 'submit') {
     exFornitore: String(form.get('exFornitore')).trim(),
     nomeOfferta: String(form.get('nomeOfferta')).trim(),
     tipoOperazione: [String(form.get('tipoOperazione') || '').trim()].filter(Boolean),
-    tipoFornitura: String(form.get('tipoFornitura')).trim(),
-    pod: String(form.get('pod')).trim(),
-    pdr: String(form.get('pdr')).trim(),
+    tipoFornitura,
+    pod,
+    pdr,
+    multipod: multipodEnabled,
+    multipodRows,
     metodoPagamento: String(form.get('metodoPagamento')).trim(),
     iban: String(form.get('iban')).trim(),
     piva: String(form.get('piva')).trim(),
     email: String(form.get('email')).trim(),
     indirizzoFatturazione: String(form.get('indirizzoFatturazione')).trim(),
-    indirizzoFornitura: String(form.get('indirizzoFornitura')).trim(),
+    indirizzoFornitura,
     descrizione: String(form.get('descrizione')).trim(),
     fileContratto: selectedContractFiles.slice(),
     existingFileContratto: existingContractFiles.slice(),
@@ -1797,11 +1820,14 @@ function validateContractDraft(draft, saveMode = 'submit') {
     return 'Seleziona il tipo fornitura.';
   }
 
-  if ((draft.tipoFornitura === 'luce' || draft.tipoFornitura === 'dual') && !draft.pod) {
+  if (draft.multipod) {
+    const multipodMessage = validateMultipodRows(draft);
+    if (multipodMessage) return multipodMessage;
+  } else if ((draft.tipoFornitura === 'luce' || draft.tipoFornitura === 'dual') && !draft.pod) {
     return 'Inserisci il POD.';
   }
 
-  if ((draft.tipoFornitura === 'gas' || draft.tipoFornitura === 'dual') && !draft.pdr) {
+  if (!draft.multipod && (draft.tipoFornitura === 'gas' || draft.tipoFornitura === 'dual') && !draft.pdr) {
     return 'Inserisci il PDR.';
   }
 
@@ -1940,13 +1966,17 @@ function contractFilesCounterLabel(count, extended) {
 function updateConditionalFields() {
   const tipoFornitura = document.getElementById('tipo-fornitura').value;
   const metodoPagamento = document.getElementById('metodo-pagamento').value;
+  const multipod = isMultipodEnabled();
   const showPod = tipoFornitura === 'luce' || tipoFornitura === 'dual';
   const showPdr = tipoFornitura === 'gas' || tipoFornitura === 'dual';
   const showIban = metodoPagamento === 'rid';
 
-  toggleField('pod-field', showPod);
-  toggleField('pdr-field', showPdr);
+  toggleField('pod-field', showPod && !multipod);
+  toggleField('pdr-field', showPdr && !multipod);
   toggleField('iban-field', showIban);
+  toggleFieldVisibility('indirizzo-fornitura-input', !multipod);
+  toggleFieldVisibility('same-address-checkbox', !multipod);
+  updateMultipodUi();
 }
 
 function toggleField(id, isVisible) {
@@ -1955,6 +1985,192 @@ function toggleField(id, isVisible) {
   field.hidden = !isVisible;
   input.required = isVisible;
   if (!isVisible) input.value = '';
+}
+
+function toggleFieldVisibility(inputId, isVisible) {
+  const input = document.getElementById(inputId);
+  const field = input?.closest('label');
+  if (!field) return;
+  field.hidden = !isVisible;
+  if (!isVisible && inputId === 'indirizzo-fornitura-input') {
+    setAddressAutocompleteValue(inputId, '');
+    setAddressFieldLocked(inputId, false);
+  }
+}
+
+function isMultipodEnabled() {
+  return Boolean(document.getElementById('multipod-checkbox')?.checked);
+}
+
+function updateMultipodUi() {
+  const enabled = isMultipodEnabled();
+  const tipoFornitura = document.getElementById('tipo-fornitura')?.value || '';
+  const panel = document.getElementById('multipod-panel');
+  const podSection = document.getElementById('multipod-pod-section');
+  const pdrSection = document.getElementById('multipod-pdr-section');
+  if (!panel || !podSection || !pdrSection) return;
+
+  const showPod = enabled && (tipoFornitura === 'luce' || tipoFornitura === 'dual');
+  const showPdr = enabled && (tipoFornitura === 'gas' || tipoFornitura === 'dual');
+  panel.hidden = !enabled || (!showPod && !showPdr);
+  podSection.hidden = !showPod;
+  pdrSection.hidden = !showPdr;
+
+  if (showPod) ensureMultipodRow('pod');
+  if (showPdr) ensureMultipodRow('pdr');
+}
+
+function ensureMultipodRow(kind) {
+  const list = document.getElementById(`multipod-${kind}-list`);
+  if (list && !list.querySelector('.multipod-row')) {
+    addMultipodRow(kind);
+  }
+}
+
+function addMultipodRow(kind, values = {}) {
+  const list = document.getElementById(`multipod-${kind}-list`);
+  if (!list) return;
+  const row = document.createElement('div');
+  row.className = 'multipod-row';
+  row.dataset.multipodKind = kind;
+  const label = kind === 'pod' ? 'POD' : 'PDR';
+  const placeholder = kind === 'pod' ? 'IT001E...' : 'Numero PDR';
+  row.innerHTML = `
+    <div class="multipod-row-head">
+      <strong>${label} ${list.children.length + 1}</strong>
+      <button class="secondary-button compact-button" type="button" data-multipod-remove>Rimuovi</button>
+    </div>
+    <div class="multipod-row-grid">
+      <label>
+        Codice ${label}
+        <input data-multipod-code type="text" data-uppercase="true" placeholder="${placeholder}" value="${escapeHtml(values.code || '')}" />
+      </label>
+      <label>
+        Indirizzo fornitura
+        <input data-multipod-address type="text" data-uppercase="true" placeholder="Indirizzo di fornitura" value="${escapeHtml(values.address || '')}" />
+      </label>
+    </div>
+  `;
+  row.querySelector('[data-multipod-remove]').addEventListener('click', () => {
+    row.remove();
+    renumberMultipodRows(kind);
+  });
+  list.appendChild(row);
+  renumberMultipodRows(kind);
+}
+
+function renumberMultipodRows(kind) {
+  const list = document.getElementById(`multipod-${kind}-list`);
+  if (!list) return;
+  const label = kind === 'pod' ? 'POD' : 'PDR';
+  Array.from(list.querySelectorAll('.multipod-row')).forEach((row, index) => {
+    row.querySelector('.multipod-row-head strong').textContent = `${label} ${index + 1}`;
+  });
+}
+
+function collectMultipodRows() {
+  return {
+    pod: collectMultipodRowsByKind('pod'),
+    pdr: collectMultipodRowsByKind('pdr'),
+  };
+}
+
+function collectMultipodRowsByKind(kind) {
+  const list = document.getElementById(`multipod-${kind}-list`);
+  if (!list) return [];
+  return Array.from(list.querySelectorAll('.multipod-row')).map((row) => ({
+    code: row.querySelector('[data-multipod-code]')?.value.trim() || '',
+    address: row.querySelector('[data-multipod-address]')?.value.trim() || '',
+  }));
+}
+
+function serializeMultipodCodes(kind, rows) {
+  const label = kind.toUpperCase();
+  return rows
+    .filter((row) => row.code)
+    .map((row, index) => `${label} ${index + 1}: ${row.code}`)
+    .join('\n');
+}
+
+function serializeMultipodAddresses(rowsByKind) {
+  return ['pod', 'pdr']
+    .flatMap((kind) =>
+      rowsByKind[kind]
+        .filter((row) => row.address)
+        .map((row, index) => `${kind.toUpperCase()} ${index + 1}: ${row.address}`)
+    )
+    .join('\n');
+}
+
+function setMultipodRows(rowsByKind) {
+  ['pod', 'pdr'].forEach((kind) => {
+    const list = document.getElementById(`multipod-${kind}-list`);
+    if (!list) return;
+    list.innerHTML = '';
+    (rowsByKind?.[kind] || []).forEach((row) => addMultipodRow(kind, row));
+  });
+  const checkbox = document.getElementById('multipod-checkbox');
+  if (checkbox) {
+    checkbox.checked = Boolean(rowsByKind?.pod?.length || rowsByKind?.pdr?.length);
+  }
+  updateMultipodUi();
+}
+
+function parseMultipodRowsFromContract(contract) {
+  const addresses = parseMultipodAddressLines(contract?.indirizzoFornitura || '');
+  return {
+    pod: parseMultipodCodeLines('pod', contract?.pod || '', addresses),
+    pdr: parseMultipodCodeLines('pdr', contract?.pdr || '', addresses),
+  };
+}
+
+function parseMultipodCodeLines(kind, value, addresses) {
+  const prefix = kind.toUpperCase();
+  const lines = String(value || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.some((line) => /^(POD|PDR)\s+\d+:\s*.+$/i.test(line))) {
+    return [];
+  }
+  return lines
+    .map((line, index) => {
+      const match = line.match(/^(POD|PDR)\s+(\d+):\s*(.+)$/i);
+      return {
+        code: match ? match[3].trim() : line,
+        address: addresses[`${prefix}:${match ? match[2] : index + 1}`] || '',
+      };
+    })
+    .filter((row) => row.code || row.address);
+}
+
+function parseMultipodAddressLines(value) {
+  return String(value || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .reduce((acc, line) => {
+      const match = line.match(/^(POD|PDR)\s+(\d+):\s*(.+)$/i);
+      if (match) acc[`${match[1].toUpperCase()}:${match[2]}`] = match[3].trim();
+      return acc;
+    }, {});
+}
+
+function validateMultipodRows(draft) {
+  const supplyType = String(draft.tipoFornitura || '').toLowerCase();
+  const needsPod = supplyType === 'luce' || supplyType === 'dual';
+  const needsPdr = supplyType === 'gas' || supplyType === 'dual';
+  const podRows = needsPod ? draft.multipodRows.pod : [];
+  const pdrRows = needsPdr ? draft.multipodRows.pdr : [];
+
+  if (needsPod && !podRows.length) return 'Aggiungi almeno un POD multipod.';
+  if (needsPdr && !pdrRows.length) return 'Aggiungi almeno un PDR multipod.';
+
+  const missingPod = podRows.some((row) => !row.code || !row.address);
+  const missingPdr = pdrRows.some((row) => !row.code || !row.address);
+  if (missingPod) return 'Compila codice POD e indirizzo per ogni POD multipod.';
+  if (missingPdr) return 'Compila codice PDR e indirizzo per ogni PDR multipod.';
+  return '';
 }
 
 function setFormFeedback(type, message) {
@@ -3136,6 +3352,10 @@ function contractMatchesOperationFilter(contract, selectedOperation) {
 }
 
 function contractUnitCount(contract) {
+  const multipodUnits = multipodUnitCount(contract);
+  if (multipodUnits > 0) {
+    return multipodUnits;
+  }
   const supplyType = String(contract.tipoFornitura || '').toLowerCase();
   if (supplyType === 'dual') {
     return 2;
@@ -3147,6 +3367,17 @@ function contractUnitCount(contract) {
     return Number(contract.unitCount);
   }
   return 1;
+}
+
+function multipodUnitCount(contract) {
+  return countLabeledSupplyRows(contract?.pod, 'pod') + countLabeledSupplyRows(contract?.pdr, 'pdr');
+}
+
+function countLabeledSupplyRows(value, kind) {
+  const prefix = kind.toUpperCase();
+  return String(value || '')
+    .split(/\r?\n/)
+    .filter((line) => new RegExp(`^${prefix}\\s+\\d+:\\s*\\S+`, 'i').test(line.trim())).length;
 }
 
 function sumContractUnits(items) {
@@ -3454,8 +3685,7 @@ function fillClientFieldsFromLookup(client) {
   form.elements.piva.value = client.piva;
   form.elements.email.value = client.email;
   form.elements.cellulare.value = client.cellulare;
-  form.elements.indirizzoFatturazione.value = client.indirizzoFatturazione;
-  syncSupplyAddressIfSame();
+  setAddressAutocompleteValue('indirizzo-fatturazione-input', client.indirizzoFatturazione || '');
 }
 
 initApp();

@@ -2098,6 +2098,10 @@ function contractHasOperation(contract, expectedOperation) {
 }
 
 function contractUnitCount(contract) {
+  const multipodUnits = multipodUnitCount(contract);
+  if (multipodUnits > 0) {
+    return multipodUnits;
+  }
   const supplyType = cleanText(contract.tipoFornitura).toLowerCase();
   if (supplyType === 'dual') {
     return 2;
@@ -2109,6 +2113,17 @@ function contractUnitCount(contract) {
     return Number(contract.unitCount);
   }
   return 1;
+}
+
+function multipodUnitCount(contract) {
+  return countLabeledSupplyRows(contract?.pod, 'pod') + countLabeledSupplyRows(contract?.pdr, 'pdr');
+}
+
+function countLabeledSupplyRows(value, kind) {
+  const prefix = kind.toUpperCase();
+  return String(value || '')
+    .split(/\r?\n/)
+    .filter((line) => new RegExp(`^${prefix}\\s+\\d+:\\s*\\S+`, 'i').test(line.trim())).length;
 }
 
 function sumContractUnits(items) {

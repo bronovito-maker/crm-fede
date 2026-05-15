@@ -518,6 +518,38 @@
                       <option value="dual">Dual</option>
                     </select>
                   </label>
+                  <label class="full-span check-line multipod-toggle-line">
+                    <input id="multipod-checkbox" type="checkbox" />
+                    Multipod
+                  </label>
+                  <div class="multipod-panel full-span" id="multipod-panel" hidden>
+                    <div class="multipod-section" id="multipod-pod-section" hidden>
+                      <div class="multipod-section-head">
+                        <strong>POD luce</strong>
+                        <button
+                          class="secondary-button compact-button"
+                          type="button"
+                          data-multipod-add="pod"
+                        >
+                          + Aggiungi POD
+                        </button>
+                      </div>
+                      <div class="multipod-list" id="multipod-pod-list"></div>
+                    </div>
+                    <div class="multipod-section" id="multipod-pdr-section" hidden>
+                      <div class="multipod-section-head">
+                        <strong>PDR gas</strong>
+                        <button
+                          class="secondary-button compact-button"
+                          type="button"
+                          data-multipod-add="pdr"
+                        >
+                          + Aggiungi PDR
+                        </button>
+                      </div>
+                      <div class="multipod-list" id="multipod-pdr-list"></div>
+                    </div>
+                  </div>
                   <label class="conditional-field" id="pod-field" hidden>
                     POD
                     <input name="pod" type="text" data-uppercase="true" placeholder="IT001E..." />
