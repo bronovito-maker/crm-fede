@@ -2056,12 +2056,12 @@ function addMultipodRow(kind, values = {}) {
       </label>
     </div>
   `;
-  setupAddressAutocomplete(`${rowId}-address`);
   row.querySelector('[data-multipod-remove]').addEventListener('click', () => {
     row.remove();
     renumberMultipodRows(kind);
   });
   list.appendChild(row);
+  setupAddressAutocomplete(`${rowId}-address`);
   renumberMultipodRows(kind);
 }
 
