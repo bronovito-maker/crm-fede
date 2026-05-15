@@ -1604,6 +1604,16 @@ td[data-label='Cliente'] strong {
   background: #fee2e2;
 }
 
+.badge.multipod {
+  min-height: 24px;
+  margin-left: 8px;
+  padding: 4px 8px;
+  color: #0f766e;
+  background: #ccfbf1;
+  font-size: 0.74rem;
+  vertical-align: middle;
+}
+
 /* ---- Empty State ---- */
 .empty-state {
   display: grid;

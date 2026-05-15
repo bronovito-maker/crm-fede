@@ -1142,7 +1142,7 @@ function contractRow(contract) {
     : '-';
   return `
     <tr data-contract-id="${contract.id}" tabindex="0" aria-label="Apri dettaglio contratto ${escapeHtml(contract.ragioneSociale)}">
-      <td data-label="Cliente"><strong>${escapeHtml(contract.ragioneSociale)}</strong></td>
+      <td data-label="Cliente"><strong>${escapeHtml(contract.ragioneSociale)}</strong>${multipodBadge(contract)}</td>
       <td data-label="Data inserimento">${formatDate.format(new Date(contract.dataInserimento))}</td>
       <td data-label="Inizio fornitura">${supplyDate}</td>
       <td data-label="Stato">${statusBadge(contract.statoContratto)}</td>
@@ -1151,6 +1151,10 @@ function contractRow(contract) {
       <td data-label="Telefono">${escapeHtml(contract.cellulare)}</td>
     </tr>
   `;
+}
+
+function multipodBadge(contract) {
+  return multipodUnitCount(contract) > 0 ? '<span class="badge multipod">Multipod</span>' : '';
 }
 
 function openContractModal(contractLike) {
@@ -2031,6 +2035,7 @@ function addMultipodRow(kind, values = {}) {
   const list = document.getElementById(`multipod-${kind}-list`);
   if (!list) return;
   const row = document.createElement('div');
+  const rowId = `multipod-${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   row.className = 'multipod-row';
   row.dataset.multipodKind = kind;
   const label = kind === 'pod' ? 'POD' : 'PDR';
@@ -2047,10 +2052,11 @@ function addMultipodRow(kind, values = {}) {
       </label>
       <label>
         Indirizzo fornitura
-        <input data-multipod-address type="text" data-uppercase="true" placeholder="Indirizzo di fornitura" value="${escapeHtml(values.address || '')}" />
+        <input id="${rowId}-address" data-multipod-address type="text" data-uppercase="true" placeholder="Indirizzo di fornitura" value="${escapeHtml(values.address || '')}" />
       </label>
     </div>
   `;
+  setupAddressAutocomplete(`${rowId}-address`);
   row.querySelector('[data-multipod-remove]').addEventListener('click', () => {
     row.remove();
     renumberMultipodRows(kind);
@@ -3758,6 +3764,7 @@ async function initGoogleMapsAutocomplete() {
         try {
           setupAddressAutocomplete('indirizzo-fatturazione-input');
           setupAddressAutocomplete('indirizzo-fornitura-input');
+          setupMultipodAddressAutocompletes();
           resolve();
         } catch (e) {
           reject(e);
@@ -3774,8 +3781,18 @@ async function initGoogleMapsAutocomplete() {
   }
 }
 
+function setupMultipodAddressAutocompletes() {
+  document
+    .querySelectorAll('[data-multipod-address]')
+    .forEach((input) => setupAddressAutocompleteForElement(input));
+}
+
 function setupAddressAutocomplete(inputId) {
   const input = document.getElementById(inputId);
+  return setupAddressAutocompleteForElement(input, inputId);
+}
+
+function setupAddressAutocompleteForElement(input, inputId = '') {
   const places = window.google?.maps?.places;
   if (!input || !places) return;
 
@@ -3788,11 +3805,11 @@ function setupAddressAutocomplete(inputId) {
   };
 
   if (typeof places.PlaceAutocompleteElement === 'function') {
-    const existing = document.getElementById(`${inputId}-place-widget-wrap`);
+    const existing = inputId ? document.getElementById(`${inputId}-place-widget-wrap`) : null;
     if (existing) existing.remove();
 
     const wrap = document.createElement('div');
-    wrap.id = `${inputId}-place-widget-wrap`;
+    if (inputId) wrap.id = `${inputId}-place-widget-wrap`;
     wrap.className = 'place-widget-wrap';
     const widget = new places.PlaceAutocompleteElement();
     widget.classList.add('address-place-widget');
@@ -3806,7 +3823,9 @@ function setupAddressAutocomplete(inputId) {
     input.insertAdjacentElement('afterend', wrap);
     input.type = 'hidden';
 
-    addressAutocompleteRefs[inputId] = { mode: 'new', input, widget };
+    if (inputId) {
+      addressAutocompleteRefs[inputId] = { mode: 'new', input, widget };
+    }
 
     widget.addEventListener('gmp-select', async ({ placePrediction }) => {
       if (!placePrediction?.toPlace) return;
@@ -3817,7 +3836,9 @@ function setupAddressAutocomplete(inputId) {
         if (!value) return;
         input.value = value;
         widget.value = value;
-        syncSupplyAddressIfSame();
+        if (inputId === 'indirizzo-fatturazione-input') {
+          syncSupplyAddressIfSame();
+        }
       } catch (error) {
         console.warn('[Maps] Errore selezione place:', error);
       }
@@ -3827,6 +3848,9 @@ function setupAddressAutocomplete(inputId) {
 
   if (typeof places.Autocomplete !== 'function') return;
 
+  if (input.dataset.mapsAutocompleteAttached === 'true') return;
+  input.dataset.mapsAutocompleteAttached = 'true';
+
   const autocomplete = new places.Autocomplete(input, {
     componentRestrictions: { country: 'it' },
     fields: ['formatted_address'],
@@ -3835,13 +3859,17 @@ function setupAddressAutocomplete(inputId) {
     strictBounds: false,
   });
 
-  addressAutocompleteRefs[inputId] = { mode: 'legacy', input, autocomplete };
+  if (inputId) {
+    addressAutocompleteRefs[inputId] = { mode: 'legacy', input, autocomplete };
+  }
 
   autocomplete.addListener('place_changed', () => {
     const place = autocomplete.getPlace();
     if (place.formatted_address) {
       input.value = place.formatted_address;
-      syncSupplyAddressIfSame();
+      if (inputId === 'indirizzo-fatturazione-input') {
+        syncSupplyAddressIfSame();
+      }
     }
   });
 }
