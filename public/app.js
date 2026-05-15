@@ -1070,6 +1070,7 @@ function renderContractsTable() {
       matchesScopeAgent
     );
   });
+  renderContractsSummary(filtered, sourceContracts, month);
 
   const table = document.getElementById('contracts-table');
   const tableWrap = table.closest('.table-wrap');
@@ -1106,6 +1107,31 @@ function renderContractsTable() {
         'Controlla i filtri oppure inserisci subito un nuovo contratto.';
     }
   }
+}
+
+function renderContractsSummary(filteredContracts, sourceContracts, monthFilter) {
+  const summary = document.getElementById('contracts-summary');
+  if (!summary) return;
+  if (agent?.ruolo !== 'admin') {
+    summary.innerHTML = '';
+    return;
+  }
+
+  const okFilteredCount = filteredContracts.filter(
+    (contract) => String(contract.statoContratto || '').trim() === 'OK'
+  ).length;
+  const monthLabel =
+    monthFilter && monthFilter !== 'all'
+      ? capitalize(formatMonth.format(dateFromMonthKey(monthFilter)))
+      : 'tutti i mesi di competenza';
+
+  summary.innerHTML = `
+    <article class="metric-card accent-green">
+      <span>Contratti OK (filtri attivi)</span>
+      <strong>${okFilteredCount}</strong>
+      <small>Perimetro: ${escapeHtml(monthLabel)} · Totale risultati filtrati: ${filteredContracts.length}/${sourceContracts.length}</small>
+    </article>
+  `;
 }
 
 function contractRow(contract) {

@@ -1319,6 +1319,21 @@ textarea {
   margin-bottom: 14px;
 }
 
+.contracts-summary {
+  margin: 0 0 14px;
+}
+
+.contracts-summary .metric-card {
+  max-width: 360px;
+}
+
+.contracts-summary small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .admin-stack {
   display: grid;
   gap: 16px;
