@@ -1051,6 +1051,8 @@ function renderContractsTable() {
       contract.email,
       contract.piva,
       contract.idContratto,
+      contract.pod,
+      contract.pdr,
     ]
       .join(' ')
       .toLowerCase()
@@ -1154,7 +1156,7 @@ function contractRow(contract) {
 }
 
 function multipodBadge(contract) {
-  return multipodUnitCount(contract) > 0 ? '<span class="badge multipod">Multipod</span>' : '';
+  return multipodUnitCount(contract) > 0 ? '<span class="badge multipod">Multipunto</span>' : '';
 }
 
 function openContractModal(contractLike) {
@@ -1288,6 +1290,8 @@ function renderCbPage() {
       contract.email,
       contract.piva,
       contract.idContratto,
+      contract.pod,
+      contract.pdr,
     ]
       .join(' ')
       .toLowerCase()
@@ -2169,13 +2173,13 @@ function validateMultipodRows(draft) {
   const podRows = needsPod ? draft.multipodRows.pod : [];
   const pdrRows = needsPdr ? draft.multipodRows.pdr : [];
 
-  if (needsPod && !podRows.length) return 'Aggiungi almeno un POD multipod.';
-  if (needsPdr && !pdrRows.length) return 'Aggiungi almeno un PDR multipod.';
+  if (needsPod && !podRows.length) return 'Aggiungi almeno un POD multipunto.';
+  if (needsPdr && !pdrRows.length) return 'Aggiungi almeno un PDR multipunto.';
 
   const missingPod = podRows.some((row) => !row.code || !row.address);
   const missingPdr = pdrRows.some((row) => !row.code || !row.address);
-  if (missingPod) return 'Compila codice POD e indirizzo per ogni POD multipod.';
-  if (missingPdr) return 'Compila codice PDR e indirizzo per ogni PDR multipod.';
+  if (missingPod) return 'Compila codice POD e indirizzo per ogni POD multipunto.';
+  if (missingPdr) return 'Compila codice PDR e indirizzo per ogni PDR multipunto.';
   return '';
 }
 
