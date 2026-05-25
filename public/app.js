@@ -3767,11 +3767,12 @@ function fillClientFieldsFromLookup(client) {
   form.elements.piva.value = client.piva;
   form.elements.email.value = client.email;
   form.elements.cellulare.value = client.cellulare;
-  const metodoPagamento = String(client.metodoPagamento || '').trim().toLowerCase();
+  const paymentData = resolveClientPaymentData(client);
+  const metodoPagamento = String(paymentData.metodoPagamento || '').trim().toLowerCase();
   if (metodoPagamento) {
     form.elements.metodoPagamento.value = metodoPagamento;
     if (metodoPagamento === 'rid') {
-      form.elements.iban.value = String(client.iban || '').trim().toUpperCase();
+      form.elements.iban.value = String(paymentData.iban || '').trim().toUpperCase();
     }
   }
   setAddressAutocompleteValue('indirizzo-fatturazione-input', client.indirizzoFatturazione || '');
@@ -3785,11 +3786,51 @@ function maybeAutofillIbanFromSelectedClient() {
     .trim()
     .toLowerCase();
   const currentIban = String(form.elements.iban?.value || '').trim();
-  const clientIban = String(selectedClientFromLookup?.iban || '')
+  const paymentData = resolveClientPaymentData(selectedClientFromLookup);
+  const clientIban = String(paymentData.iban || '')
     .trim()
     .toUpperCase();
   if (metodoPagamento !== 'rid' || !clientIban || currentIban) return;
   form.elements.iban.value = clientIban;
+}
+
+function resolveClientPaymentData(client) {
+  const clientMetodo = String(client?.metodoPagamento || '')
+    .trim()
+    .toLowerCase();
+  const clientIban = String(client?.iban || '')
+    .trim()
+    .toUpperCase();
+  if (clientMetodo || clientIban) {
+    return { metodoPagamento: clientMetodo, iban: clientIban };
+  }
+
+  const piva = String(client?.piva || '')
+    .trim()
+    .toUpperCase();
+  const ragioneSociale = String(client?.ragioneSociale || '')
+    .trim()
+    .toUpperCase();
+  const match = allKnownContracts().find((contract) => {
+    const contractPiva = String(contract?.piva || '')
+      .trim()
+      .toUpperCase();
+    const contractName = String(contract?.ragioneSociale || '')
+      .trim()
+      .toUpperCase();
+    const byPiva = piva && contractPiva === piva;
+    const byName = !piva && ragioneSociale && contractName === ragioneSociale;
+    return byPiva || byName;
+  });
+
+  return {
+    metodoPagamento: String(match?.metodoPagamento || '')
+      .trim()
+      .toLowerCase(),
+    iban: String(match?.iban || '')
+      .trim()
+      .toUpperCase(),
+  };
 }
 
 initApp();
