@@ -3698,6 +3698,7 @@ function setupContractClientAutocomplete() {
   if (!input || !dropdown) return;
 
   let suppressClose = false;
+  let justSelectedFromDropdown = false;
 
   function showSuggestions() {
     const q = input.value.trim().toLowerCase();
@@ -3733,8 +3734,8 @@ function setupContractClientAutocomplete() {
         const client = clients.find((c) => c.id === id);
         if (client) fillClientFieldsFromLookup(client);
         dropdown.hidden = true;
+        justSelectedFromDropdown = true;
         suppressClose = false;
-        input.focus();
       });
     });
 
@@ -3744,8 +3745,15 @@ function setupContractClientAutocomplete() {
   input.addEventListener('input', showSuggestions);
   input.addEventListener('input', () => {
     selectedClientFromLookup = null;
+    justSelectedFromDropdown = false;
   });
-  input.addEventListener('focus', showSuggestions);
+  input.addEventListener('focus', () => {
+    if (justSelectedFromDropdown) {
+      justSelectedFromDropdown = false;
+      return;
+    }
+    showSuggestions();
+  });
   input.addEventListener('blur', () => {
     if (!suppressClose) dropdown.hidden = true;
     suppressClose = false;

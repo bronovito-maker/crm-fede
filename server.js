@@ -1616,8 +1616,8 @@ function normalizeClient(row) {
     email: row.email || '',
     cellulare: row.cellulare || '',
     indirizzoFatturazione: row.indirizzo_fatturazione || '',
-    metodoPagamento: selectValue(row.metodo_pagamento),
-    iban: row.iban || '',
+    metodoPagamento: selectValue(row.metodo_pagamento || row.metodoPagamento || row['Metodo pagamento']),
+    iban: row.iban || row.IBAN || '',
     agenteId: Number(linkedAgentId(row.agente)),
   };
 }
