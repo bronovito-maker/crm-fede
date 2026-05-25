@@ -224,8 +224,10 @@ const adminState = {
 };
 let cbCategoryFilter = 'all';
 let cbOperationFilter = 'all';
+let cbSupplierFilter = 'all';
 let supplierOptionsLoaded = false;
 let contractsScopeFilter = 'mine';
+let contractsSupplierFilter = 'all';
 let contractsScopeFeedbackTimer = null;
 let activePage = 'dashboard';
 let adminDataLoaded = false;
@@ -633,7 +635,17 @@ document
 document
   .getElementById('contracts-operation-filter')
   ?.addEventListener('change', renderContractsTable);
+document.getElementById('contracts-supplier-filter')?.addEventListener('change', () => {
+  contractsSupplierFilter = String(
+    document.getElementById('contracts-supplier-filter')?.value || 'all'
+  );
+  renderContractsTable();
+});
 document.getElementById('cb-search-input')?.addEventListener('input', renderCbPage);
+document.getElementById('cb-supplier-filter')?.addEventListener('change', () => {
+  cbSupplierFilter = String(document.getElementById('cb-supplier-filter')?.value || 'all');
+  renderCbPage();
+});
 document.getElementById('month-filter').addEventListener('change', () => {
   const monthValue = String(document.getElementById('month-filter').value || 'all');
   if (monthValue !== 'all') {
@@ -1044,6 +1056,11 @@ function renderContractsTable() {
     .toLowerCase();
   const category = agent?.ruolo === 'admin' ? selectedCategory : 'all';
 
+  populateSupplierFilterOptions('contracts-supplier-filter', sourceContracts, contractsSupplierFilter);
+  const selectedSupplier = String(contractsSupplierFilter || 'all')
+    .trim()
+    .toLowerCase();
+
   const filtered = sourceContracts.filter((contract) => {
     const matchesSearch = [
       contract.ragioneSociale,
@@ -1065,6 +1082,11 @@ function renderContractsTable() {
         .trim()
         .toLowerCase() === category;
     const matchesOperation = contractMatchesOperationFilter(contract, selectedOperation);
+    const matchesSupplier =
+      selectedSupplier === 'all' ||
+      String(contract.fornitore || '')
+        .trim()
+        .toLowerCase() === selectedSupplier;
     const matchesScopeAgent =
       !selectedScopeAgentId || Number(contract.agenteId) === Number(selectedScopeAgentId);
     return (
@@ -1073,6 +1095,7 @@ function renderContractsTable() {
       matchesStatus &&
       matchesCategory &&
       matchesOperation &&
+      matchesSupplier &&
       matchesScopeAgent
     );
   });
@@ -1102,7 +1125,8 @@ function renderContractsTable() {
       month !== 'all' ||
       status !== 'all' ||
       category !== 'all' ||
-      selectedOperation !== 'all';
+      selectedOperation !== 'all' ||
+      selectedSupplier !== 'all';
     const hasAnyContracts = sourceContracts.length > 0;
     if (!hasAnyContracts && !hasFilters) {
       emptyState.querySelector('strong').textContent = 'Nessun contratto ancora';
@@ -1274,6 +1298,10 @@ function renderCbPage() {
   const search = String(document.getElementById('cb-search-input')?.value || '')
     .toLowerCase()
     .trim();
+  populateSupplierFilterOptions('cb-supplier-filter', summary.monthly, cbSupplierFilter);
+  const selectedSupplier = String(cbSupplierFilter || 'all')
+    .trim()
+    .toLowerCase();
   const filteredMonthly = summary.monthly.filter((contract) => {
     const matchesCategory =
       selectedCategory === 'all' ||
@@ -1281,7 +1309,12 @@ function renderCbPage() {
         .trim()
         .toLowerCase() === selectedCategory;
     const matchesOperation = contractMatchesOperationFilter(contract, selectedOperation);
-    return matchesCategory && matchesOperation;
+    const matchesSupplier =
+      selectedSupplier === 'all' ||
+      String(contract.fornitore || '')
+        .trim()
+        .toLowerCase() === selectedSupplier;
+    return matchesCategory && matchesOperation && matchesSupplier;
   });
   const searchedMonthly = filteredMonthly.filter((contract) =>
     [
@@ -1376,6 +1409,29 @@ function renderCbPage() {
 
   tableWrap.hidden = searchedMonthly.length === 0;
   emptyState.hidden = searchedMonthly.length > 0;
+}
+
+function supplierOptionsFromContracts(list) {
+  const values = (Array.isArray(list) ? list : [])
+    .map((contract) => String(contract?.fornitore || '').trim())
+    .filter(Boolean);
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right, 'it'));
+}
+
+function populateSupplierFilterOptions(selectId, list, selectedValue = 'all') {
+  const select = document.getElementById(selectId);
+  if (!select) return;
+  const options = supplierOptionsFromContracts(list);
+  const normalizedSelected = String(selectedValue || 'all').trim().toLowerCase();
+  const allowedValues = new Set(['all', ...options.map((item) => item.toLowerCase())]);
+  const safeSelected = allowedValues.has(normalizedSelected) ? normalizedSelected : 'all';
+  select.innerHTML = [
+    '<option value="all">Fornitore: tutti</option>',
+    ...options.map((item) => `<option value="${escapeHtml(item.toLowerCase())}">${escapeHtml(item)}</option>`),
+  ].join('');
+  select.value = safeSelected;
+  if (selectId === 'contracts-supplier-filter') contractsSupplierFilter = safeSelected;
+  if (selectId === 'cb-supplier-filter') cbSupplierFilter = safeSelected;
 }
 
 function renderProgressPage() {
@@ -3695,7 +3751,15 @@ function fillClientFieldsFromLookup(client) {
   form.elements.piva.value = client.piva;
   form.elements.email.value = client.email;
   form.elements.cellulare.value = client.cellulare;
+  const metodoPagamento = String(client.metodoPagamento || '').trim().toLowerCase();
+  if (metodoPagamento) {
+    form.elements.metodoPagamento.value = metodoPagamento;
+    if (metodoPagamento === 'rid') {
+      form.elements.iban.value = String(client.iban || '').trim().toUpperCase();
+    }
+  }
   setAddressAutocompleteValue('indirizzo-fatturazione-input', client.indirizzoFatturazione || '');
+  updateConditionalFields();
 }
 
 initApp();
