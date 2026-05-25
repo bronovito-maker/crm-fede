@@ -199,6 +199,7 @@ let clientsRefreshInFlight = false;
 let selectedContractFiles = [];
 let existingContractFiles = [];
 let contractsRefreshInFlight = false;
+let selectedClientFromLookup = null;
 const contractEditorState = {
   editingId: null,
   originalStatus: 'Caricato',
@@ -382,7 +383,10 @@ document.getElementById('multipod-checkbox')?.addEventListener('change', updateC
 document.querySelectorAll('[data-multipod-add]').forEach((button) => {
   button.addEventListener('click', () => addMultipodRow(button.dataset.multipodAdd));
 });
-document.getElementById('metodo-pagamento').addEventListener('change', updateConditionalFields);
+document.getElementById('metodo-pagamento').addEventListener('change', () => {
+  maybeAutofillIbanFromSelectedClient();
+  updateConditionalFields();
+});
 document
   .getElementById('fornitore-input')
   .addEventListener('change', () => updateStartDatePrediction());
@@ -3738,6 +3742,9 @@ function setupContractClientAutocomplete() {
   }
 
   input.addEventListener('input', showSuggestions);
+  input.addEventListener('input', () => {
+    selectedClientFromLookup = null;
+  });
   input.addEventListener('focus', showSuggestions);
   input.addEventListener('blur', () => {
     if (!suppressClose) dropdown.hidden = true;
@@ -3747,6 +3754,7 @@ function setupContractClientAutocomplete() {
 
 function fillClientFieldsFromLookup(client) {
   const form = document.getElementById('contract-form');
+  selectedClientFromLookup = client || null;
   form.elements.ragioneSociale.value = client.ragioneSociale;
   form.elements.piva.value = client.piva;
   form.elements.email.value = client.email;
@@ -3760,6 +3768,20 @@ function fillClientFieldsFromLookup(client) {
   }
   setAddressAutocompleteValue('indirizzo-fatturazione-input', client.indirizzoFatturazione || '');
   updateConditionalFields();
+}
+
+function maybeAutofillIbanFromSelectedClient() {
+  const form = document.getElementById('contract-form');
+  if (!form) return;
+  const metodoPagamento = String(form.elements.metodoPagamento?.value || '')
+    .trim()
+    .toLowerCase();
+  const currentIban = String(form.elements.iban?.value || '').trim();
+  const clientIban = String(selectedClientFromLookup?.iban || '')
+    .trim()
+    .toUpperCase();
+  if (metodoPagamento !== 'rid' || !clientIban || currentIban) return;
+  form.elements.iban.value = clientIban;
 }
 
 initApp();

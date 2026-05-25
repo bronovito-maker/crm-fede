@@ -1575,6 +1575,8 @@ async function syncClientFromContract(clientData) {
       indirizzo_fatturazione: clientData.indirizzoFatturazione,
       tipo_cliente: clientData.tipoCliente,
       categoria_cliente: clientData.categoriaCliente,
+      metodo_pagamento: clientData.metodoPagamento,
+      iban: clientData.iban,
       agente: [clientData.agenteId],
     };
 
@@ -1614,6 +1616,8 @@ function normalizeClient(row) {
     email: row.email || '',
     cellulare: row.cellulare || '',
     indirizzoFatturazione: row.indirizzo_fatturazione || '',
+    metodoPagamento: selectValue(row.metodo_pagamento),
+    iban: row.iban || '',
     agenteId: Number(linkedAgentId(row.agente)),
   };
 }
