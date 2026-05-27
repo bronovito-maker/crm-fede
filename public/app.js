@@ -523,6 +523,9 @@ document.getElementById('contract-modal').addEventListener('click', (event) => {
   if (event.target.id === 'contract-modal') closeContractModal();
 });
 document
+  .getElementById('duplicate-contract-button')
+  .addEventListener('click', () => startDuplicatingCurrentContract());
+document
   .getElementById('edit-contract-button')
   .addEventListener('click', () => startEditingCurrentContract());
 document
@@ -1167,18 +1170,15 @@ function renderContractsSummary(filteredContracts, _sourceContracts, monthFilter
 }
 
 function contractRow(contract) {
-  const supplyDate = contract.dataInizioFornitura
-    ? formatDate.format(new Date(contract.dataInizioFornitura))
-    : '-';
   return `
     <tr data-contract-id="${contract.id}" tabindex="0" aria-label="Apri dettaglio contratto ${escapeHtml(contract.ragioneSociale)}">
       <td data-label="Cliente"><strong>${escapeHtml(contract.ragioneSociale)}</strong>${multipodBadge(contract)}</td>
       <td data-label="Data inserimento">${formatDate.format(new Date(contract.dataInserimento))}</td>
-      <td data-label="Inizio fornitura">${supplyDate}</td>
       <td data-label="Stato">${statusBadge(contract.statoContratto)}</td>
+      <td data-label="Fornitore">${escapeHtml(contract.fornitore || 'Non inserito')}</td>
       <td data-label="Fornitura">${escapeHtml(capitalize(contract.tipoFornitura || 'Non inserita'))}</td>
       <td data-label="ID contratto">${escapeHtml(contract.idContratto || 'ID non inserito')}</td>
-      <td data-label="Telefono">${escapeHtml(contract.cellulare)}</td>
+      <td data-label="Tipo operazione">${escapeHtml(formatList(contract.tipoOperazione) || 'Non inserita')}</td>
     </tr>
   `;
 }
@@ -1229,6 +1229,7 @@ function openContractModal(contractLike) {
 
   document.getElementById('edit-contract-button').dataset.contractId = String(contract.id);
   document.getElementById('delete-contract-button').dataset.contractId = String(contract.id);
+  document.getElementById('duplicate-contract-button').dataset.contractId = String(contract.id);
   document.getElementById('contract-modal').hidden = false;
   document.getElementById('close-contract-modal').focus();
 }
@@ -1689,6 +1690,43 @@ async function startEditingCurrentContract() {
   const contractId = Number(document.getElementById('edit-contract-button').dataset.contractId);
   if (!contractId) return;
   await startEditingContract(contractId);
+}
+
+function buildDuplicatedContract(source) {
+  return {
+    ...source,
+    id: null,
+    idContratto: '',
+    statoContratto: 'Caricato',
+    fileContratto: [],
+  };
+}
+
+async function startDuplicatingContract(contractLike) {
+  const source = findContractById(contractLike);
+  if (!source) return;
+  if (agent?.ruolo === 'admin') {
+    await ensureAdminAgentsReady();
+  }
+
+  const duplicated = buildDuplicatedContract(source);
+  resetContractEditor({ keepFeedback: true });
+  populateContractForm(duplicated);
+  contractEditorState.editingId = null;
+  contractEditorState.originalStatus = 'Caricato';
+  syncContractEditorUi();
+  closeContractModal();
+  setActivePage('new-contract');
+  setFormFeedback('', 'Contratto duplicato. Modifica i campi necessari e salva.');
+  document
+    .getElementById('contract-edit-banner')
+    .scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function startDuplicatingCurrentContract() {
+  const contractId = Number(document.getElementById('duplicate-contract-button').dataset.contractId);
+  if (!contractId) return;
+  await startDuplicatingContract(contractId);
 }
 
 async function handleDeleteCurrentContract() {

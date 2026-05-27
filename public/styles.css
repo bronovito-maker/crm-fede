@@ -2237,6 +2237,18 @@ td[data-label='Cliente'] strong {
   line-height: 1.45;
 }
 
+#admin .panel,
+#admin .table-wrap,
+#admin .filters {
+  min-width: 0;
+}
+
+#admin .table-wrap.flat {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+}
+
 .admin-agent-card.compact {
   gap: 14px;
 }
@@ -3204,6 +3216,38 @@ td[data-label='Cliente'] strong {
 
   .panel {
     padding: 24px;
+  }
+
+  /* Admin: layout più compatto su laptop (niente overflow pagina) */
+  #admin .admin-toolbar {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: end;
+  }
+
+  #admin .admin-toolbar > label:first-child {
+    grid-column: auto;
+  }
+
+  #admin .admin-competence-form {
+    grid-template-columns: minmax(170px, 0.8fr) minmax(200px, 1fr) minmax(180px, 0.8fr) auto;
+    gap: 10px;
+  }
+
+  #admin .admin-competence-form input,
+  #admin .admin-competence-form select {
+    min-width: 0;
+  }
+
+  #admin .admin-competence-form .admin-competence-actions {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+    grid-column: auto;
+  }
+
+  #admin .table-wrap.flat table {
+    min-width: 980px;
   }
 
   .panel-wide {

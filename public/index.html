@@ -756,11 +756,11 @@
                 <tr>
                   <th>Cliente</th>
                   <th title="Data inserimento">Data inst.</th>
-                  <th title="Inizio fornitura">Inizio forn.</th>
                   <th>Stato</th>
+                  <th>Fornitore</th>
                   <th>Fornitura</th>
                   <th>ID contratto</th>
-                  <th>Telefono</th>
+                  <th>Tipo operazione</th>
                 </tr>
               </thead>
               <tbody id="contracts-table"></tbody>
@@ -1332,6 +1332,9 @@
         </div>
         <div class="detail-grid" id="contract-detail-content"></div>
         <div class="modal-actions">
+          <button class="secondary-button" type="button" id="duplicate-contract-button">
+            Duplica contratto
+          </button>
           <button class="secondary-button" type="button" id="edit-contract-button">
             Modifica contratto
           </button>
