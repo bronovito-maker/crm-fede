@@ -203,9 +203,11 @@ let selectedClientFromLookup = null;
 const contractEditorState = {
   editingId: null,
   originalStatus: 'Caricato',
+  mode: 'new',
 };
 const adminState = {
   stats: null,
+  statsMonth: '',
   agents: [],
   contracts: [],
   editingAgentId: null,
@@ -774,6 +776,7 @@ function setActivePage(pageId) {
 
   if (pageId === 'new-contract') {
     syncContractEditorUi();
+    syncContractCompetenceMonthToSelection();
     ensureAdminAgentsReady({ force: true });
     loadClients({ silent: true }); // precarica per autocomplete
   }
@@ -1540,6 +1543,9 @@ function renderAll() {
   renderProgressPage();
   updateAdminVisibility();
   syncContractEditorUi();
+  updateMonthNavigationUi();
+  renderSelectedMonthLabels();
+  renderContractCompetenceMonthOptions();
 }
 
 function allKnownContracts() {
@@ -1574,7 +1580,7 @@ function syncContractEditorUi() {
   const copy = document.getElementById('contract-edit-copy');
   const submitButton = document.getElementById('contract-submit-button');
   const help = document.getElementById('contract-files-help');
-  const isEditing = Boolean(contractEditorState.editingId);
+  const isEditing = contractEditorState.mode === 'edit';
 
   banner.hidden = !isEditing;
   title.textContent = isEditing ? 'Modifica contratto' : 'Nuovo contratto';
@@ -1601,6 +1607,9 @@ function populateContractForm(contract) {
   form.elements.piva.value = contract.piva || '';
   form.elements.email.value = contract.email || '';
   form.elements.idContratto.value = contract.idContratto || '';
+  renderContractCompetenceMonthOptions(contract.meseRiferimento || selectedViewMonth);
+  form.elements.meseCompetenza.value =
+    contract.meseRiferimento || selectedViewMonth || currentCompetence.month || monthKey(today);
   form.elements.categoriaCliente.value = contract.categoriaCliente || '';
   form.elements.fornitore.value = contract.fornitore || '';
   form.elements.exFornitore.value = contract.exFornitore || '';
@@ -1643,8 +1652,10 @@ function resetContractEditor({ keepFeedback = false } = {}) {
   const form = document.getElementById('contract-form');
   contractEditorState.editingId = null;
   contractEditorState.originalStatus = 'Caricato';
+  contractEditorState.mode = 'new';
   form.reset();
   resetAddressAutocompleteValues();
+  renderContractCompetenceMonthOptions(selectedViewMonth || currentCompetence.month || monthKey(today));
   const sameAddressCheckbox = document.getElementById('same-address-checkbox');
   if (sameAddressCheckbox) {
     sameAddressCheckbox.checked = false;
@@ -1677,6 +1688,7 @@ async function startEditingContract(contractLike) {
 
   contractEditorState.editingId = Number(contract.id);
   contractEditorState.originalStatus = contract.statoContratto || 'Caricato';
+  contractEditorState.mode = 'edit';
   populateContractForm(contract);
   syncContractEditorUi();
   closeContractModal();
@@ -1714,6 +1726,7 @@ async function startDuplicatingContract(contractLike) {
   populateContractForm(duplicated);
   contractEditorState.editingId = null;
   contractEditorState.originalStatus = 'Caricato';
+  contractEditorState.mode = 'duplicate';
   syncContractEditorUi();
   closeContractModal();
   setActivePage('new-contract');
@@ -1819,6 +1832,7 @@ function buildContractDraft(form, saveMode = 'submit') {
     indirizzoFatturazione: String(form.get('indirizzoFatturazione')).trim(),
     indirizzoFornitura,
     descrizione: String(form.get('descrizione')).trim(),
+    meseCompetenza: String(form.get('meseCompetenza')).trim(),
     fileContratto: selectedContractFiles.slice(),
     existingFileContratto: existingContractFiles.slice(),
     statoContratto: stato,
@@ -1851,6 +1865,7 @@ function buildContractFormData(draft) {
     'indirizzoFatturazione',
     'indirizzoFornitura',
     'descrizione',
+    'meseCompetenza',
     'dataInizioFornitura',
   ].forEach((key) => {
     formData.append(key, draft[key] || '');
@@ -2336,6 +2351,7 @@ function resetAdminDataCache() {
   adminAgentsLoaded = false;
   adminAgentsRefreshPromise = null;
   adminState.stats = null;
+  adminState.statsMonth = '';
   adminState.agents = [];
   adminState.contracts = [];
   adminState.selectedContractIds = [];
@@ -2345,6 +2361,7 @@ function resetAdminDataCache() {
 function invalidateAdminContractsCache() {
   adminDataLoaded = false;
   adminState.stats = null;
+  adminState.statsMonth = '';
   adminState.contracts = [];
   adminState.selectedContractIds = [];
 }
@@ -2455,10 +2472,10 @@ async function ensureAdminAgentsReady({ force = false } = {}) {
   return adminAgentsRefreshPromise;
 }
 
-async function renderAdminPage({ force = false } = {}) {
+async function renderAdminPage({ force = false, month = selectedViewMonth } = {}) {
   if (agent?.ruolo !== 'admin') return;
   try {
-    const { stats, agents, adminContracts } = await refreshAdminData({ force });
+    const { stats, agents, adminContracts } = await refreshAdminData({ force, month });
     populateContractsScopeFilterOptions();
     syncAdminFilterControls();
     renderAdminMetrics(stats);
@@ -2466,6 +2483,9 @@ async function renderAdminPage({ force = false } = {}) {
     populateContractAgentOptions();
     renderAdminAgentList(stats, agents);
     renderAdminContracts(adminContracts, agents);
+    updateMonthNavigationUi();
+    renderSelectedMonthLabels();
+    renderContractCompetenceMonthOptions();
     if (activePage === 'admin') {
       await loadAdminSupplierCutoffs({ silent: true });
     }
@@ -2509,12 +2529,20 @@ async function ensureAdminContractsScopeReady({ force = false } = {}) {
     );
     renderMonthFilter();
     renderContractsTable();
+    updateMonthNavigationUi();
+    renderSelectedMonthLabels();
   }
 }
 
-async function refreshAdminData({ force = false } = {}) {
+async function refreshAdminData({ force = false, month = selectedViewMonth } = {}) {
   if (agent?.ruolo !== 'admin') return null;
-  if (!force && adminDataLoaded && adminState.stats) {
+  const requestedMonth = String(month || currentCompetence.month || monthKey(today));
+  if (
+    !force &&
+    adminDataLoaded &&
+    adminState.stats &&
+    adminState.statsMonth === requestedMonth
+  ) {
     return {
       stats: adminState.stats,
       agents: adminState.agents,
@@ -2527,13 +2555,21 @@ async function refreshAdminData({ force = false } = {}) {
     await adminDataRefreshPromise.catch(() => {});
   }
 
-  adminDataRefreshPromise = Promise.all([
-    baserowClient.getAdminStats(),
-    baserowClient.listAdminAgents(),
-    baserowClient.listAdminContracts(),
-  ])
+  const statsPromise = baserowClient.getAdminStats(requestedMonth);
+
+  const agentsPromise =
+    !force && adminDataLoaded && adminState.agents.length
+      ? Promise.resolve(adminState.agents)
+      : baserowClient.listAdminAgents();
+  const contractsPromise =
+    !force && adminDataLoaded && adminState.contracts.length
+      ? Promise.resolve(adminState.contracts)
+      : baserowClient.listAdminContracts();
+
+  adminDataRefreshPromise = Promise.all([statsPromise, agentsPromise, contractsPromise])
     .then(([stats, agents, adminContracts]) => {
       adminState.stats = stats;
+      adminState.statsMonth = requestedMonth;
       adminState.agents = agents;
       adminState.contracts = adminContracts;
       adminDataLoaded = true;
@@ -3333,16 +3369,28 @@ function currentPeriodLabel() {
 
 function renderSelectedMonthLabels() {
   const monthLabel = currentPeriodLabel().toLowerCase();
+  const currentPeriod = document.getElementById('current-period');
   const dashboardHint = document.getElementById('dashboard-month-hint');
   const cbHint = document.getElementById('cb-month-hint');
   const cbEmptyTitle = document.getElementById('cb-empty-title');
+  if (currentPeriod) currentPeriod.textContent = currentPeriodLabel();
   if (dashboardHint) dashboardHint.textContent = monthLabel;
   if (cbHint) cbHint.textContent = `CB di ${monthLabel}`;
   if (cbEmptyTitle) cbEmptyTitle.textContent = `Nessuna CB in ${monthLabel}`;
 }
 
+function getMonthNavigationContracts() {
+  if (activePage === 'admin' && adminState.contracts.length) {
+    return adminState.contracts;
+  }
+  if (activePage === 'contracts') {
+    return visibleContractsByScope();
+  }
+  return contracts;
+}
+
 function getAvailableMonths() {
-  const sourceContracts = activePage === 'contracts' ? visibleContractsByScope() : contracts;
+  const sourceContracts = getMonthNavigationContracts();
   return Array.from(
     new Set([
       currentCompetence.month,
@@ -3373,7 +3421,50 @@ function shiftViewMonth(direction) {
   const nextIndex = safeIndex + direction;
   if (nextIndex < 0 || nextIndex >= months.length) return;
   selectedViewMonth = months[nextIndex];
+  if (document.getElementById('new-contract')?.classList.contains('active')) {
+    syncContractCompetenceMonthToSelection();
+  }
   renderAll();
+  if (activePage === 'admin') {
+    void renderAdminPage({ force: true }).catch((error) =>
+      console.error('[ADMIN_MONTH_REFRESH]', error)
+    );
+  }
+}
+
+function getCompetenceMonthOptions(count = 18) {
+  const anchor = dateFromMonthKey(currentCompetence.month || monthKey(today));
+  return Array.from({ length: count }, (_, index) => {
+    const date = new Date(anchor.getFullYear(), anchor.getMonth() - (count - 1 - index), 1);
+    return monthKey(date);
+  });
+}
+
+function renderContractCompetenceMonthOptions(preferredValue = '') {
+  const select = document.getElementById('contract-competence-month');
+  if (!select) return;
+
+  const options = getCompetenceMonthOptions();
+  const selected = String(
+    preferredValue || select.value || selectedViewMonth || currentCompetence.month || monthKey(today)
+  ).trim();
+
+  select.innerHTML = options
+    .map(
+      (key) =>
+        `<option value="${key}">Mese: ${capitalize(formatMonth.format(dateFromMonthKey(key)))}</option>`
+    )
+    .join('');
+  select.value = options.includes(selected) ? selected : options[options.length - 1] || '';
+}
+
+function syncContractCompetenceMonthToSelection() {
+  const select = document.getElementById('contract-competence-month');
+  if (!select) return;
+  if (contractEditorState.mode !== 'new') return;
+  const preferred = selectedViewMonth || currentCompetence.month || monthKey(today);
+  renderContractCompetenceMonthOptions(preferred);
+  select.value = preferred;
 }
 
 function isCountedInProgress(contract) {

@@ -97,8 +97,9 @@ const baserowClient = {
     });
   },
 
-  async getAdminStats() {
-    return fetchJson('/api/admin/stats');
+  async getAdminStats(month) {
+    const monthParam = encodeURIComponent(String(month || ''));
+    return fetchJson(`/api/admin/stats?month=${monthParam}`);
   },
 
   async getAdminSupplierCutoffs(month) {

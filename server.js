@@ -383,7 +383,11 @@ app.post(
       const files = Array.isArray(req.files) ? req.files : [];
       const uploadedFiles = await Promise.all(files.map(uploadContractFile));
       const insertionDate = todayIsoDate();
-      const competencePeriod = await resolveCompetencePeriod(insertionDate, contract.fornitore);
+      const competencePeriod = await resolveRequestedCompetencePeriod(
+        contract.meseCompetenza,
+        insertionDate,
+        contract.fornitore
+      );
       const payload = normalizeBaserowContractPayload({
         agente: [assignedAgent.id],
         data_inserimento: insertionDate,
@@ -504,7 +508,11 @@ app.patch(
             ? 'Caricato'
             : existingNormalized.statoContratto;
       const insertionDate = existingNormalized.dataInserimento || todayIsoDate();
-      const competencePeriod = await resolveCompetencePeriod(insertionDate, contract.fornitore);
+      const competencePeriod = await resolveRequestedCompetencePeriod(
+        contract.meseCompetenza || existingNormalized.meseRiferimento,
+        insertionDate,
+        contract.fornitore
+      );
 
       const payload = normalizeBaserowContractPayload({
         agente: [assignedAgent.id],
@@ -719,10 +727,14 @@ app.patch('/api/admin/contracts/:id/sent', requireAdmin, async (req, res) => {
 app.get('/api/admin/stats', apiReadLimiter, requireAdmin, async (req, res) => {
   try {
     ensureConfigured();
-    const stats = await getCached(adminStatsCacheKey(), async () => {
+    const requestedMonth = normalizeCompetenceMonth(req.query.month, { strict: false }) || currentMonthKey();
+    const stats = await getCached(adminStatsCacheKeyForMonth(requestedMonth), async () => {
       const [agents, contracts] = await Promise.all([listAgents(), listAllContracts()]);
-      const period = await resolveCompetencePeriod(todayIsoDate());
-      return buildAdminStats(agents, contracts, period);
+      return buildAdminStats(agents, contracts, {
+        monthKey: requestedMonth,
+        quarterKey: quarterFromMonthKey(requestedMonth),
+        yearKey: requestedMonth.slice(0, 4),
+      });
     });
     res.json(stats);
   } catch (error) {
@@ -1037,7 +1049,11 @@ function clientsCacheKey(agentId) {
 }
 
 function adminStatsCacheKey() {
-  return 'admin:stats';
+  return `admin:stats:${currentMonthKey()}`;
+}
+
+function adminStatsCacheKeyForMonth(monthKey) {
+  return `admin:stats:${monthKey}`;
 }
 
 function supplierCutoffCacheKey() {
@@ -1054,7 +1070,7 @@ function invalidateClientsCache(agentId) {
 }
 
 function invalidateAdminStatsCache() {
-  apiCache.delete(adminStatsCacheKey());
+  invalidateCacheByPrefix('admin:stats:');
 }
 
 function invalidateSupplierCutoffCache() {
@@ -1440,6 +1456,22 @@ async function resolveCompetencePeriod(insertionDate, supplierName = '') {
   };
 }
 
+function competencePeriodFromMonthKey(monthKey) {
+  return {
+    monthKey,
+    quarterKey: quarterFromMonthKey(monthKey),
+    yearKey: monthKey.slice(0, 4),
+  };
+}
+
+function resolveRequestedCompetencePeriod(requestedMonth, insertionDate, supplierName = '') {
+  const monthKey = normalizeCompetenceMonth(requestedMonth, { strict: false });
+  if (monthKey) {
+    return competencePeriodFromMonthKey(monthKey);
+  }
+  return resolveCompetencePeriod(insertionDate, supplierName);
+}
+
 async function getBaserowContract(contractId) {
   return baserowFetch(
     `/api/database/rows/table/${CONFIG.contrattiTableId}/${contractId}/?user_field_names=true`
@@ -1687,6 +1719,7 @@ function sanitizeContractInput(input, { allowDraft = false } = {}) {
     indirizzoFornitura: upperText(input.indirizzoFornitura),
     descrizione: upperText(input.descrizione),
     dataInizioFornitura: cleanText(input.dataInizioFornitura),
+    meseCompetenza: normalizeCompetenceMonth(input.meseCompetenza, { strict: false }),
   };
 
   if (allowDraft) {
