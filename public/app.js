@@ -3380,13 +3380,7 @@ function renderSelectedMonthLabels() {
 }
 
 function getMonthNavigationContracts() {
-  if (activePage === 'admin' && adminState.contracts.length) {
-    return adminState.contracts;
-  }
-  if (activePage === 'contracts') {
-    return visibleContractsByScope();
-  }
-  return contracts;
+  return allKnownContracts();
 }
 
 function getAvailableMonths() {
