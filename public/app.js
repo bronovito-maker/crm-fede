@@ -3421,6 +3421,10 @@ function shiftViewMonth(direction) {
   const nextIndex = safeIndex + direction;
   if (nextIndex < 0 || nextIndex >= months.length) return;
   selectedViewMonth = months[nextIndex];
+  if (activePage === 'contracts') {
+    const monthFilter = document.getElementById('month-filter');
+    if (monthFilter) monthFilter.value = selectedViewMonth;
+  }
   if (document.getElementById('new-contract')?.classList.contains('active')) {
     syncContractCompetenceMonthToSelection();
   }
