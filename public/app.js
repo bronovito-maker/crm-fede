@@ -692,8 +692,8 @@ document.getElementById('contracts-scope-filter').addEventListener('change', asy
     renderAll();
   });
 });
-document.getElementById('month-prev-btn').addEventListener('click', () => shiftViewMonth(-1));
-document.getElementById('month-next-btn').addEventListener('click', () => shiftViewMonth(1));
+document.getElementById('month-prev-btn').addEventListener('click', () => shiftViewMonth(1));
+document.getElementById('month-next-btn').addEventListener('click', () => shiftViewMonth(-1));
 
 function loadContracts() {
   try {
@@ -3409,8 +3409,8 @@ function updateMonthNavigationUi() {
   const nextBtn = document.getElementById('month-next-btn');
   if (!prevBtn || !nextBtn) return;
 
-  prevBtn.disabled = index <= 0;
-  nextBtn.disabled = index === -1 || index >= months.length - 1;
+  prevBtn.disabled = index === -1 || index >= months.length - 1;
+  nextBtn.disabled = index <= 0;
 }
 
 function shiftViewMonth(direction) {
