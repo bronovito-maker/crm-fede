@@ -1154,7 +1154,10 @@ describe('HTTP routes', () => {
         assert.deepEqual(payload.agente, [agentId]);
         assert.equal(payload.ragione_sociale, 'ROSSI SRL');
         assert.equal(payload.id_contratto, 'VT-001');
+        assert.equal(payload.tipo_cliente, 'Condominio');
         assert.equal(payload.categoria_cliente, 'Prospect');
+        assert.equal(payload.amministratore, true);
+        assert.equal(payload.pec, 'amministrazione@studioverdi.it');
         assert.deepEqual(payload.tipo_operazione, ['switch', 'subentro']);
         assert.equal(payload.metodo_pagamento, 'rid');
         assert.equal(payload.iban, 'IT60X0542811101000000123456');
@@ -1170,6 +1173,7 @@ describe('HTTP routes', () => {
           cellulare: '3331234567',
           tipo_cliente: { value: 'Business' },
           categoria_cliente: { value: 'Prospect' },
+          amministratore: true,
           fornitore: 'Enel Energia',
           nome_offerta: 'Dual Fix',
           tipo_operazione: [{ value: 'switch' }, { value: 'subentro' }],
@@ -1180,6 +1184,7 @@ describe('HTTP routes', () => {
           iban: 'IT60X0542811101000000123456',
           piva: '03849270121',
           email: 'info@rossi.it',
+          pec: 'amministrazione@studioverdi.it',
           indirizzo_fatturazione: 'Via Roma 1',
           indirizzo_fornitura: 'Via Milano 2',
           descrizione: 'Nuovo inserimento',
@@ -1198,8 +1203,9 @@ describe('HTTP routes', () => {
         idContratto: 'VT-001',
         ragioneSociale: 'Rossi SRL',
         cellulare: '3331234567',
-        tipoCliente: 'Business',
+        tipoCliente: 'Condominio',
         categoriaCliente: 'Prospect',
+        amministratore: 'true',
         fornitore: 'Enel Energia',
         nomeOfferta: 'Dual Fix',
         tipoOperazione: ['switch', 'subentro'],
@@ -1210,6 +1216,7 @@ describe('HTTP routes', () => {
         iban: 'it60x0542811101000000123456',
         piva: '03849270121',
         email: 'INFO@ROSSI.IT',
+        pec: 'AMMINISTRAZIONE@STUDIOVERDI.IT',
         indirizzoFatturazione: 'Via Roma 1',
         indirizzoFornitura: 'Via Milano 2',
         descrizione: 'Nuovo inserimento',
@@ -1501,8 +1508,9 @@ describe('HTTP routes', () => {
           data_inserimento: '2026-04-10',
           ragione_sociale: 'Rossi SRL',
           cellulare: '3331234567',
-          tipo_cliente: { value: 'Business' },
+          tipo_cliente: { value: 'Condominio' },
           categoria_cliente: { value: 'Prospect' },
+          amministratore: true,
           fornitore: 'Enel Energia',
           nome_offerta: 'Dual Fix',
           tipo_operazione: [{ value: 'switch' }],
@@ -1513,6 +1521,7 @@ describe('HTTP routes', () => {
           iban: '',
           piva: '03849270121',
           email: 'info@rossi.it',
+          pec: 'amministrazione@studioverdi.it',
           indirizzo_fatturazione: 'Via Roma 1',
           indirizzo_fornitura: 'Via Milano 2',
           descrizione: 'Note',

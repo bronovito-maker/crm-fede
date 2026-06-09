@@ -395,13 +395,34 @@
                   </label>
                   <label>
                     <span>Tipo cliente <span class="req" aria-hidden="true">*</span></span>
-                    <select name="tipoCliente" required>
+                    <select name="tipoCliente" id="tipo-cliente" required>
                       <option value="">Seleziona</option>
                       <option>Business</option>
                       <option>Privato</option>
                       <option>Condominio</option>
                     </select>
                   </label>
+                  <div class="conditional-field full-span" id="condominio-fields" hidden>
+                    <div class="form-grid">
+                      <label class="full-span check-line">
+                        <input
+                          id="amministratore-checkbox"
+                          name="amministratore"
+                          type="checkbox"
+                        />
+                        Amministratore
+                      </label>
+                      <label class="full-span">
+                        PEC
+                        <input
+                          name="pec"
+                          type="email"
+                          placeholder="pec@condominio.it"
+                          autocomplete="off"
+                        />
+                      </label>
+                    </div>
+                  </div>
                   <label>
                     <span>Categoria cliente <span class="req" aria-hidden="true">*</span></span>
                     <select name="categoriaCliente" required>

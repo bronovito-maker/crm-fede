@@ -395,6 +395,8 @@ app.post(
         cellulare: contract.cellulare,
         tipo_cliente: contract.tipoCliente,
         categoria_cliente: contract.categoriaCliente,
+        amministratore: contract.amministratore,
+        pec: contract.pec,
         fornitore: contract.fornitore,
         ...(CONFIG.contrattiExFornitoreField
           ? { [CONFIG.contrattiExFornitoreField]: contract.exFornitore }
@@ -520,6 +522,8 @@ app.patch(
         cellulare: contract.cellulare,
         tipo_cliente: contract.tipoCliente,
         categoria_cliente: contract.categoriaCliente,
+        amministratore: contract.amministratore,
+        pec: contract.pec,
         fornitore: contract.fornitore,
         ...(CONFIG.contrattiExFornitoreField
           ? { [CONFIG.contrattiExFornitoreField]: contract.exFornitore }
@@ -1704,6 +1708,7 @@ function sanitizeContractInput(input, { allowDraft = false } = {}) {
     cellulare: cleanText(input.cellulare),
     tipoCliente: cleanText(input.tipoCliente),
     categoriaCliente: cleanText(input.categoriaCliente),
+    amministratore: normalizeBooleanValue(input.amministratore),
     fornitore: cleanText(input.fornitore),
     exFornitore: upperText(input.exFornitore),
     nomeOfferta: upperText(input.nomeOfferta),
@@ -1715,6 +1720,7 @@ function sanitizeContractInput(input, { allowDraft = false } = {}) {
     iban: cleanText(input.iban).replace(/\s+/g, '').toUpperCase(),
     piva: upperText(input.piva),
     email: cleanText(input.email).toLowerCase(),
+    pec: cleanText(input.pec).toLowerCase(),
     indirizzoFatturazione: upperText(input.indirizzoFatturazione),
     indirizzoFornitura: upperText(input.indirizzoFornitura),
     descrizione: upperText(input.descrizione),
@@ -1930,6 +1936,7 @@ function normalizeContract(row) {
     cellulare: row.cellulare || '',
     tipoCliente: selectValue(row.tipo_cliente),
     categoriaCliente: selectValue(row.categoria_cliente),
+    amministratore: normalizeBooleanValue(row.amministratore),
     fornitore: row.fornitore || '',
     exFornitore:
       (CONFIG.contrattiExFornitoreField && row[CONFIG.contrattiExFornitoreField]) ||
@@ -1945,6 +1952,7 @@ function normalizeContract(row) {
     fileContratto: fileValue(row.file_contratto),
     piva: row.piva || '',
     email: row.email || '',
+    pec: row.pec || '',
     indirizzoFatturazione: row.indirizzo_fatturazione || '',
     indirizzoFornitura: row.indirizzo_fornitura || '',
     descrizione: row.descrizione || '',
@@ -2395,6 +2403,11 @@ function normalizeBaserowContractPayload(payload) {
 
 function cleanText(value) {
   return String(value || '').trim();
+}
+
+function normalizeBooleanValue(value) {
+  const text = cleanText(value).toLowerCase();
+  return ['true', '1', 'on', 'yes', 'si'].includes(text);
 }
 
 function upperText(value) {

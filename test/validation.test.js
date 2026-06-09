@@ -142,6 +142,19 @@ describe('sanitizeContractInput', () => {
       );
       assert.equal(result.ragioneSociale, 'ROSSI SRL');
     });
+
+    it('accetta i campi condominio amministratore e PEC', () => {
+      const result = sanitizeContractInput({
+        ...validContract,
+        tipoCliente: 'Condominio',
+        amministratore: 'true',
+        pec: 'AMMINISTRAZIONE@PEC.IT',
+      });
+
+      assert.equal(result.tipoCliente, 'Condominio');
+      assert.equal(result.amministratore, true);
+      assert.equal(result.pec, 'amministrazione@pec.it');
+    });
   });
 
   describe('campi obbligatori', () => {
