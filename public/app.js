@@ -95,7 +95,7 @@ const defaultContracts = [
     cellulare: '+39 02 8899 1200',
     tipoCliente: 'Condominio',
     categoriaCliente: 'Prospect',
-    amministratore: true,
+    amministratore: 'Mario Rossi',
     piva: '09777130159',
     email: 'aurora@amministrazioni.it',
     pec: 'aurora@pec.it',
@@ -1213,7 +1213,9 @@ function openContractModal(contractLike) {
         : 'Non calcolata'
     ),
     detailItem('Tipo cliente', contract.tipoCliente),
-    ...(isCondominio ? [detailItem('Amministratore', contract.amministratore ? 'Sì' : 'No')] : []),
+    ...(isCondominio
+      ? [detailItem('Amministratore', displayAdministratorValue(contract.amministratore))]
+      : []),
     ...(isCondominio || contract.pec ? [detailItem('PEC', contract.pec || 'Non inserita')] : []),
     detailItem('Categoria cliente', contract.categoriaCliente || 'Non inserita'),
     detailItem('Fornitore', contract.fornitore || 'Non inserito'),
@@ -1617,7 +1619,7 @@ function populateContractForm(contract) {
   form.elements.meseCompetenza.value =
     contract.meseRiferimento || selectedViewMonth || currentCompetence.month || monthKey(today);
   form.elements.categoriaCliente.value = contract.categoriaCliente || '';
-  form.elements.amministratore.checked = Boolean(contract.amministratore);
+  form.elements.amministratore.value = normalizeAdministratorValue(contract.amministratore);
   form.elements.pec.value = contract.pec || '';
   form.elements.fornitore.value = contract.fornitore || '';
   form.elements.exFornitore.value = contract.exFornitore || '';
@@ -1795,6 +1797,7 @@ function buildContractDraft(form, saveMode = 'submit') {
   const tipoFornitura = String(form.get('tipoFornitura')).trim();
   const tipoCliente = String(form.get('tipoCliente')).trim();
   const isCondominio = tipoCliente === 'Condominio';
+  const showPec = tipoCliente === 'Business' || tipoCliente === 'Condominio';
   const multipodEnabled = isMultipodEnabled();
   const multipodRows = multipodEnabled ? collectMultipodRows() : { pod: [], pdr: [] };
   if (multipodEnabled && tipoFornitura === 'luce') multipodRows.pdr = [];
@@ -1826,8 +1829,8 @@ function buildContractDraft(form, saveMode = 'submit') {
     cellulare: String(form.get('cellulare')).trim(),
     tipoCliente,
     categoriaCliente: String(form.get('categoriaCliente')).trim(),
-    amministratore: isCondominio && Boolean(form.get('amministratore')),
-    pec: isCondominio ? String(form.get('pec') || '').trim().toLowerCase() : '',
+    amministratore: isCondominio ? String(form.get('amministratore') || '').trim().toUpperCase() : '',
+    pec: showPec ? String(form.get('pec') || '').trim().toLowerCase() : '',
     fornitore,
     exFornitore: String(form.get('exFornitore')).trim(),
     nomeOfferta: String(form.get('nomeOfferta')).trim(),
@@ -1941,6 +1944,10 @@ function validateContractDraft(draft, saveMode = 'submit') {
 
   if (!draft.categoriaCliente) {
     return 'Seleziona Prospect o Switch ricorrente.';
+  }
+
+  if (draft.tipoCliente === 'Condominio' && !draft.amministratore) {
+    return "Inserisci il nome dell'amministratore.";
   }
 
   if (!draft.fornitore || !draft.nomeOfferta) {
@@ -2110,31 +2117,28 @@ function updateConditionalFields() {
   const showPod = tipoFornitura === 'luce' || tipoFornitura === 'dual';
   const showPdr = tipoFornitura === 'gas' || tipoFornitura === 'dual';
   const showIban = metodoPagamento === 'rid';
-  const showCondominioFields = tipoCliente === 'Condominio';
+  const showAmministratore = tipoCliente === 'Condominio';
+  const showPec = tipoCliente === 'Business' || tipoCliente === 'Condominio';
+  const showExtraFields = showAmministratore || showPec;
 
   toggleField('pod-field', showPod && !multipod);
   toggleField('pdr-field', showPdr && !multipod);
   toggleField('iban-field', showIban);
-  toggleElementVisibility('condominio-fields', showCondominioFields);
-  if (!showCondominioFields) {
-    const form = document.getElementById('contract-form');
-    if (form?.elements.amministratore) {
-      form.elements.amministratore.checked = false;
-    }
-    if (form?.elements.pec) {
-      form.elements.pec.value = '';
-    }
-  }
+  toggleElementVisibility('customer-extra-fields', showExtraFields);
+  toggleField('amministratore-field', showAmministratore);
+  toggleField('pec-field', showPec, { required: false });
   toggleFieldVisibility('indirizzo-fornitura-input', !multipod);
   toggleFieldVisibility('same-address-checkbox', !multipod);
   updateMultipodUi();
 }
 
-function toggleField(id, isVisible) {
+function toggleField(id, isVisible, { required = true } = {}) {
   const field = document.getElementById(id);
+  if (!field) return;
   const input = field.querySelector('input');
   field.hidden = !isVisible;
-  input.required = isVisible;
+  if (!input) return;
+  input.required = isVisible && required;
   if (!isVisible) input.value = '';
 }
 
@@ -2153,6 +2157,20 @@ function toggleElementVisibility(elementId, isVisible) {
   const element = document.getElementById(elementId);
   if (!element) return;
   element.hidden = !isVisible;
+}
+
+function normalizeAdministratorValue(value) {
+  if (typeof value === 'boolean') {
+    return value ? 'PRESENTE' : '';
+  }
+  return String(value || '')
+    .trim()
+    .toUpperCase();
+}
+
+function displayAdministratorValue(value) {
+  const text = normalizeAdministratorValue(value);
+  return text || 'Non inserito';
 }
 
 function isMultipodEnabled() {

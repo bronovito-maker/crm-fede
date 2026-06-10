@@ -1708,7 +1708,12 @@ function sanitizeContractInput(input, { allowDraft = false } = {}) {
     cellulare: cleanText(input.cellulare),
     tipoCliente: cleanText(input.tipoCliente),
     categoriaCliente: cleanText(input.categoriaCliente),
-    amministratore: normalizeBooleanValue(input.amministratore),
+    amministratore:
+      typeof input.amministratore === 'boolean'
+        ? input.amministratore
+          ? 'PRESENTE'
+          : ''
+        : upperText(input.amministratore),
     fornitore: cleanText(input.fornitore),
     exFornitore: upperText(input.exFornitore),
     nomeOfferta: upperText(input.nomeOfferta),
@@ -1936,7 +1941,12 @@ function normalizeContract(row) {
     cellulare: row.cellulare || '',
     tipoCliente: selectValue(row.tipo_cliente),
     categoriaCliente: selectValue(row.categoria_cliente),
-    amministratore: normalizeBooleanValue(row.amministratore),
+    amministratore:
+      typeof row.amministratore === 'boolean'
+        ? row.amministratore
+          ? 'PRESENTE'
+          : ''
+        : upperText(row.amministratore),
     fornitore: row.fornitore || '',
     exFornitore:
       (CONFIG.contrattiExFornitoreField && row[CONFIG.contrattiExFornitoreField]) ||
@@ -2403,11 +2413,6 @@ function normalizeBaserowContractPayload(payload) {
 
 function cleanText(value) {
   return String(value || '').trim();
-}
-
-function normalizeBooleanValue(value) {
-  const text = cleanText(value).toLowerCase();
-  return ['true', '1', 'on', 'yes', 'si'].includes(text);
 }
 
 function upperText(value) {

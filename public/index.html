@@ -402,17 +402,19 @@
                       <option>Condominio</option>
                     </select>
                   </label>
-                  <div class="conditional-field full-span" id="condominio-fields" hidden>
+                  <div class="conditional-field full-span" id="customer-extra-fields" hidden>
                     <div class="form-grid">
-                      <label class="full-span check-line">
-                        <input
-                          id="amministratore-checkbox"
-                          name="amministratore"
-                          type="checkbox"
-                        />
+                      <label class="full-span conditional-field" id="amministratore-field" hidden>
                         Amministratore
+                        <input
+                          name="amministratore"
+                          type="text"
+                          data-uppercase="true"
+                          placeholder="Nome amministratore"
+                          autocomplete="off"
+                        />
                       </label>
-                      <label class="full-span">
+                      <label class="full-span conditional-field" id="pec-field" hidden>
                         PEC
                         <input
                           name="pec"

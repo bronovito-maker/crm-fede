@@ -147,12 +147,12 @@ describe('sanitizeContractInput', () => {
       const result = sanitizeContractInput({
         ...validContract,
         tipoCliente: 'Condominio',
-        amministratore: 'true',
+        amministratore: 'Mario Rossi',
         pec: 'AMMINISTRAZIONE@PEC.IT',
       });
 
       assert.equal(result.tipoCliente, 'Condominio');
-      assert.equal(result.amministratore, true);
+      assert.equal(result.amministratore, 'MARIO ROSSI');
       assert.equal(result.pec, 'amministrazione@pec.it');
     });
   });

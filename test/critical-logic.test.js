@@ -1156,7 +1156,7 @@ describe('HTTP routes', () => {
         assert.equal(payload.id_contratto, 'VT-001');
         assert.equal(payload.tipo_cliente, 'Condominio');
         assert.equal(payload.categoria_cliente, 'Prospect');
-        assert.equal(payload.amministratore, true);
+        assert.equal(payload.amministratore, 'MARIO ROSSI');
         assert.equal(payload.pec, 'amministrazione@studioverdi.it');
         assert.deepEqual(payload.tipo_operazione, ['switch', 'subentro']);
         assert.equal(payload.metodo_pagamento, 'rid');
@@ -1171,9 +1171,9 @@ describe('HTTP routes', () => {
           id_contratto: 'VT-001',
           ragione_sociale: 'Rossi SRL',
           cellulare: '3331234567',
-          tipo_cliente: { value: 'Business' },
+          tipo_cliente: { value: 'Condominio' },
           categoria_cliente: { value: 'Prospect' },
-          amministratore: true,
+          amministratore: 'Mario Rossi',
           fornitore: 'Enel Energia',
           nome_offerta: 'Dual Fix',
           tipo_operazione: [{ value: 'switch' }, { value: 'subentro' }],
@@ -1205,7 +1205,7 @@ describe('HTTP routes', () => {
         cellulare: '3331234567',
         tipoCliente: 'Condominio',
         categoriaCliente: 'Prospect',
-        amministratore: 'true',
+        amministratore: 'Mario Rossi',
         fornitore: 'Enel Energia',
         nomeOfferta: 'Dual Fix',
         tipoOperazione: ['switch', 'subentro'],
@@ -1510,7 +1510,7 @@ describe('HTTP routes', () => {
           cellulare: '3331234567',
           tipo_cliente: { value: 'Condominio' },
           categoria_cliente: { value: 'Prospect' },
-          amministratore: true,
+          amministratore: 'Mario Rossi',
           fornitore: 'Enel Energia',
           nome_offerta: 'Dual Fix',
           tipo_operazione: [{ value: 'switch' }],

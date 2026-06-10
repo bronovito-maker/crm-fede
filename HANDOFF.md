@@ -76,6 +76,7 @@ Sessioni **in-memory** sul server (nessun Redis/DB separato). Cookie `session_to
 Il form "Nuovo contratto" / "Modifica contratto" è layout a 2 colonne:
 
 - **Colonna sinistra — Anagrafica Cliente**: ragioneSociale, cellulare, tipoCliente, categoriaCliente, piva, email, indirizzoFatturazione
+- **Campi condizionali anagrafica**: `amministratore` testuale solo per `tipoCliente = Condominio`; `PEC` visibile per `Business` e `Condominio`
 - **Colonna destra — Dati Contratto**: idContratto, fornitore, exFornitore, nomeOfferta, tipoOperazione, tipoFornitura, POD, PDR, metodoPagamento, IBAN, agenteId (solo admin), indirizzoFornitura
 - **Full-width sotto**: Documenti contratto, Note/descrizione
 - CSS: `.contract-form-cols` — grid 1 colonna su mobile, 2 colonne a ≥ 1024px
@@ -92,6 +93,8 @@ Non esiste più una pagina separata "Anagrafiche". Modificare un contratto aggio
 - **PDR obbligatorio** quando tipoFornitura = `"gas"` o `"dual"`
 - IBAN obbligatorio se metodoPagamento = `"rid"`
 - Email e P.IVA validate con regex
+- PEC opzionale ma validata come email se compilata
+- Nome amministratore obbligatorio per i condomini
 
 I campi POD e PDR sono anche gestiti da `toggleField()` che imposta `input.required = true/false` quando i campi diventano visibili/nascosti.
 
