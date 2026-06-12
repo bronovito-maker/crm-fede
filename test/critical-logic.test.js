@@ -422,6 +422,13 @@ describe('contractCompetenceMonth', () => {
     );
   });
 
+  it('usa mese_riferimento anche quando arriva come data completa', () => {
+    assert.equal(
+      contractCompetenceMonth({ meseRiferimento: '2026-06-01', dataInserimento: '2026-05-30' }),
+      '2026-06'
+    );
+  });
+
   it('fa fallback su data_inserimento se mese_riferimento manca', () => {
     assert.equal(contractCompetenceMonth({ dataInserimento: '2026-04-30' }), '2026-04');
   });
@@ -740,7 +747,7 @@ describe('helper coverage', () => {
       stato_contratto: { value: 'OK' },
       cb_unitaria_snapshot: '85',
       data_inizio_fornitura: '2026-06-01',
-      mese_riferimento: '2026-04',
+      mese_riferimento: '2026-04-01',
       trimestre_riferimento: '2026-Q2',
       anno_riferimento: '2026',
     });
@@ -749,6 +756,7 @@ describe('helper coverage', () => {
     assert.equal(normalized.statoContratto, 'OK');
     assert.equal(normalized.unitCount, 2);
     assert.equal(normalized.commissionValue, 170);
+    assert.equal(normalized.meseRiferimento, '2026-04');
     assert.deepEqual(normalized.tipoOperazione, ['switch']);
     assert.equal(normalized.fileContratto[0].visibleName, 'Doc.pdf');
   });

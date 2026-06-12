@@ -1970,7 +1970,7 @@ function normalizeContract(row) {
     cbUnitariaSnapshot: cbSnapshot,
     cbMaturata,
     dataInizioFornitura: row.data_inizio_fornitura || '',
-    meseRiferimento: row.mese_riferimento || '',
+    meseRiferimento: normalizeCompetenceMonth(row.mese_riferimento, { strict: false }),
     trimestreRiferimento: row.trimestre_riferimento || '',
     annoRiferimento: row.anno_riferimento || '',
     clienteId: linkedAgentId(row.cliente), // Riutilizziamo la funzione helper per gli ID linkati
@@ -2282,12 +2282,10 @@ function quarterFromMonthKey(monthKey) {
 }
 
 function contractCompetenceMonth(contract) {
-  const byRef = cleanText(contract.meseRiferimento);
-  return /^\d{4}-\d{2}$/.test(byRef)
-    ? byRef
-    : normalizeCompetenceMonth(cleanText(contract.dataInserimento).slice(0, 7), {
-        strict: false,
-      });
+  const byRef = normalizeCompetenceMonth(contract.meseRiferimento, { strict: false });
+  return byRef || normalizeCompetenceMonth(cleanText(contract.dataInserimento).slice(0, 7), {
+    strict: false,
+  });
 }
 
 function contractCompetenceQuarter(contract) {

@@ -1609,15 +1609,15 @@ function syncContractEditorUi() {
 function populateContractForm(contract) {
   const form = document.getElementById('contract-form');
   const multipodRows = parseMultipodRowsFromContract(contract);
+  const competenceMonth = contractMonthRef(contract) || selectedViewMonth || currentCompetence.month || monthKey(today);
   form.elements.ragioneSociale.value = contract.ragioneSociale || '';
   form.elements.cellulare.value = contract.cellulare || '';
   form.elements.tipoCliente.value = contract.tipoCliente || '';
   form.elements.piva.value = contract.piva || '';
   form.elements.email.value = contract.email || '';
   form.elements.idContratto.value = contract.idContratto || '';
-  renderContractCompetenceMonthOptions(contract.meseRiferimento || selectedViewMonth);
-  form.elements.meseCompetenza.value =
-    contract.meseRiferimento || selectedViewMonth || currentCompetence.month || monthKey(today);
+  renderContractCompetenceMonthOptions(competenceMonth);
+  form.elements.meseCompetenza.value = competenceMonth;
   form.elements.categoriaCliente.value = contract.categoriaCliente || '';
   form.elements.amministratore.value = normalizeAdministratorValue(contract.amministratore);
   form.elements.pec.value = contract.pec || '';
@@ -4142,6 +4142,7 @@ function setupAddressAutocompleteForElement(input, inputId = '') {
     wrap.appendChild(widget);
     input.insertAdjacentElement('afterend', wrap);
     input.type = 'hidden';
+    widget.value = input.value || '';
 
     if (inputId) {
       addressAutocompleteRefs[inputId] = { mode: 'new', input, widget };
