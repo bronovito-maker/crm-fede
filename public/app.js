@@ -743,6 +743,7 @@ async function loadAndRenderContracts({ silent = false, force = false } = {}) {
 }
 
 function setActivePage(pageId) {
+  const previousPage = activePage;
   activePage = pageId;
   document
     .querySelectorAll('.page')
@@ -785,6 +786,16 @@ function setActivePage(pageId) {
   }
 
   if (pageId === 'contracts') {
+    if (previousPage !== 'contracts') {
+      syncContractsMonthFilterToSelection();
+      const needsAdminContracts =
+        agent?.ruolo === 'admin' && contractsScopeFilter !== 'mine' && !adminDataLoaded;
+      if (needsAdminContracts) {
+        setContractsScopeFeedback('Caricamento contratti...');
+      } else {
+        renderContractsTable();
+      }
+    }
     ensureAdminContractsScopeReady();
   }
 
@@ -1180,6 +1191,7 @@ function contractRow(contract) {
     <tr data-contract-id="${contract.id}" tabindex="0" aria-label="Apri dettaglio contratto ${escapeHtml(contract.ragioneSociale)}">
       <td data-label="Cliente"><strong>${escapeHtml(contract.ragioneSociale)}</strong>${multipodBadge(contract)}</td>
       <td data-label="Data inserimento">${formatDate.format(new Date(contract.dataInserimento))}</td>
+      <td data-label="Mese competenza">${escapeHtml(contractMonthLabel(contract))}</td>
       <td data-label="Stato">${statusBadge(contract.statoContratto)}</td>
       <td data-label="Fornitore">${escapeHtml(contract.fornitore || 'Non inserito')}</td>
       <td data-label="Fornitura">${escapeHtml(capitalize(contract.tipoFornitura || 'Non inserita'))}</td>
@@ -1206,6 +1218,7 @@ function openContractModal(contractLike) {
     detailItem('Stato', capitalize(contract.statoContratto)),
     detailItem('Agente', contract.agenteNome || agentNameById(contract.agenteId) || 'Sconosciuto'),
     detailItem('Data inserimento', formatDate.format(new Date(contract.dataInserimento))),
+    detailItem('Mese competenza', contractMonthLabel(contract)),
     detailItem(
       'Inizio fornitura',
       contract.dataInizioFornitura
@@ -1541,6 +1554,15 @@ function renderMonthFilter() {
       .join('');
     synced.value = months.includes(selectedViewMonth) ? selectedViewMonth : months[0] || '';
   });
+}
+
+function syncContractsMonthFilterToSelection() {
+  const select = document.getElementById('month-filter');
+  if (!select) return;
+  const selected = selectedViewMonth || currentCompetence.month || monthKey(today);
+  select.value = Array.from(select.options).some((option) => option.value === selected)
+    ? selected
+    : 'all';
 }
 
 function renderAll() {
@@ -3383,6 +3405,12 @@ function contractMonthRef(contract) {
   return String(contract?.meseRiferimento || contract?.dataInserimento || '').slice(0, 7);
 }
 
+function contractMonthLabel(contract) {
+  const month = contractMonthRef(contract);
+  if (!/^\d{4}-\d{2}$/.test(month)) return 'Non inserito';
+  return month ? capitalize(formatMonth.format(dateFromMonthKey(month))) : 'Non inserito';
+}
+
 function contractQuarterRef(contract) {
   if (contract?.trimestreRiferimento) return String(contract.trimestreRiferimento);
   const month = contractMonthRef(contract);
@@ -3947,6 +3975,7 @@ function fillClientFieldsFromLookup(client) {
   form.elements.ragioneSociale.value = client.ragioneSociale;
   form.elements.piva.value = client.piva;
   form.elements.email.value = client.email;
+  form.elements.pec.value = client.pec || '';
   form.elements.cellulare.value = client.cellulare;
   const paymentData = resolveClientPaymentData(client);
   const metodoPagamento = String(paymentData.metodoPagamento || '').trim().toLowerCase();

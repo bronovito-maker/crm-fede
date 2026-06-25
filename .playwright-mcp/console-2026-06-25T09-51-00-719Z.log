@@ -1,0 +1,18 @@
+[  175948ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/api/contracts:0
+[  175948ms] [ERROR] TypeError: Failed to fetch
+    at fetchJson (http://localhost:3000/baserowClient.js:135:26)
+    at Object.listContracts (http://localhost:3000/baserowClient.js:29:12)
+    at loadAndRenderContracts (http://localhost:3000/app.js:729:37)
+    at http://localhost:3000/app.js:546:5 @ http://localhost:3000/app.js:738
+[  235943ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/api/contracts:0
+[  235943ms] [ERROR] TypeError: Failed to fetch
+    at fetchJson (http://localhost:3000/baserowClient.js:135:26)
+    at Object.listContracts (http://localhost:3000/baserowClient.js:29:12)
+    at loadAndRenderContracts (http://localhost:3000/app.js:729:37)
+    at http://localhost:3000/app.js:546:5 @ http://localhost:3000/app.js:738
+[  295935ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/api/contracts:0
+[  295935ms] [ERROR] TypeError: Failed to fetch
+    at fetchJson (http://localhost:3000/baserowClient.js:135:26)
+    at Object.listContracts (http://localhost:3000/baserowClient.js:29:12)
+    at loadAndRenderContracts (http://localhost:3000/app.js:729:37)
+    at http://localhost:3000/app.js:546:5 @ http://localhost:3000/app.js:738

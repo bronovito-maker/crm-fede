@@ -843,6 +843,9 @@ app.patch('/api/clients/:id', requireAuth, async (req, res) => {
       indirizzo_fatturazione: cleanText(req.body.indirizzoFatturazione),
       piva: cleanText(req.body.piva), // Attenzione a modificare la PIVA
     };
+    if (Object.prototype.hasOwnProperty.call(req.body, 'pec')) {
+      payload.pec = cleanText(req.body.pec).toLowerCase();
+    }
 
     const updated = await updateBaserowClient(clientId, payload);
 
@@ -907,6 +910,7 @@ module.exports = {
   normalizeAgent,
   normalizeCompetenceMonth,
   normalizeContract,
+  normalizeClient,
   normalizeStatus,
   numberValue,
   publicError,
@@ -1650,6 +1654,7 @@ function normalizeClient(row) {
     ragioneSociale: row['Ragione Sociale'] || '',
     piva: row.piva || '',
     email: row.email || '',
+    pec: cleanText(row.pec).toLowerCase(),
     cellulare: row.cellulare || '',
     indirizzoFatturazione: row.indirizzo_fatturazione || '',
     metodoPagamento: selectValue(row.metodo_pagamento || row.metodoPagamento || row['Metodo pagamento']),

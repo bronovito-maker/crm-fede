@@ -32,6 +32,7 @@ const {
   multiSelectValue,
   normalizeAgent,
   normalizeCompetenceMonth,
+  normalizeClient,
   normalizeContract,
   normalizeStatus,
   numberValue,
@@ -759,6 +760,26 @@ describe('helper coverage', () => {
     assert.equal(normalized.meseRiferimento, '2026-04');
     assert.deepEqual(normalized.tipoOperazione, ['switch']);
     assert.equal(normalized.fileContratto[0].visibleName, 'Doc.pdf');
+  });
+
+  it('normalizeClient include la PEC del cliente esistente', () => {
+    const normalized = normalizeClient({
+      id: 12,
+      'Ragione Sociale': 'Studio Verdi',
+      piva: '01923440982',
+      email: 'amministrazione@studioverdi.it',
+      pec: 'AMMINISTRAZIONE@PEC.IT',
+      cellulare: '3331234567',
+      indirizzo_fatturazione: 'Via Milano 12',
+      metodo_pagamento: { value: 'rid' },
+      iban: 'IT60X0542811101000000123456',
+      agente: [{ id: 3 }],
+    });
+
+    assert.equal(normalized.pec, 'amministrazione@pec.it');
+    assert.equal(normalized.email, 'amministrazione@studioverdi.it');
+    assert.equal(normalized.metodoPagamento, 'rid');
+    assert.equal(normalized.agenteId, 3);
   });
 
   it('normalizeContract azzera cb maturata implicita per K.O.', () => {
