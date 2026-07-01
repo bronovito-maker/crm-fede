@@ -214,7 +214,8 @@ const adminState = {
   contracts: [],
   editingAgentId: null,
   contractSearch: '',
-  contractAgentId: 'all',
+  contractAgentIds: [],
+  contractOperationTypes: [],
   contractStatus: 'all',
   contractSentFilter: 'all',
   contractSort: 'recent',
@@ -494,6 +495,7 @@ document.getElementById('admin-agent-mode-edit').addEventListener('click', () =>
 [
   ['admin-contract-search', 'input', handleAdminFilterChange],
   ['admin-contract-agent-filter', 'change', handleAdminFilterChange],
+  ['admin-contract-operation-filter', 'change', handleAdminFilterChange],
   ['admin-contract-status-filter', 'change', handleAdminFilterChange],
   ['admin-contract-sort', 'change', handleAdminFilterChange],
   ['admin-contract-sent-filter', 'change', handleAdminFilterChange],
@@ -1687,7 +1689,8 @@ function resetContractEditor({ keepFeedback = false } = {}) {
   contractEditorState.mode = 'new';
   form.reset();
   resetAddressAutocompleteValues();
-  renderContractCompetenceMonthOptions(selectedViewMonth || currentCompetence.month || monthKey(today));
+  renderContractCompetenceMonthOptions(defaultNewContractCompetenceMonth());
+  form.elements.meseCompetenza.value = defaultNewContractCompetenceMonth();
   const sameAddressCheckbox = document.getElementById('same-address-checkbox');
   if (sameAddressCheckbox) {
     sameAddressCheckbox.checked = false;
@@ -2770,8 +2773,14 @@ function renderAdminContracts(adminContracts, agents) {
         query
       );
     const matchesAgent =
-      adminState.contractAgentId === 'all' ||
-      Number(contract.agenteId) === Number(adminState.contractAgentId);
+      !adminState.contractAgentIds.length ||
+      adminState.contractAgentIds.includes(String(contract.agenteId));
+    const contractOperations = Array.isArray(contract.tipoOperazione)
+      ? contract.tipoOperazione.map(String)
+      : [String(contract.tipoOperazione || '')].filter(Boolean);
+    const matchesOperation =
+      !adminState.contractOperationTypes.length ||
+      contractOperations.some((operation) => adminState.contractOperationTypes.includes(operation));
     const matchesStatus =
       hasSearchQuery ||
       adminState.contractStatus === 'all' ||
@@ -2783,7 +2792,7 @@ function renderAdminContracts(adminContracts, agents) {
         contract.statoContratto !== 'Inviato' &&
         contract.statoContratto !== 'Bozza') ||
       (adminState.contractSentFilter === 'sent' && contract.statoContratto === 'Inviato');
-    return matchesQuery && matchesAgent && matchesStatus && matchesSent;
+    return matchesQuery && matchesAgent && matchesOperation && matchesStatus && matchesSent;
   });
   const rows = filteredRows.slice().sort((left, right) => {
     if (adminState.contractSort === 'unsent') {
@@ -2910,22 +2919,42 @@ function adminContractRowClass(contract) {
 }
 
 function populateAdminFilterOptions(agents) {
-  const select = document.getElementById('admin-contract-agent-filter');
-  const current = adminState.contractAgentId;
-  select.innerHTML = [
-    '<option value="all">Tutti gli agenti</option>',
+  const agentSelect = document.getElementById('admin-contract-agent-filter');
+  const operationSelect = document.getElementById('admin-contract-operation-filter');
+  const selectedAgentIds = new Set(adminState.contractAgentIds.map(String));
+  const selectedOperations = new Set(adminState.contractOperationTypes.map(String));
+  agentSelect.innerHTML = [
     ...agents
       .slice()
       .sort((left, right) => left.nome.localeCompare(right.nome, 'it'))
       .map((agentRow) => `<option value="${agentRow.id}">${escapeHtml(agentRow.nome)}</option>`),
   ].join('');
-  select.value = agents.some((agentRow) => String(agentRow.id) === String(current))
-    ? String(current)
-    : 'all';
+  Array.from(agentSelect.options).forEach((option) => {
+    option.selected = selectedAgentIds.has(option.value);
+  });
+
+  const operationValues = Array.from(
+    new Set(
+      adminState.contracts.flatMap((contract) =>
+        Array.isArray(contract.tipoOperazione)
+          ? contract.tipoOperazione.map(String).filter(Boolean)
+          : [String(contract.tipoOperazione || '')].filter(Boolean)
+      )
+    )
+  ).sort((left, right) => left.localeCompare(right, 'it'));
+
+  operationSelect.innerHTML = operationValues
+    .map((operation) => `<option value="${escapeHtml(operation)}">${escapeHtml(operation)}</option>`)
+    .join('');
+  Array.from(operationSelect.options).forEach((option) => {
+    option.selected = selectedOperations.has(option.value);
+  });
 }
 
 function syncAdminFilterControls() {
   document.getElementById('admin-contract-search').value = adminState.contractSearch;
+  syncMultiSelectValues('admin-contract-agent-filter', adminState.contractAgentIds);
+  syncMultiSelectValues('admin-contract-operation-filter', adminState.contractOperationTypes);
   document.getElementById('admin-contract-status-filter').value = adminState.contractStatus;
   document.getElementById('admin-contract-sort').value = adminState.contractSort;
   document.getElementById('admin-contract-sent-filter').value = adminState.contractSentFilter;
@@ -2936,7 +2965,8 @@ function syncAdminFilterControls() {
 
 function handleAdminFilterChange() {
   adminState.contractSearch = document.getElementById('admin-contract-search').value;
-  adminState.contractAgentId = document.getElementById('admin-contract-agent-filter').value;
+  adminState.contractAgentIds = getMultiSelectValues('admin-contract-agent-filter');
+  adminState.contractOperationTypes = getMultiSelectValues('admin-contract-operation-filter');
   adminState.contractStatus = document.getElementById('admin-contract-status-filter').value;
   adminState.contractSort = document.getElementById('admin-contract-sort').value;
   adminState.contractSentFilter = document.getElementById('admin-contract-sent-filter').value;
@@ -2966,7 +2996,8 @@ function applyAdminQuickFilter(mode) {
     adminState.contractSort = 'recent';
   } else if (mode === 'reset') {
     adminState.contractSearch = '';
-    adminState.contractAgentId = 'all';
+    adminState.contractAgentIds = [];
+    adminState.contractOperationTypes = [];
     adminState.contractStatus = 'all';
     adminState.contractSort = 'recent';
     adminState.contractSentFilter = 'all';
@@ -2976,6 +3007,17 @@ function applyAdminQuickFilter(mode) {
   if (adminState.stats) {
     renderAdminContracts(adminState.contracts, adminState.agents);
   }
+}
+
+function getMultiSelectValues(elementId) {
+  return Array.from(document.getElementById(elementId).selectedOptions).map((option) => option.value);
+}
+
+function syncMultiSelectValues(elementId, values) {
+  const selectedValues = new Set((values || []).map(String));
+  Array.from(document.getElementById(elementId).options).forEach((option) => {
+    option.selected = selectedValues.has(option.value);
+  });
 }
 
 function toggleAdminContractSelection(contractId, isSelected) {
@@ -3542,9 +3584,13 @@ function syncContractCompetenceMonthToSelection() {
   const select = document.getElementById('contract-competence-month');
   if (!select) return;
   if (contractEditorState.mode !== 'new') return;
-  const preferred = selectedViewMonth || currentCompetence.month || monthKey(today);
+  const preferred = defaultNewContractCompetenceMonth();
   renderContractCompetenceMonthOptions(preferred);
   select.value = preferred;
+}
+
+function defaultNewContractCompetenceMonth() {
+  return currentCompetence.month || monthKey(today);
 }
 
 function isCountedInProgress(contract) {

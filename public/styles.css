@@ -1351,6 +1351,10 @@ textarea {
   grid-column: 1 / -1;
 }
 
+.admin-toolbar select[multiple] {
+  min-height: 7.5rem;
+}
+
 .admin-quick-filters {
   display: grid;
   grid-template-columns: 1fr 1fr;
