@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "build": "node scripts/check-build.js",
     "test": "c8 node --test",
     "coverage": "c8 report --reporter=html",
     "hash-password": "node scripts/hash-password.js",
