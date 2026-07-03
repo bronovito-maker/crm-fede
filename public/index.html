@@ -177,10 +177,6 @@
             <span class="nav-short"><span class="nav-icon" aria-hidden="true">€</span>CB</span
             ><span class="nav-full">CB</span>
           </button>
-          <button class="nav-item" type="button" data-page="progress">
-            <span class="nav-short"><span class="nav-icon" aria-hidden="true">🎯</span>Target</span
-            ><span class="nav-full">Avanzamento</span>
-          </button>
           <button class="nav-item admin-only" type="button" data-page="admin" hidden>
             <span class="nav-short"><span class="nav-icon" aria-hidden="true">⚙️</span>Admin</span
             ><span class="nav-full">Admin</span>
@@ -725,14 +721,15 @@
               type="search"
               placeholder="Cerca cliente, telefono, email, ID, POD, PDR"
             />
-            <select
-              id="contracts-scope-filter"
-              class="admin-only"
-              aria-label="Perimetro contratti admin"
+            <fieldset
+              class="admin-multi-filter contracts-multi-filter admin-only"
+              id="contracts-agent-filter-fieldset"
               hidden
             >
-              <option value="all">Agenti: tutti</option>
-            </select>
+              <legend>Agenti (selezione multipla)</legend>
+              <span class="admin-multi-filter-hint">Nessuna spunta = tutti gli agenti</span>
+              <div id="contracts-agent-filter" class="admin-multi-filter-options"></div>
+            </fieldset>
             <select id="month-filter" aria-label="Filtra per mese">
               <option value="all">Mese: tutti</option>
             </select>
@@ -753,13 +750,22 @@
               <option value="prospect">Clienti: Prospect</option>
               <option value="switch ricorrente">Clienti: Switch ricorrenti</option>
             </select>
-            <select id="contracts-operation-filter" aria-label="Filtra per tipo operazione">
-              <option value="all">Operaz.: tutte</option>
-              <option value="switch">Operaz.: Switch</option>
-              <option value="switch + voltura">Operaz.: Switch + voltura</option>
-              <option value="cambio listino">Operaz.: Cambio listino</option>
-              <option value="subentro">Operaz.: Subentro</option>
-            </select>
+            <fieldset class="admin-multi-filter contracts-multi-filter">
+              <legend>Operazioni (selezione multipla)</legend>
+              <span class="admin-multi-filter-hint">Nessuna spunta = tutte le operazioni</span>
+              <div id="contracts-operation-filter" class="admin-multi-filter-options">
+                <label><input type="checkbox" value="switch" /> <span>Switch</span></label>
+                <label
+                  ><input type="checkbox" value="switch + voltura" />
+                  <span>Switch + voltura</span></label
+                >
+                <label
+                  ><input type="checkbox" value="cambio listino" />
+                  <span>Cambio listino</span></label
+                >
+                <label><input type="checkbox" value="subentro" /> <span>Subentro</span></label>
+              </div>
+            </fieldset>
             <select id="contracts-supplier-filter" aria-label="Filtra per fornitore selezionato">
               <option value="all">Fornitore: tutti</option>
             </select>
@@ -858,115 +864,6 @@
               </button>
             </div>
           </article>
-        </section>
-
-        <section class="page" id="progress">
-          <div class="filters">
-            <select id="progress-month-filter" aria-label="Seleziona mese avanzamento"></select>
-          </div>
-          <div class="progress-hero">
-            <article class="panel progress-focus">
-              <div class="panel-heading">
-                <h2>Avanzamento del mese</h2>
-                <span id="month-target-label"></span>
-              </div>
-              <strong id="month-target-percent"></strong>
-              <div class="progress-track">
-                <span id="month-target-bar"></span>
-              </div>
-              <p class="motivation" id="progress-message"></p>
-            </article>
-            <article class="panel progress-daily-need">
-              <div class="daily-need-icon" aria-hidden="true">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
-                </svg>
-              </div>
-              <span>Media necessaria</span>
-              <strong id="daily-need"></strong>
-            </article>
-          </div>
-          <div class="progress-targets">
-            <article class="panel target-card target-card-month">
-              <div class="target-card-header">
-                <svg
-                  class="target-card-icon"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <rect x="3" y="4" width="18" height="18" rx="2" />
-                  <line x1="16" y1="2" x2="16" y2="6" />
-                  <line x1="8" y1="2" x2="8" y2="6" />
-                  <line x1="3" y1="10" x2="21" y2="10" />
-                </svg>
-                <h2>Target nuovi contratti mensili</h2>
-              </div>
-              <p class="target-line" id="recurring-target"></p>
-              <strong class="target-percent-small" id="recurring-target-percent"></strong>
-              <div class="progress-track compact">
-                <span id="recurring-target-bar"></span>
-              </div>
-              <p class="target-line target-note" id="recurring-target-note"></p>
-            </article>
-            <article class="panel target-card target-card-quarter">
-              <div class="target-card-header">
-                <svg
-                  class="target-card-icon"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M3 3v18h18" />
-                  <path d="m19 9-5 5-4-4-3 3" />
-                </svg>
-                <h2>Target nuovi contratti trimestrali</h2>
-              </div>
-              <p class="target-line" id="quarter-target"></p>
-              <strong class="target-percent-small" id="quarter-target-percent"></strong>
-              <div class="progress-track compact">
-                <span id="quarter-target-bar"></span>
-              </div>
-            </article>
-            <article class="panel target-card target-card-year">
-              <div class="target-card-header">
-                <svg
-                  class="target-card-icon"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <circle cx="12" cy="12" r="10" />
-                  <polyline points="12 6 12 12 16 14" />
-                </svg>
-                <h2>Target nuovi contratti annuali</h2>
-              </div>
-              <p class="target-line" id="year-target"></p>
-              <strong class="target-percent-small" id="year-target-percent"></strong>
-              <div class="progress-track compact">
-                <span id="year-target-bar"></span>
-              </div>
-            </article>
-          </div>
         </section>
 
         <section class="page" id="admin">

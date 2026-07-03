@@ -233,7 +233,8 @@ let cbCategoryFilter = 'all';
 let cbOperationFilter = 'all';
 let cbSupplierFilter = 'all';
 let supplierOptionsLoaded = false;
-let contractsScopeFilter = 'mine';
+let contractsAgentFilterIds = [];
+let contractsOperationFilters = [];
 let contractsSupplierFilter = 'all';
 let contractsScopeFeedbackTimer = null;
 let activePage = 'dashboard';
@@ -248,7 +249,6 @@ const pages = {
   contracts: 'Contratti',
   cb: 'Client Base',
   'switch ricorrente': 'Switch ricorrente',
-  progress: 'Avanzamento',
   admin: 'Admin',
 };
 
@@ -650,9 +650,16 @@ document.getElementById('contract-form').addEventListener('submit', async (event
 document
   .getElementById('contracts-category-filter')
   ?.addEventListener('change', renderContractsTable);
-document
-  .getElementById('contracts-operation-filter')
-  ?.addEventListener('change', renderContractsTable);
+document.getElementById('contracts-operation-filter')?.addEventListener('change', () => {
+  contractsOperationFilters = getMultiSelectValues('contracts-operation-filter');
+  updateContractsMultiFilterFeedback();
+  renderContractsTable();
+});
+document.getElementById('contracts-agent-filter')?.addEventListener('change', () => {
+  contractsAgentFilterIds = getMultiSelectValues('contracts-agent-filter');
+  updateContractsMultiFilterFeedback();
+  renderContractsTable();
+});
 document.getElementById('contracts-supplier-filter')?.addEventListener('change', () => {
   contractsSupplierFilter = String(
     document.getElementById('contracts-supplier-filter')?.value || 'all'
@@ -673,25 +680,7 @@ document.getElementById('month-filter').addEventListener('change', () => {
   }
   renderAll();
 });
-document.getElementById('contracts-scope-filter').addEventListener('change', async () => {
-  const scopeSelect = document.getElementById('contracts-scope-filter');
-  contractsScopeFilter = String(scopeSelect.value || defaultContractsScopeForAgent());
-  const selectedAgentId = selectedAdminContractsAgentId();
-  const isAdminGlobalScope = agent?.ruolo === 'admin' && contractsScopeFilter !== 'mine';
-  setContractsScopeFeedback(
-    isAdminGlobalScope
-      ? selectedAgentId
-        ? 'Caricamento contratti per agente selezionato...'
-        : 'Caricamento contratti di tutti gli agenti...'
-      : 'Filtro impostato su: I miei contratti.',
-    isAdminGlobalScope ? '' : 'success'
-  );
-  if (isAdminGlobalScope) {
-    await ensureAdminContractsScopeReady();
-  }
-  renderAll();
-});
-['cb-month-filter', 'progress-month-filter'].forEach((id) => {
+['cb-month-filter'].forEach((id) => {
   const select = document.getElementById(id);
   if (!select) return;
   select.addEventListener('change', () => {
@@ -805,8 +794,7 @@ function setActivePage(pageId) {
   if (pageId === 'contracts') {
     if (previousPage !== 'contracts') {
       syncContractsMonthFilterToSelection();
-      const needsAdminContracts =
-        agent?.ruolo === 'admin' && contractsScopeFilter !== 'mine' && !adminDataLoaded;
+      const needsAdminContracts = agent?.ruolo === 'admin' && !adminDataLoaded;
       if (needsAdminContracts) {
         setContractsScopeFeedback('Caricamento contratti...');
       } else {
@@ -1087,7 +1075,7 @@ function renderBarChart() {
 
 function renderContractsTable() {
   const sourceContracts = visibleContractsByScope();
-  const selectedScopeAgentId = selectedAdminContractsAgentId();
+  const selectedAgentIds = new Set(contractsAgentFilterIds.map(String));
   const search = document.getElementById('search-input').value.toLowerCase().trim();
   const month = document.getElementById('month-filter').value;
   const status = document.getElementById('status-filter').value;
@@ -1096,11 +1084,9 @@ function renderContractsTable() {
   )
     .trim()
     .toLowerCase();
-  const selectedOperation = String(
-    document.getElementById('contracts-operation-filter')?.value || 'all'
-  )
-    .trim()
-    .toLowerCase();
+  const selectedOperations = contractsOperationFilters.map((operation) =>
+    String(operation).trim().toLowerCase()
+  );
   const category = selectedCategory;
 
   populateSupplierFilterOptions('contracts-supplier-filter', sourceContracts, contractsSupplierFilter);
@@ -1128,14 +1114,16 @@ function renderContractsTable() {
       String(contract.categoriaCliente || '')
         .trim()
         .toLowerCase() === category;
-    const matchesOperation = contractMatchesOperationFilter(contract, selectedOperation);
+    const matchesOperation = contractMatchesAnyOperationFilter(contract, selectedOperations);
     const matchesSupplier =
       selectedSupplier === 'all' ||
       String(contract.fornitore || '')
         .trim()
         .toLowerCase() === selectedSupplier;
     const matchesScopeAgent =
-      !selectedScopeAgentId || Number(contract.agenteId) === Number(selectedScopeAgentId);
+      agent?.ruolo !== 'admin' ||
+      !selectedAgentIds.size ||
+      selectedAgentIds.has(String(contract.agenteId));
     return (
       matchesSearch &&
       matchesMonth &&
@@ -1172,7 +1160,7 @@ function renderContractsTable() {
       month !== 'all' ||
       status !== 'all' ||
       category !== 'all' ||
-      selectedOperation !== 'all' ||
+      selectedOperations.length > 0 ||
       selectedSupplier !== 'all';
     const hasAnyContracts = sourceContracts.length > 0;
     if (!hasAnyContracts && !hasFilters) {
@@ -1486,72 +1474,6 @@ function populateSupplierFilterOptions(selectId, list, selectedValue = 'all') {
   if (selectId === 'cb-supplier-filter') cbSupplierFilter = safeSelected;
 }
 
-function renderProgressPage() {
-  const progressMonthly = currentMonthContracts().filter(
-    (contract) =>
-      isCountedInMonthlyOverallProgress(contract) && isContractOperationalForProgress(contract)
-  );
-  const prospectMonthly = currentMonthContracts().filter(
-    (contract) => isCountedInProgress(contract) && isContractOperationalForProgress(contract)
-  );
-  const progressUnits = sumContractUnits(progressMonthly);
-  const prospectUnits = sumContractUnits(prospectMonthly);
-  const selectedDate = dateFromMonthKey(selectedViewMonth || monthKey(new Date()));
-  const quarterKey = getQuarterKey(selectedDate);
-  const yearKey = String(selectedDate.getFullYear());
-  const overallMonthDone = progressUnits;
-  const progressMissing = Math.max(agent.targetMensile - overallMonthDone, 0);
-  const progressPercent = percent(overallMonthDone, agent.targetMensile);
-  const recurringMonthPercent = percent(prospectUnits, agent.targetMensile);
-  const quarterDone = contracts
-    .filter(
-      (contract) =>
-        contractQuarterRef(contract) === quarterKey &&
-        isCountedInProgress(contract) &&
-        isContractOperationalForProgress(contract)
-    )
-    .reduce((sum, contract) => sum + contractUnitCount(contract), 0);
-  const yearDone = contracts
-    .filter(
-      (contract) =>
-        contractYearRef(contract) === yearKey &&
-        isCountedInProgress(contract) &&
-        isContractOperationalForProgress(contract)
-    )
-    .reduce((sum, contract) => sum + contractUnitCount(contract), 0);
-  const quarterPercent = percent(quarterDone, agent.targetTrimestrale);
-  const yearPercent = percent(yearDone, agent.targetAnnuale);
-  const daysLeft = Math.max(
-    new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate() - today.getDate() + 1,
-    1
-  );
-  const dailyNeed = progressMissing === 0 ? 0 : progressMissing / daysLeft;
-
-  document.getElementById('month-target-label').textContent =
-    `${overallMonthDone}/${agent.targetMensile}`;
-  document.getElementById('month-target-percent').textContent = `${progressPercent}%`;
-  document.getElementById('month-target-bar').style.width = `${progressPercent}%`;
-  document.getElementById('progress-message').textContent =
-    progressMissing === 0 ? 'Target raggiunto.' : `Ti mancano ${progressMissing} contatori.`;
-  document.getElementById('recurring-target').textContent =
-    `${prospectUnits}/${agent.targetMensile} contatori`;
-  document.getElementById('recurring-target-percent').textContent = `${recurringMonthPercent}%`;
-  document.getElementById('recurring-target-bar').style.width = `${recurringMonthPercent}%`;
-  document.getElementById('recurring-target-note').textContent = 'Conteggia solo clienti Prospect.';
-  document.getElementById('quarter-target').textContent =
-    `${quarterDone}/${agent.targetTrimestrale} contatori`;
-  document.getElementById('quarter-target-percent').textContent = `${quarterPercent}%`;
-  document.getElementById('quarter-target-bar').style.width = `${quarterPercent}%`;
-  document.getElementById('year-target').textContent =
-    `${yearDone}/${agent.targetAnnuale} contatori`;
-  document.getElementById('year-target-percent').textContent = `${yearPercent}%`;
-  document.getElementById('year-target-bar').style.width = `${yearPercent}%`;
-  document.getElementById('daily-need').textContent =
-    dailyNeed === 0
-      ? 'Target già raggiunto'
-      : `${dailyNeed.toLocaleString('it-IT', { maximumFractionDigits: 1 })} contatori al giorno`;
-}
-
 function renderMonthFilter() {
   const months = getAvailableMonths();
   const select = document.getElementById('month-filter');
@@ -1566,7 +1488,7 @@ function renderMonthFilter() {
   ].join('');
   select.value = months.includes(selected) || selected === 'all' ? selected : selectedViewMonth;
 
-  ['cb-month-filter', 'progress-month-filter'].forEach((id) => {
+  ['cb-month-filter'].forEach((id) => {
     const synced = document.getElementById(id);
     if (!synced) return;
     synced.innerHTML = months
@@ -1593,7 +1515,6 @@ function renderAll() {
   renderDashboard();
   renderContractsTable();
   renderCbPage();
-  renderProgressPage();
   updateAdminVisibility();
   syncContractEditorUi();
   updateMonthNavigationUi();
@@ -2441,10 +2362,6 @@ function setConnectionStatus(status, label) {
   `;
 }
 
-function defaultContractsScopeForAgent() {
-  return agent?.ruolo === 'admin' ? 'all' : 'mine';
-}
-
 function resetAdminDataCache() {
   adminDataLoaded = false;
   adminDataRefreshPromise = null;
@@ -2480,6 +2397,8 @@ function resetUserDataState() {
   cbCategoryFilter = 'all';
   cbOperationFilter = 'all';
   cbSupplierFilter = 'all';
+  contractsAgentFilterIds = [];
+  contractsOperationFilters = [];
   contractsSupplierFilter = 'all';
   selectedViewMonth = monthKey(today);
   ['search-input', 'cb-search-input'].forEach((id) => {
@@ -2489,13 +2408,14 @@ function resetUserDataState() {
   [
     'status-filter',
     'contracts-category-filter',
-    'contracts-operation-filter',
     'cb-category-filter',
     'cb-operation-filter',
   ].forEach((id) => {
     const select = document.getElementById(id);
     if (select) select.value = 'all';
   });
+  syncMultiSelectValues('contracts-agent-filter', []);
+  syncMultiSelectValues('contracts-operation-filter', []);
   resetAdminDataCache();
 }
 
@@ -2511,12 +2431,44 @@ function updateAdminVisibility() {
   document.querySelectorAll('.admin-only').forEach((element) => {
     element.hidden = agent.ruolo !== 'admin';
   });
-  populateContractsScopeFilterOptions();
-  const contractsScope = document.getElementById('contracts-scope-filter');
-  if (contractsScope) {
-    contractsScope.value = contractsScopeFilter;
-  }
+  populateContractsAgentFilterOptions();
   populateContractAgentOptions();
+}
+
+function populateContractsAgentFilterOptions() {
+  const container = document.getElementById('contracts-agent-filter');
+  if (!container || agent?.ruolo !== 'admin') return;
+  const selectedIds = new Set(contractsAgentFilterIds.map(String));
+  const options = (adminState.agents.length ? adminState.agents : [agent])
+    .slice()
+    .sort((left, right) => left.nome.localeCompare(right.nome, 'it'));
+
+  container.innerHTML = options
+    .map(
+      (agentRow) => `
+        <label>
+          <input type="checkbox" value="${agentRow.id}" ${selectedIds.has(String(agentRow.id)) ? 'checked' : ''} />
+          <span>${escapeHtml(agentRow.nome)}${agentRow.attivo === false ? ' (disattivo)' : ''}</span>
+        </label>
+      `
+    )
+    .join('');
+}
+
+function updateContractsMultiFilterFeedback() {
+  const activeFilters = [];
+  if (contractsAgentFilterIds.length) {
+    activeFilters.push(`${contractsAgentFilterIds.length} agenti`);
+  }
+  if (contractsOperationFilters.length) {
+    activeFilters.push(`${contractsOperationFilters.length} operazioni`);
+  }
+  setContractsScopeFeedback(
+    activeFilters.length
+      ? `Filtro multiplo attivo: ${activeFilters.join(' e ')}.`
+      : 'Nessun filtro multiplo: visualizzazione completa.',
+    'success'
+  );
 }
 
 function populateContractAgentOptions(preferredValue = '') {
@@ -2594,7 +2546,7 @@ async function ensureAdminAgentsReady({ force = false } = {}) {
       if (requestVersion !== userDataVersion || agent?.ruolo !== 'admin') return [];
       adminState.agents = Array.isArray(agents) ? agents : [];
       adminAgentsLoaded = true;
-      populateContractsScopeFilterOptions();
+      populateContractsAgentFilterOptions();
       populateContractAgentOptions();
       return adminState.agents;
     })
@@ -2621,7 +2573,7 @@ async function renderAdminPage({ force = false, month = selectedViewMonth } = {}
     const result = await refreshAdminData({ force, month });
     if (!result || agent?.ruolo !== 'admin') return;
     const { stats, agents, adminContracts } = result;
-    populateContractsScopeFilterOptions();
+    populateContractsAgentFilterOptions();
     syncAdminFilterControls();
     renderAdminMetrics(stats);
     populateAdminFilterOptions(agents);
@@ -2649,18 +2601,17 @@ async function renderAdminPage({ force = false, month = selectedViewMonth } = {}
 }
 
 async function ensureAdminContractsScopeReady({ force = false } = {}) {
-  if (agent?.ruolo !== 'admin' || contractsScopeFilter === 'mine') return;
-  const selectedAgentId = selectedAdminContractsAgentId();
+  if (agent?.ruolo !== 'admin') return;
 
   try {
     const result = await refreshAdminData({ force });
     if (!result || agent?.ruolo !== 'admin') return;
-    populateContractsScopeFilterOptions();
+    populateContractsAgentFilterOptions();
     renderMonthFilter();
     renderContractsTable();
     setContractsScopeFeedback(
-      selectedAgentId
-        ? 'Contratti caricati per agente selezionato.'
+      contractsAgentFilterIds.length
+        ? `Contratti caricati per ${contractsAgentFilterIds.length} agenti selezionati.`
         : 'Caricati tutti i contratti.',
       'success'
     );
@@ -3487,7 +3438,6 @@ async function handleLogin(event) {
 
     agent = session.agent;
     resetUserDataState();
-    contractsScopeFilter = defaultContractsScopeForAgent();
     await loadSuppliers({ silent: true, force: true });
     await loadCurrentCompetence({ silent: true });
     await loadCompetitionCutoffs({ silent: true });
@@ -3514,7 +3464,6 @@ async function handleLogout() {
   }
 
   resetUserDataState();
-  contractsScopeFilter = 'mine';
   resetContractEditor();
   closeContractModal();
   setActivePage('dashboard');
@@ -3534,19 +3483,6 @@ function contractMonthLabel(contract) {
   const month = contractMonthRef(contract);
   if (!/^\d{4}-\d{2}$/.test(month)) return 'Non inserito';
   return month ? capitalize(formatMonth.format(dateFromMonthKey(month))) : 'Non inserito';
-}
-
-function contractQuarterRef(contract) {
-  if (contract?.trimestreRiferimento) return String(contract.trimestreRiferimento);
-  const month = contractMonthRef(contract);
-  const date = month ? dateFromMonthKey(month) : new Date(contract?.dataInserimento || Date.now());
-  return getQuarterKey(date);
-}
-
-function contractYearRef(contract) {
-  if (contract?.annoRiferimento) return String(contract.annoRiferimento);
-  const month = contractMonthRef(contract);
-  return month ? month.slice(0, 4) : String(contract?.dataInserimento || '').slice(0, 4);
 }
 
 function dateFromMonthKey(key) {
@@ -3698,52 +3634,11 @@ function isCambioListinoOperation(contract) {
   return contractMatchesOperationFilter(contract, 'cambio listino');
 }
 
-function isContractOperationalForProgress(contract) {
-  return ['OK', 'Caricato', 'Inviato'].includes(String(contract?.statoContratto || '').trim());
-}
-
 function visibleContractsByScope() {
-  if (agent?.ruolo !== 'admin' || contractsScopeFilter === 'mine') {
+  if (agent?.ruolo !== 'admin') {
     return contracts;
   }
-
-  const selectedAgentId = selectedAdminContractsAgentId();
-  if (!selectedAgentId) {
-    return adminState.contracts;
-  }
-
-  return adminState.contracts.filter(
-    (contract) => Number(contract.agenteId) === Number(selectedAgentId)
-  );
-}
-
-function selectedAdminContractsAgentId() {
-  if (agent?.ruolo !== 'admin') return null;
-  const value = String(contractsScopeFilter || '').trim();
-  if (!value.startsWith('agent:')) return null;
-  const parsed = Number(value.slice('agent:'.length));
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-function populateContractsScopeFilterOptions() {
-  const select = document.getElementById('contracts-scope-filter');
-  if (!select || agent?.ruolo !== 'admin') return;
-  const previousValue = String(contractsScopeFilter || 'all').trim();
-  const options = (adminState.agents.length ? adminState.agents : [agent])
-    .slice()
-    .sort((left, right) => left.nome.localeCompare(right.nome, 'it'));
-
-  select.innerHTML = [
-    '<option value="all">Agenti: tutti</option>',
-    ...options.map((agentRow) => {
-      const suffix = agentRow.attivo === false ? ' (disattivo)' : '';
-      return `<option value="agent:${agentRow.id}">Agente: ${escapeHtml(agentRow.nome)}${suffix}</option>`;
-    }),
-  ].join('');
-
-  const allowedValues = new Set(['all', ...options.map((agentRow) => `agent:${agentRow.id}`)]);
-  contractsScopeFilter = allowedValues.has(previousValue) ? previousValue : 'all';
-  select.value = contractsScopeFilter;
+  return adminState.contracts;
 }
 
 function contractMatchesOperationFilter(contract, selectedOperation) {
@@ -3756,6 +3651,13 @@ function contractMatchesOperationFilter(contract, selectedOperation) {
       String(operation || '')
         .trim()
         .toLowerCase() === selectedOperation
+  );
+}
+
+function contractMatchesAnyOperationFilter(contract, selectedOperations) {
+  if (!selectedOperations.length) return true;
+  return selectedOperations.some((operation) =>
+    contractMatchesOperationFilter(contract, operation)
   );
 }
 
@@ -3942,7 +3844,6 @@ async function initApp() {
 
         agent = session.agent;
         resetUserDataState();
-        contractsScopeFilter = defaultContractsScopeForAgent();
         await loadSuppliers({ silent: true, force: true });
         await loadCurrentCompetence({ silent: true });
         await loadCompetitionCutoffs({ silent: true });
