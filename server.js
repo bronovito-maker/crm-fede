@@ -448,13 +448,16 @@ app.post(
         indirizzoFatturazione: contract.indirizzoFatturazione,
         tipoCliente: contract.tipoCliente,
         categoriaCliente: contract.categoriaCliente,
+        metodoPagamento: contract.metodoPagamento,
+        iban: contract.iban,
         agenteId: assignedAgentId,
       };
       const clientId = await syncClientFromContract(clientData);
 
-      // Ricolleghiamo il contratto al cliente (se non già fatto nel payload)
+      // Il contratto e gia persistito: un errore accessorio sull'anagrafica non deve
+      // trasformare il salvataggio riuscito in un falso errore per l'utente.
       if (clientId) {
-        await updateBaserowContract(created.id, { cliente: [clientId] });
+        await linkContractToClient(created.id, clientId);
       }
 
       invalidateContractsCache(assignedAgent.id);
@@ -579,13 +582,15 @@ app.patch(
         indirizzoFatturazione: contract.indirizzoFatturazione,
         tipoCliente: contract.tipoCliente,
         categoriaCliente: contract.categoriaCliente,
+        metodoPagamento: contract.metodoPagamento,
+        iban: contract.iban,
         agenteId: assignedAgentId,
       };
       const clientId = await syncClientFromContract(clientData);
 
       // Se il contratto non era collegato o è cambiato il cliente
       if (clientId && (!existing.cliente || !existing.cliente.some((c) => c.id === clientId))) {
-        await updateBaserowContract(contractId, { cliente: [clientId] });
+        await linkContractToClient(contractId, clientId);
       }
 
       invalidateContractsCache(existingAgentId);
@@ -1054,10 +1059,6 @@ function contractsCacheKey(agentId) {
 
 function clientsCacheKey(agentId) {
   return `clients:${agentId}`;
-}
-
-function adminStatsCacheKey() {
-  return `admin:stats:${currentMonthKey()}`;
 }
 
 function adminStatsCacheKeyForMonth(monthKey) {
@@ -1638,6 +1639,19 @@ async function syncClientFromContract(clientData) {
       console.error('[syncClientFromContract] Error:', err);
     }
     return null;
+  }
+}
+
+async function linkContractToClient(contractId, clientId) {
+  try {
+    await updateBaserowContract(contractId, { cliente: [clientId] });
+    return true;
+  } catch (error) {
+    console.error(
+      `[linkContractToClient] Contratto ${contractId} salvato, collegamento cliente ${clientId} non riuscito:`,
+      error.message
+    );
+    return false;
   }
 }
 

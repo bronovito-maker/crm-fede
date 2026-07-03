@@ -747,9 +747,7 @@
             </select>
             <select
               id="contracts-category-filter"
-              class="admin-only"
               aria-label="Filtra per categoria cliente"
-              hidden
             >
               <option value="all">Clienti: tutti</option>
               <option value="prospect">Clienti: Prospect</option>
@@ -1040,16 +1038,19 @@
                     placeholder="Cliente, ID contratto, email, telefono"
                   />
                 </label>
-                <label>
-                  Agente
-                  <select id="admin-contract-agent-filter" multiple size="4">
-                    <option value="all">Tutti gli agenti</option>
-                  </select>
-                </label>
-                <label>
-                  Tipo operazione
-                  <select id="admin-contract-operation-filter" multiple size="4"></select>
-                </label>
+                <fieldset class="admin-multi-filter">
+                  <legend>Agente</legend>
+                  <span class="admin-multi-filter-hint">Nessuna selezione = tutti</span>
+                  <div id="admin-contract-agent-filter" class="admin-multi-filter-options"></div>
+                </fieldset>
+                <fieldset class="admin-multi-filter">
+                  <legend>Tipo operazione</legend>
+                  <span class="admin-multi-filter-hint">Nessuna selezione = tutte</span>
+                  <div
+                    id="admin-contract-operation-filter"
+                    class="admin-multi-filter-options"
+                  ></div>
+                </fieldset>
                 <label>
                   Stato
                   <select id="admin-contract-status-filter">

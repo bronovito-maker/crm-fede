@@ -1328,6 +1328,80 @@ describe('HTTP routes', () => {
     assert.equal(response.body.cbMaturata, 0);
   });
 
+  it('POST /api/contracts resta riuscito se fallisce solo il collegamento anagrafica', async () => {
+    const agentId = 7;
+    const agentTableId = process.env.BASEROW_TABLE_AGENTI_ID;
+    const contractTableId = process.env.BASEROW_TABLE_CONTRATTI_ID;
+    const clientsTableId = process.env.BASEROW_TABLE_CLIENTI_ID;
+
+    global.fetch = async (url, options = {}) => {
+      const parsed = new URL(url);
+      const method = options.method || 'GET';
+
+      if (parsed.pathname === `/api/database/rows/table/${agentTableId}/${agentId}/`) {
+        return mockJsonResponse({
+          id: agentId,
+          nome: 'Agente Test',
+          email: 'agente@example.it',
+          ruolo: { value: 'agente' },
+          attivo: true,
+          cb_unitaria: '85',
+        });
+      }
+
+      if (parsed.pathname === `/api/database/rows/table/${contractTableId}/`) {
+        return mockJsonResponse({
+          id: 880,
+          agente: [{ id: agentId }],
+          data_inserimento: '2026-07-03',
+          ragione_sociale: 'ROSSI SRL',
+          stato_contratto: { value: 'Caricato' },
+          tipo_fornitura: { value: 'luce' },
+          categoria_cliente: { value: 'Prospect' },
+          cb_unitaria_snapshot: '85',
+        });
+      }
+
+      if (parsed.pathname === `/api/database/rows/table/${clientsTableId}/`) {
+        return mockJsonResponse({ results: [{ id: 44 }] });
+      }
+
+      if (parsed.pathname === `/api/database/rows/table/${clientsTableId}/44/`) {
+        return mockJsonResponse({ id: 44 });
+      }
+
+      if (
+        parsed.pathname === `/api/database/rows/table/${contractTableId}/880/` &&
+        method === 'PATCH'
+      ) {
+        return mockJsonResponse({ detail: 'link non disponibile' }, { status: 500 });
+      }
+
+      return mockJsonResponse({ detail: 'not found' }, { status: 404 });
+    };
+
+    const response = await invokeRouteJson(app, '/api/contracts', 'post', {
+      session: { agentId },
+      body: {
+        ragioneSociale: 'Rossi SRL',
+        cellulare: '3331234567',
+        tipoCliente: 'Business',
+        categoriaCliente: 'Prospect',
+        fornitore: 'Estra',
+        nomeOfferta: 'Luce',
+        tipoOperazione: 'switch',
+        tipoFornitura: 'luce',
+        pod: 'IT001E12345678',
+        metodoPagamento: 'bollettino',
+        piva: '03849270121',
+      },
+      files: [],
+    });
+
+    assert.equal(response.status, 201);
+    assert.equal(response.body.id, 880);
+  });
+
   it('POST /api/contracts permette all admin di assegnare una bozza a un altro agente', async () => {
     const adminId = 1;
     const assignedAgentId = 2;

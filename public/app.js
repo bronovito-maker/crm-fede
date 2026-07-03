@@ -197,11 +197,12 @@ const defaultContracts = [
 const storageKey = 'energia-crm-contracts';
 let contracts = [];
 let clients = [];
-let clientsRefreshInFlight = false;
+let clientsRefreshPromise = null;
 let selectedContractFiles = [];
 let existingContractFiles = [];
-let contractsRefreshInFlight = false;
+let contractsRefreshPromise = null;
 let selectedClientFromLookup = null;
+let userDataVersion = 0;
 const contractEditorState = {
   editingId: null,
   originalStatus: 'Caricato',
@@ -570,15 +571,18 @@ document.getElementById('contract-form').addEventListener('submit', async (event
   if (typeof baserowClient !== 'undefined' && baserowClient.isConfigured()) {
     try {
       const payload = buildContractFormData(draft);
+      let savedContract;
       if (isEditing) {
-        await baserowClient.updateContract(contractEditorState.editingId, payload);
+        savedContract = await baserowClient.updateContract(contractEditorState.editingId, payload);
       } else {
-        await baserowClient.createContract(payload);
+        savedContract = await baserowClient.createContract(payload);
       }
       if (agent.ruolo === 'admin') {
         invalidateAdminContractsCache();
       }
       await loadAndRenderContracts({ silent: true, force: true });
+      selectedViewMonth =
+        contractMonthRef(savedContract) || draft.meseCompetenza || currentCompetence.month;
       setFormFeedback(
         'success',
         isEditing
@@ -715,7 +719,6 @@ function saveContracts() {
 
 async function loadAndRenderContracts({ silent = false, force = false } = {}) {
   if (
-    contractsRefreshInFlight ||
     typeof baserowClient === 'undefined' ||
     !baserowClient.isConfigured() ||
     (!force && document.body.classList.contains('auth-locked'))
@@ -723,12 +726,22 @@ async function loadAndRenderContracts({ silent = false, force = false } = {}) {
     return;
   }
 
-  contractsRefreshInFlight = true;
+  if (contractsRefreshPromise) {
+    if (!force) return contractsRefreshPromise;
+    await contractsRefreshPromise.catch(() => {});
+  }
+
+  const requestVersion = userDataVersion;
+  const requestAgentId = Number(agent?.id);
+  const request = baserowClient.listContracts();
+  contractsRefreshPromise = request;
 
   try {
     // Anche per admin: qui carichiamo sempre e solo il perimetro personale.
     // I dati globali admin vengono caricati solo da Admin o Contratti quando servono.
-    contracts = await baserowClient.listContracts();
+    const loadedContracts = await request;
+    if (requestVersion !== userDataVersion || requestAgentId !== Number(agent?.id)) return;
+    contracts = Array.isArray(loadedContracts) ? loadedContracts : [];
     const months = getAvailableMonths();
     if (!months.includes(selectedViewMonth)) {
       selectedViewMonth = months[0] || currentCompetence.month || monthKey(new Date());
@@ -740,7 +753,9 @@ async function loadAndRenderContracts({ silent = false, force = false } = {}) {
     }
     console.error(error);
   } finally {
-    contractsRefreshInFlight = false;
+    if (contractsRefreshPromise === request) {
+      contractsRefreshPromise = null;
+    }
   }
 }
 
@@ -872,7 +887,12 @@ function renderMetrics(containerId, metrics) {
 
 function renderDashboard() {
   const summary = getSummary();
-  const dashboardMonthly = summary.monthly.filter((contract) => isCountedInProgress(contract));
+  const dashboardMonthly = summary.monthly.filter((contract) =>
+    isCountedInMonthlyOverallProgress(contract)
+  );
+  const targetOk = summary.monthly.filter(
+    (contract) => isCountedInProgress(contract) && contract.statoContratto === 'OK'
+  );
   const dashboardOk = dashboardMonthly.filter((contract) => contract.statoContratto === 'OK');
   const dashboardCaricati = dashboardMonthly.filter(
     (contract) => contract.statoContratto === 'Caricato'
@@ -897,8 +917,9 @@ function renderDashboard() {
       ...dashboardInviati,
     ]),
   };
-  dashboardSummary.mancanti = Math.max(agent.targetMensile - dashboardSummary.okUnits, 0);
-  dashboardSummary.targetPercent = percent(dashboardSummary.okUnits, agent.targetMensile);
+  dashboardSummary.targetUnits = sumContractUnits(targetOk);
+  dashboardSummary.mancanti = Math.max(agent.targetMensile - dashboardSummary.targetUnits, 0);
+  dashboardSummary.targetPercent = percent(dashboardSummary.targetUnits, agent.targetMensile);
   renderMetrics('dashboard-metrics', [
     {
       label: 'Contatori inseriti',
@@ -959,12 +980,12 @@ function renderDashboard() {
   renderDonut(dashboardSummary);
   document.getElementById('target-percent').textContent = `${dashboardSummary.targetPercent}%`;
   document.getElementById('target-copy').textContent =
-    `${dashboardSummary.okUnits} di ${agent.targetMensile}`;
+    `${dashboardSummary.targetUnits} di ${agent.targetMensile} Prospect OK`;
   document.getElementById('target-bar').style.width = `${dashboardSummary.targetPercent}%`;
   document.getElementById('dashboard-motivation').textContent =
     dashboardSummary.mancanti === 0
-      ? 'Target mensile raggiunto. Ora ogni contratto alza la CB.'
-      : `Ti mancano ${dashboardSummary.mancanti} contratti OK per chiudere il target.`;
+      ? 'Target mensile Prospect raggiunto. Ora ogni contratto alza la CB.'
+      : `Ti mancano ${dashboardSummary.mancanti} contatori Prospect OK per chiudere il target.`;
   renderLineChart();
   renderBarChart();
 }
@@ -997,7 +1018,7 @@ function renderDonut(summary) {
 
 function renderLineChart() {
   const monthContracts = currentMonthContracts().filter((contract) =>
-    isCountedInProgress(contract)
+    isCountedInMonthlyOverallProgress(contract)
   );
   const baseDate = dateFromMonthKey(selectedViewMonth || monthKey(new Date()));
   const daysInMonth = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0).getDate();
@@ -1040,7 +1061,7 @@ function renderBarChart() {
         (contract) =>
           contractMonthRef(contract) === key &&
           contract.statoContratto === 'OK' &&
-          isCountedInProgress(contract)
+          isCountedInMonthlyOverallProgress(contract)
       )
     );
     return [label, value, key === selectedViewMonth];
@@ -1080,7 +1101,7 @@ function renderContractsTable() {
   )
     .trim()
     .toLowerCase();
-  const category = agent?.ruolo === 'admin' ? selectedCategory : 'all';
+  const category = selectedCategory;
 
   populateSupplierFilterOptions('contracts-supplier-filter', sourceContracts, contractsSupplierFilter);
   const selectedSupplier = String(contractsSupplierFilter || 'all')
@@ -2433,8 +2454,49 @@ function resetAdminDataCache() {
   adminState.statsMonth = '';
   adminState.agents = [];
   adminState.contracts = [];
+  adminState.editingAgentId = null;
+  adminState.contractSearch = '';
+  adminState.contractAgentIds = [];
+  adminState.contractOperationTypes = [];
+  adminState.contractStatus = 'all';
+  adminState.contractSentFilter = 'all';
+  adminState.contractSort = 'recent';
   adminState.selectedContractIds = [];
   adminState.supplierCutoffBySupplier = {};
+  adminState.agentSearch = '';
+  adminState.agentRole = 'all';
+  adminState.agentState = 'all';
+}
+
+function resetUserDataState() {
+  userDataVersion += 1;
+  contractsRefreshPromise = null;
+  clientsRefreshPromise = null;
+  contracts = [];
+  clients = [];
+  selectedClientFromLookup = null;
+  selectedContractFiles = [];
+  existingContractFiles = [];
+  cbCategoryFilter = 'all';
+  cbOperationFilter = 'all';
+  cbSupplierFilter = 'all';
+  contractsSupplierFilter = 'all';
+  selectedViewMonth = monthKey(today);
+  ['search-input', 'cb-search-input'].forEach((id) => {
+    const input = document.getElementById(id);
+    if (input) input.value = '';
+  });
+  [
+    'status-filter',
+    'contracts-category-filter',
+    'contracts-operation-filter',
+    'cb-category-filter',
+    'cb-operation-filter',
+  ].forEach((id) => {
+    const select = document.getElementById(id);
+    if (select) select.value = 'all';
+  });
+  resetAdminDataCache();
 }
 
 function invalidateAdminContractsCache() {
@@ -2453,10 +2515,6 @@ function updateAdminVisibility() {
   const contractsScope = document.getElementById('contracts-scope-filter');
   if (contractsScope) {
     contractsScope.value = contractsScopeFilter;
-  }
-  const contractsCategory = document.getElementById('contracts-category-filter');
-  if (contractsCategory && agent.ruolo !== 'admin') {
-    contractsCategory.value = 'all';
   }
   populateContractAgentOptions();
 }
@@ -2529,9 +2587,11 @@ async function ensureAdminAgentsReady({ force = false } = {}) {
   }
   if (adminAgentsRefreshPromise) return adminAgentsRefreshPromise;
 
-  adminAgentsRefreshPromise = baserowClient
+  const requestVersion = userDataVersion;
+  const refreshPromise = baserowClient
     .listAdminAgents()
     .then((agents) => {
+      if (requestVersion !== userDataVersion || agent?.ruolo !== 'admin') return [];
       adminState.agents = Array.isArray(agents) ? agents : [];
       adminAgentsLoaded = true;
       populateContractsScopeFilterOptions();
@@ -2539,22 +2599,28 @@ async function ensureAdminAgentsReady({ force = false } = {}) {
       return adminState.agents;
     })
     .catch((error) => {
+      if (requestVersion !== userDataVersion) return [];
       console.warn('Impossibile caricare la lista agenti admin:', error);
       adminAgentsLoaded = false;
       populateContractAgentOptions();
       return adminState.agents;
     })
     .finally(() => {
-      adminAgentsRefreshPromise = null;
+      if (adminAgentsRefreshPromise === refreshPromise) {
+        adminAgentsRefreshPromise = null;
+      }
     });
 
-  return adminAgentsRefreshPromise;
+  adminAgentsRefreshPromise = refreshPromise;
+  return refreshPromise;
 }
 
 async function renderAdminPage({ force = false, month = selectedViewMonth } = {}) {
   if (agent?.ruolo !== 'admin') return;
   try {
-    const { stats, agents, adminContracts } = await refreshAdminData({ force, month });
+    const result = await refreshAdminData({ force, month });
+    if (!result || agent?.ruolo !== 'admin') return;
+    const { stats, agents, adminContracts } = result;
     populateContractsScopeFilterOptions();
     syncAdminFilterControls();
     renderAdminMetrics(stats);
@@ -2587,7 +2653,8 @@ async function ensureAdminContractsScopeReady({ force = false } = {}) {
   const selectedAgentId = selectedAdminContractsAgentId();
 
   try {
-    await refreshAdminData({ force });
+    const result = await refreshAdminData({ force });
+    if (!result || agent?.ruolo !== 'admin') return;
     populateContractsScopeFilterOptions();
     renderMonthFilter();
     renderContractsTable();
@@ -2645,8 +2712,10 @@ async function refreshAdminData({ force = false, month = selectedViewMonth } = {
       ? Promise.resolve(adminState.contracts)
       : baserowClient.listAdminContracts();
 
-  adminDataRefreshPromise = Promise.all([statsPromise, agentsPromise, contractsPromise])
+  const requestVersion = userDataVersion;
+  const refreshPromise = Promise.all([statsPromise, agentsPromise, contractsPromise])
     .then(([stats, agents, adminContracts]) => {
+      if (requestVersion !== userDataVersion || agent?.ruolo !== 'admin') return null;
       adminState.stats = stats;
       adminState.statsMonth = requestedMonth;
       adminState.agents = agents;
@@ -2656,10 +2725,13 @@ async function refreshAdminData({ force = false, month = selectedViewMonth } = {
       return { stats, agents, adminContracts };
     })
     .finally(() => {
-      adminDataRefreshPromise = null;
+      if (adminDataRefreshPromise === refreshPromise) {
+        adminDataRefreshPromise = null;
+      }
     });
 
-  return adminDataRefreshPromise;
+  adminDataRefreshPromise = refreshPromise;
+  return refreshPromise;
 }
 
 function renderAdminMetrics(stats) {
@@ -2919,19 +2991,22 @@ function adminContractRowClass(contract) {
 }
 
 function populateAdminFilterOptions(agents) {
-  const agentSelect = document.getElementById('admin-contract-agent-filter');
-  const operationSelect = document.getElementById('admin-contract-operation-filter');
+  const agentFilter = document.getElementById('admin-contract-agent-filter');
+  const operationFilter = document.getElementById('admin-contract-operation-filter');
   const selectedAgentIds = new Set(adminState.contractAgentIds.map(String));
   const selectedOperations = new Set(adminState.contractOperationTypes.map(String));
-  agentSelect.innerHTML = [
-    ...agents
-      .slice()
-      .sort((left, right) => left.nome.localeCompare(right.nome, 'it'))
-      .map((agentRow) => `<option value="${agentRow.id}">${escapeHtml(agentRow.nome)}</option>`),
-  ].join('');
-  Array.from(agentSelect.options).forEach((option) => {
-    option.selected = selectedAgentIds.has(option.value);
-  });
+  agentFilter.innerHTML = agents
+    .slice()
+    .sort((left, right) => left.nome.localeCompare(right.nome, 'it'))
+    .map(
+      (agentRow) => `
+        <label>
+          <input type="checkbox" value="${agentRow.id}" ${selectedAgentIds.has(String(agentRow.id)) ? 'checked' : ''} />
+          <span>${escapeHtml(agentRow.nome)}</span>
+        </label>
+      `
+    )
+    .join('');
 
   const operationValues = Array.from(
     new Set(
@@ -2943,12 +3018,16 @@ function populateAdminFilterOptions(agents) {
     )
   ).sort((left, right) => left.localeCompare(right, 'it'));
 
-  operationSelect.innerHTML = operationValues
-    .map((operation) => `<option value="${escapeHtml(operation)}">${escapeHtml(operation)}</option>`)
+  operationFilter.innerHTML = operationValues
+    .map(
+      (operation) => `
+        <label>
+          <input type="checkbox" value="${escapeHtml(operation)}" ${selectedOperations.has(operation) ? 'checked' : ''} />
+          <span>${escapeHtml(capitalize(operation))}</span>
+        </label>
+      `
+    )
     .join('');
-  Array.from(operationSelect.options).forEach((option) => {
-    option.selected = selectedOperations.has(option.value);
-  });
 }
 
 function syncAdminFilterControls() {
@@ -3010,14 +3089,18 @@ function applyAdminQuickFilter(mode) {
 }
 
 function getMultiSelectValues(elementId) {
-  return Array.from(document.getElementById(elementId).selectedOptions).map((option) => option.value);
+  return Array.from(
+    document.querySelectorAll(`#${elementId} input[type="checkbox"]:checked`)
+  ).map((input) => input.value);
 }
 
 function syncMultiSelectValues(elementId, values) {
   const selectedValues = new Set((values || []).map(String));
-  Array.from(document.getElementById(elementId).options).forEach((option) => {
-    option.selected = selectedValues.has(option.value);
-  });
+  document
+    .querySelectorAll(`#${elementId} input[type="checkbox"]`)
+    .forEach((input) => {
+      input.checked = selectedValues.has(input.value);
+    });
 }
 
 function toggleAdminContractSelection(contractId, isSelected) {
@@ -3403,7 +3486,7 @@ async function handleLogin(event) {
     });
 
     agent = session.agent;
-    resetAdminDataCache();
+    resetUserDataState();
     contractsScopeFilter = defaultContractsScopeForAgent();
     await loadSuppliers({ silent: true, force: true });
     await loadCurrentCompetence({ silent: true });
@@ -3430,9 +3513,9 @@ async function handleLogout() {
     console.error(error);
   }
 
-  contracts = [];
-  resetAdminDataCache();
+  resetUserDataState();
   contractsScopeFilter = 'mine';
+  resetContractEditor();
   closeContractModal();
   setActivePage('dashboard');
   setConnectionStatus('loading', 'Accesso richiesto');
@@ -3858,7 +3941,7 @@ async function initApp() {
         }
 
         agent = session.agent;
-        resetAdminDataCache();
+        resetUserDataState();
         contractsScopeFilter = defaultContractsScopeForAgent();
         await loadSuppliers({ silent: true, force: true });
         await loadCurrentCompetence({ silent: true });
@@ -3925,25 +4008,31 @@ async function loadSuppliers({ silent = false, force = false } = {}) {
 // ---- Clienti Management ----
 
 async function loadClients({ silent = false, force = false } = {}) {
-  if (
-    clientsRefreshInFlight ||
-    typeof baserowClient === 'undefined' ||
-    !baserowClient.isConfigured()
-  )
-    return;
+  if (typeof baserowClient === 'undefined' || !baserowClient.isConfigured()) return;
 
   if (!force && clients.length > 0) {
     return;
   }
 
-  clientsRefreshInFlight = true;
+  if (clientsRefreshPromise) {
+    if (!force) return clientsRefreshPromise;
+    await clientsRefreshPromise.catch(() => {});
+  }
+
+  const requestVersion = userDataVersion;
+  const requestAgentId = Number(agent?.id);
+  const request = baserowClient.listClients();
+  clientsRefreshPromise = request;
   try {
-    const data = await baserowClient.listClients();
+    const data = await request;
+    if (requestVersion !== userDataVersion || requestAgentId !== Number(agent?.id)) return;
     clients = Array.isArray(data) ? data : [];
   } catch (error) {
     if (!silent) console.error('Errore caricamento clienti:', error);
   } finally {
-    clientsRefreshInFlight = false;
+    if (clientsRefreshPromise === request) {
+      clientsRefreshPromise = null;
+    }
   }
 }
 
