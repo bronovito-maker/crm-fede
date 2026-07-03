@@ -229,8 +229,8 @@ const adminState = {
   agentRole: 'all',
   agentState: 'all',
 };
-let cbCategoryFilter = 'all';
-let cbOperationFilter = 'all';
+let cbCategoryFilters = [];
+let cbOperationFilters = [];
 let cbSupplierFilter = 'all';
 let supplierOptionsLoaded = false;
 let contractsAgentFilterIds = [];
@@ -421,13 +421,11 @@ document
   .getElementById('contract-files-input')
   .addEventListener('change', handleContractFilesSelection);
 document.getElementById('cb-category-filter').addEventListener('change', () => {
-  cbCategoryFilter = String(document.getElementById('cb-category-filter').value || 'all');
+  cbCategoryFilters = getMultiSelectValues('cb-category-filter');
   renderCbPage();
 });
 document.getElementById('cb-operation-filter').addEventListener('change', () => {
-  cbOperationFilter = String(document.getElementById('cb-operation-filter').value || 'all')
-    .trim()
-    .toLowerCase();
+  cbOperationFilters = getMultiSelectValues('cb-operation-filter');
   renderCbPage();
 });
 
@@ -1329,12 +1327,12 @@ function statusClass(status) {
 
 function renderCbPage() {
   const summary = getSummary();
-  const selectedCategory = String(cbCategoryFilter || 'all')
-    .trim()
-    .toLowerCase();
-  const selectedOperation = String(cbOperationFilter || 'all')
-    .trim()
-    .toLowerCase();
+  const selectedCategories = new Set(
+    cbCategoryFilters.map((category) => String(category).trim().toLowerCase())
+  );
+  const selectedOperations = cbOperationFilters.map((operation) =>
+    String(operation).trim().toLowerCase()
+  );
   const search = String(document.getElementById('cb-search-input')?.value || '')
     .toLowerCase()
     .trim();
@@ -1344,11 +1342,13 @@ function renderCbPage() {
     .toLowerCase();
   const filteredMonthly = summary.monthly.filter((contract) => {
     const matchesCategory =
-      selectedCategory === 'all' ||
-      String(contract.categoriaCliente || '')
-        .trim()
-        .toLowerCase() === selectedCategory;
-    const matchesOperation = contractMatchesOperationFilter(contract, selectedOperation);
+      !selectedCategories.size ||
+      selectedCategories.has(
+        String(contract.categoriaCliente || '')
+          .trim()
+          .toLowerCase()
+      );
+    const matchesOperation = contractMatchesAnyOperationFilter(contract, selectedOperations);
     const matchesSupplier =
       selectedSupplier === 'all' ||
       String(contract.fornitore || '')
@@ -1379,18 +1379,8 @@ function renderCbPage() {
   );
   const filteredKo = filteredMonthly.filter((contract) => contract.statoContratto === 'K.O.');
 
-  document.getElementById('cb-category-filter').value =
-    selectedCategory === 'prospect' || selectedCategory === 'switch ricorrente'
-      ? selectedCategory
-      : 'all';
-  document.getElementById('cb-operation-filter').value = [
-    'switch',
-    'switch + voltura',
-    'cambio listino',
-    'subentro',
-  ].includes(selectedOperation)
-    ? selectedOperation
-    : 'all';
+  syncMultiSelectValues('cb-category-filter', cbCategoryFilters);
+  syncMultiSelectValues('cb-operation-filter', cbOperationFilters);
   renderMetrics('cb-metrics-money', [
     {
       label: 'CB del mese',
@@ -2394,8 +2384,8 @@ function resetUserDataState() {
   selectedClientFromLookup = null;
   selectedContractFiles = [];
   existingContractFiles = [];
-  cbCategoryFilter = 'all';
-  cbOperationFilter = 'all';
+  cbCategoryFilters = [];
+  cbOperationFilters = [];
   cbSupplierFilter = 'all';
   contractsAgentFilterIds = [];
   contractsOperationFilters = [];
@@ -2408,14 +2398,14 @@ function resetUserDataState() {
   [
     'status-filter',
     'contracts-category-filter',
-    'cb-category-filter',
-    'cb-operation-filter',
   ].forEach((id) => {
     const select = document.getElementById(id);
     if (select) select.value = 'all';
   });
   syncMultiSelectValues('contracts-agent-filter', []);
   syncMultiSelectValues('contracts-operation-filter', []);
+  syncMultiSelectValues('cb-category-filter', []);
+  syncMultiSelectValues('cb-operation-filter', []);
   resetAdminDataCache();
 }
 

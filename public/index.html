@@ -824,18 +824,33 @@
                 type="search"
                 placeholder="Cerca cliente, telefono, email, ID contratto, POD, PDR"
               />
-              <select id="cb-category-filter" aria-label="Filtra CB per categoria cliente">
-                <option value="all">Clienti: tutti</option>
-                <option value="prospect">Clienti: Prospect</option>
-                <option value="switch ricorrente">Clienti: Switch ricorrenti</option>
-              </select>
-              <select id="cb-operation-filter" aria-label="Filtra CB per tipo operazione">
-                <option value="all">Operaz.: tutte</option>
-                <option value="switch">Operaz.: Switch</option>
-                <option value="switch + voltura">Operaz.: Switch + voltura</option>
-                <option value="cambio listino">Operaz.: Cambio listino</option>
-                <option value="subentro">Operaz.: Subentro</option>
-              </select>
+              <fieldset class="admin-multi-filter contracts-multi-filter">
+                <legend>Clienti (selezione multipla)</legend>
+                <span class="admin-multi-filter-hint">Nessuna spunta = tutte le categorie</span>
+                <div id="cb-category-filter" class="admin-multi-filter-options">
+                  <label><input type="checkbox" value="prospect" /> <span>Prospect</span></label>
+                  <label
+                    ><input type="checkbox" value="switch ricorrente" />
+                    <span>Switch ricorrenti</span></label
+                  >
+                </div>
+              </fieldset>
+              <fieldset class="admin-multi-filter contracts-multi-filter">
+                <legend>Operazioni (selezione multipla)</legend>
+                <span class="admin-multi-filter-hint">Nessuna spunta = tutte le operazioni</span>
+                <div id="cb-operation-filter" class="admin-multi-filter-options">
+                  <label><input type="checkbox" value="switch" /> <span>Switch</span></label>
+                  <label
+                    ><input type="checkbox" value="switch + voltura" />
+                    <span>Switch + voltura</span></label
+                  >
+                  <label
+                    ><input type="checkbox" value="cambio listino" />
+                    <span>Cambio listino</span></label
+                  >
+                  <label><input type="checkbox" value="subentro" /> <span>Subentro</span></label>
+                </div>
+              </fieldset>
               <select id="cb-supplier-filter" aria-label="Filtra CB per fornitore selezionato">
                 <option value="all">Fornitore: tutti</option>
               </select>
