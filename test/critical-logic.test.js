@@ -14,6 +14,7 @@ const {
   agentToBaserowPayload,
   SqliteSessionStore,
   buildAdminStats,
+  computeCompetenceMonthFromCutoff,
   contractCommissionValue,
   contractCompetenceMonth,
   contractUnitCount,
@@ -436,6 +437,20 @@ describe('contractCompetenceMonth', () => {
 
   it('normalizza mese competenza anche da data completa', () => {
     assert.equal(normalizeCompetenceMonth('2026-04-01'), '2026-04');
+  });
+});
+
+describe('computeCompetenceMonthFromCutoff', () => {
+  it('sposta al mese successivo se l inserimento e entro il cut-off', () => {
+    assert.equal(computeCompetenceMonthFromCutoff('2026-08-03', '2026-08-25'), '2026-09');
+  });
+
+  it('sposta di due mesi se l inserimento e dopo il cut-off', () => {
+    assert.equal(computeCompetenceMonthFromCutoff('2026-08-26', '2026-08-25'), '2026-10');
+  });
+
+  it('mantiene il mese corrente se il cut-off non e configurato', () => {
+    assert.equal(computeCompetenceMonthFromCutoff('2026-08-03', ''), '2026-08');
   });
 });
 

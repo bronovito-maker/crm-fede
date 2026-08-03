@@ -894,6 +894,7 @@ module.exports = {
   SqliteSessionStore,
   buildAdminStats,
   cleanText,
+  computeCompetenceMonthFromCutoff,
   contractCommissionValue,
   contractCompetenceMonth,
   contractCompetenceQuarter,
@@ -920,6 +921,7 @@ module.exports = {
   numberValue,
   publicError,
   publicAgent,
+  resolveCompetencePeriod,
   sanitizeAgentInput,
   sanitizeContractInput,
   selectValue,
@@ -1440,7 +1442,6 @@ async function upsertSupplierCutoffConfig(monthKey, supplierId, cutoffDate) {
 
 async function resolveCompetencePeriod(insertionDate, supplierName = '') {
   const monthKey = normalizeIsoMonthFromDate(insertionDate);
-  const nextMonth = addMonthsToKey(monthKey, 1);
   let supplierMap = new Map();
 
   if (CONFIG.cutoffFornitoriTableId) {
@@ -1457,12 +1458,19 @@ async function resolveCompetencePeriod(insertionDate, supplierName = '') {
 
   const supplierKey = normalizeSupplierKey(supplierName);
   const cutoff = supplierMap.get(monthKey)?.get(supplierKey)?.cutoffDate || '';
-  const competenceMonth = cutoff && insertionDate > cutoff ? nextMonth : monthKey;
+  const competenceMonth = computeCompetenceMonthFromCutoff(insertionDate, cutoff);
   return {
     monthKey: competenceMonth,
     quarterKey: quarterFromMonthKey(competenceMonth),
     yearKey: competenceMonth.slice(0, 4),
   };
+}
+
+function computeCompetenceMonthFromCutoff(insertionDate, cutoffDate) {
+  const monthKey = normalizeIsoMonthFromDate(insertionDate);
+  if (!monthKey) return '';
+  if (!cutoffDate) return monthKey;
+  return insertionDate <= cutoffDate ? addMonthsToKey(monthKey, 1) : addMonthsToKey(monthKey, 2);
 }
 
 function competencePeriodFromMonthKey(monthKey) {
