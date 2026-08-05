@@ -248,7 +248,7 @@ Funzioni admin:
 | `target_mensile`     | Numero intero   | Contratti validati                |
 | `target_trimestrale` | Numero intero   | Contratti validati                |
 | `target_annuale`     | Numero intero   | Contratti validati                |
-| `ruolo`              | Single select   | `agente`, `admin`                 |
+| `ruolo`              | Single select   | `agente`, `admin`, `spettatore`   |
 | `attivo`             | Boolean         | Per nascondere agenti disattivati |
 | `password_hash`      | Long text       | Hash bcrypt della password        |
 | `created_at`         | Created on      | Audit                             |
@@ -256,13 +256,16 @@ Funzioni admin:
 
 ### Tabella `Contratti`
 
+Una riga rappresenta una pratica commerciale, anche quando il contratto è Dual. I campi `tipo_fornitura`, `pod`, `pdr`, `metodo_pagamento` e `stato_contratto` rimangono disponibili per compatibilità con i dati storici; per i nuovi inserimenti i dati operativi per singola utenza sono salvati nella tabella `Forniture`.
+
 | Campo                    | Tipo            | Note                                                                                     |
 | ------------------------ | --------------- | ---------------------------------------------------------------------------------------- |
 | `id`                     | Autonumber      | ID interno Baserow                                                                       |
+| `codice_crm`             | Formula         | Campo principale: `concat('CRM-', row_id())`, univoco e automatico                       |
 | `agente`                 | Link to table   | Relazione verso `Agenti`                                                                 |
 | `data_inserimento`       | Date            | Default oggi                                                                             |
 | `data_inizio_fornitura`  | Date            | Data prevista calcolata/gestita dal form                                                 |
-| `id_contratto`           | Testo           | ID interno o esterno del contratto                                                       |
+| `id_contratto`           | Testo           | Codice commerciale/esterno opzionale                                                     |
 | `ragione_sociale`        | Testo           | Cliente o azienda                                                                        |
 | `cellulare`              | Testo           | Meglio testo, non numero                                                                 |
 | `tipo_cliente`           | Single select   | `Business`, `Privato`, `Condominio`                                                      |
@@ -292,6 +295,26 @@ Funzioni admin:
 | `anno_riferimento`       | Formula         | `YYYY`                                                                                   |
 | `created_at`             | Created on      | Audit                                                                                    |
 | `updated_at`             | Last modified   | Audit                                                                                    |
+
+### Tabella `Forniture`
+
+| Campo                 | Tipo          | Note                                                         |
+| --------------------- | ------------- | ------------------------------------------------------------ |
+| `nome`                | Testo         | Etichetta leggibile della fornitura                          |
+| `contratto`           | Link to table | Contratto padre; obbligatorio                                |
+| `tipo_fornitura`      | Single select | `luce` oppure `gas`                                          |
+| `stato`               | Single select | `Bozza`, `Caricato`, `Inviato`, `OK`, `K.O.`, `Switch - Out` |
+| `metodo_pagamento`    | Single select | `bollettino`, `rid`; indipendente per Luce e Gas             |
+| `pod`                 | Testo         | Valorizzato per la fornitura Luce                            |
+| `pdr`                 | Testo         | Valorizzato per la fornitura Gas                             |
+| `metodo_inserimento`  | Single select | `AppAround`, `Cartaceo`; richiesto per Hera                  |
+| `potenza_impegnata`   | Numero        | Potenza inserita manualmente, pertinente alla Luce           |
+| `potenza_disponibile` | Numero        | Calcolata dal CRM come `potenza_impegnata * 1,10`            |
+| `consumo_annuo`       | Numero        | Consumo annuo inserito manualmente                           |
+| `created_at`          | Created on    | Audit                                                        |
+| `updated_at`          | Last modified | Audit                                                        |
+
+Per un contratto Dual il CRM crea due righe collegate nella stessa operazione applicativa. Se la creazione di una fornitura fallisce, il server elimina le righe già create e il contratto padre, evitando pratiche parziali. Per luce o gas viene creata una sola fornitura figlia.
 
 ### Tabella `Clienti`
 
@@ -348,6 +371,7 @@ La commissione totale usa `cb_maturata * unità`, salvo presenza di un valore co
 
 - Agente: crea contratti, legge solo contratti collegati al proprio agente, non modifica target.
 - Admin: modifica agenti, target, stati contratto e dati economici.
+- Spettatore: stessi dati visibili all'Admin, nessun endpoint di scrittura e nessun accesso al form Nuovo contratto.
 
 ## Comandi
 
@@ -358,6 +382,8 @@ npm test                Test Node
 npm run lint            ESLint
 npm run build           Controllo build/statico
 npm run hash-password   Genera hash bcrypt
+npm run baserow:setup-forniture    Crea/aggiorna lo schema con BASEROW_JWT_TOKEN
+npm run baserow:migrate-forniture  Anteprima migrazione Contratti -> Forniture
 ```
 
 ## Regole operative
@@ -367,7 +393,7 @@ npm run hash-password   Genera hash bcrypt
 - I contratti `K.O.` e `Switch - Out` valgono `0`.
 - Il target si misura sui contratti `OK`, non sugli inseriti.
 - Le statistiche e i target usano il conteggio unità: multipunto se presente, altrimenti `dual` vale 2 e luce/gas valgono 1.
-- La riga Baserow resta sempre una sola pratica: il conteggio unità è una regola statistica/economica applicata dall'app.
+- `Contratti` resta una sola pratica; `Forniture` contiene le singole utenze Luce/Gas usate per stati e pagamenti indipendenti.
 - L'agente vede solo i propri contratti.
 - Validazione: lo stato `OK/K.O./Switch - Out` dovrebbe essere gestito da admin o backoffice, non dall'agente standard.
 

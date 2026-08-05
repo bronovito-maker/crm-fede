@@ -1635,6 +1635,21 @@ td[data-label='Cliente'] strong {
   font-weight: 700;
 }
 
+.dual-statuses {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 9rem;
+}
+
+.dual-statuses > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
 .badge.ok {
   color: var(--green);
   background: #dcfce7;

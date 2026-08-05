@@ -33,6 +33,7 @@ const CONFIG = {
   contrattiExFornitoreField: process.env.BASEROW_FIELD_EX_FORNITORE || '',
   contrattiAgenteField: process.env.BASEROW_FIELD_CONTRATTI_AGENTE || 'agente',
   clientiTableId: process.env.BASEROW_TABLE_CLIENTI_ID || '',
+  fornitureTableId: process.env.BASEROW_TABLE_FORNITURE_ID || '',
   sessionTtlMs: Number(process.env.SESSION_TTL_HOURS || 12) * 60 * 60 * 1000,
   cookieSecure: process.env.NODE_ENV === 'production',
   resendApiKey: process.env.RESEND_API_KEY || '',
@@ -60,6 +61,7 @@ const allowedStatuses = new Set(['Bozza', 'Caricato', 'Inviato', 'OK', 'K.O.', '
 const allowedOperations = new Set(['switch', 'switch + voltura', 'cambio listino', 'subentro']);
 const allowedSupplyTypes = new Set(['luce', 'gas', 'dual']);
 const allowedPaymentMethods = new Set(['bollettino', 'rid']);
+const allowedInsertionMethods = new Set(['AppAround', 'Cartaceo']);
 const maxContractFiles = 10;
 const maxContractFileSize = 15 * 1024 * 1024;
 const baserowPageSize = 200;
@@ -372,6 +374,7 @@ app.post(
     try {
       ensureConfigured();
       const currentUser = await getCurrentAgent(req.session.agentId);
+      assertCanWrite(currentUser);
       const saveMode = normalizeContractSaveMode(req.body.mode || req.body.saveMode);
       const contract = sanitizeContractInput(req.body, { allowDraft: saveMode === 'draft' });
       const requestedAgentId = Number.parseInt(cleanText(req.body.agenteId), 10);
@@ -438,6 +441,17 @@ app.post(
       }
 
       const created = await createBaserowContract(payload);
+      let createdSupplies;
+      try {
+        createdSupplies = await createContractSupplies(
+          contract,
+          created.id,
+          saveMode === 'draft' ? 'Bozza' : 'Caricato'
+        );
+      } catch (error) {
+        await deleteBaserowContract(created.id).catch(() => {});
+        throw error;
+      }
 
       // Assicuriamoci che il cliente sia sincronizzato/creato
       const clientData = {
@@ -464,7 +478,9 @@ app.post(
       invalidateAdminStatsCache();
       invalidateClientsCache(assignedAgent.id);
       sendContractNotification(assignedAgent.nome, contract, saveMode).catch(() => {});
-      res.status(201).json(normalizeContractForAssignedAgent(created, assignedAgent));
+      res
+        .status(201)
+        .json(normalizeContractForAssignedAgent(created, assignedAgent, createdSupplies));
     } catch (error) {
       handleApiError(res, error, 'CONTRACT_NOT_SAVED', 'Contratto non salvato.');
     }
@@ -484,8 +500,10 @@ app.patch(
       }
 
       const currentUser = await getCurrentAgent(req.session.agentId);
+      assertCanWrite(currentUser);
       const existing = await getBaserowContract(contractId);
-      const existingNormalized = normalizeContract(existing);
+      const existingSupplies = await listBaserowSuppliesForContract(contractId);
+      const existingNormalized = normalizeContract(existing, existingSupplies);
       const existingAgentId = Number(linkedAgentId(existing.agente)) || req.session.agentId;
 
       if (currentUser.ruolo !== 'admin' && existingAgentId !== req.session.agentId) {
@@ -509,9 +527,9 @@ app.patch(
       const nextStatus =
         saveMode === 'draft'
           ? 'Bozza'
-          : existingNormalized.statoContratto === 'Bozza'
+          : selectValue(existing.stato_contratto) === 'Bozza'
             ? 'Caricato'
-            : existingNormalized.statoContratto;
+            : selectValue(existing.stato_contratto) || 'Caricato';
       const insertionDate = existingNormalized.dataInserimento || todayIsoDate();
       const competencePeriod = await resolveRequestedCompetencePeriod(
         contract.meseCompetenza || existingNormalized.meseRiferimento,
@@ -572,6 +590,18 @@ app.patch(
       }
 
       const updated = await updateBaserowContract(contractId, payload);
+      let updatedSupplies;
+      try {
+        updatedSupplies = await syncContractSupplies(contract, contractId, nextStatus);
+      } catch (error) {
+        await updateBaserowContract(
+          contractId,
+          restorePayload(existing, Object.keys(payload))
+        ).catch((rollbackError) =>
+          console.error('[contract rollback]', contractId, rollbackError.message)
+        );
+        throw error;
+      }
 
       // Sincronizzazione anagrafica cliente
       const clientData = {
@@ -599,7 +629,7 @@ app.patch(
       invalidateClientsCache(existingAgentId);
       invalidateClientsCache(assignedAgentId);
 
-      res.json(normalizeContractForAssignedAgent(updated, assignedAgent));
+      res.json(normalizeContractForAssignedAgent(updated, assignedAgent, updatedSupplies));
     } catch (error) {
       handleApiError(res, error, 'CONTRACT_NOT_UPDATED', 'Contratto non aggiornato.');
     }
@@ -615,6 +645,7 @@ app.delete('/api/contracts/:id', requireAuth, async (req, res) => {
     }
 
     const currentUser = await getCurrentAgent(req.session.agentId);
+    assertCanWrite(currentUser);
     const existing = await getBaserowContract(contractId);
     const existingAgentId = Number(linkedAgentId(existing.agente)) || req.session.agentId;
 
@@ -622,7 +653,21 @@ app.delete('/api/contracts/:id', requireAuth, async (req, res) => {
       throw publicError(403, 'CONTRACT_FORBIDDEN', 'Contratto non accessibile.');
     }
 
-    await deleteBaserowContract(contractId);
+    const supplies = await listBaserowSuppliesForContract(contractId);
+    const deletedSupplies = [];
+    try {
+      for (const supply of supplies) {
+        await deleteBaserowSupply(supply.id);
+        deletedSupplies.push(supplyPayloadFromRow(supply));
+      }
+      await deleteBaserowContract(contractId);
+    } catch (error) {
+      await runCompensations(
+        deletedSupplies.map((payload) => () => createBaserowSupply(payload)).reverse(),
+        `delete contratto ${contractId}`
+      );
+      throw error;
+    }
     invalidateContractsCache(existingAgentId);
     invalidateAdminStatsCache();
     res.json({ ok: true });
@@ -634,6 +679,8 @@ app.delete('/api/contracts/:id', requireAuth, async (req, res) => {
 app.patch('/api/contracts/:id/status', requireAuth, async (req, res) => {
   try {
     ensureConfigured();
+    const currentUser = await getCurrentAgent(req.session.agentId);
+    assertCanWrite(currentUser);
     const contractId = Number(req.params.id);
     const status = normalizeStatus(req.body.status);
 
@@ -646,20 +693,32 @@ app.patch('/api/contracts/:id/status', requireAuth, async (req, res) => {
     }
 
     const existing = await getBaserowContract(contractId);
-    if (!isCurrentAgentContract(existing, req.session.agentId)) {
+    if (currentUser.ruolo !== 'admin' && !isCurrentAgentContract(existing, req.session.agentId)) {
       throw publicError(403, 'CONTRACT_FORBIDDEN', 'Contratto non accessibile.');
     }
 
+    const supplyRows = await listBaserowSuppliesForContract(contractId);
     const updated = await updateBaserowContract(contractId, { stato_contratto: status });
+    let updatedSupplies;
+    try {
+      updatedSupplies = await updateSupplyStatuses(supplyRows, status);
+    } catch (error) {
+      await updateBaserowContract(contractId, {
+        stato_contratto: selectValue(existing.stato_contratto) || 'Caricato',
+      }).catch((rollbackError) =>
+        console.error('[status rollback]', contractId, rollbackError.message)
+      );
+      throw error;
+    }
     invalidateContractsCache(req.session.agentId);
     invalidateAdminStatsCache();
-    res.json(normalizeContract(updated));
+    res.json(normalizeContract(updated, updatedSupplies));
   } catch (error) {
     handleApiError(res, error, 'CONTRACT_STATUS_NOT_UPDATED', 'Stato contratto non aggiornato.');
   }
 });
 
-app.get('/api/admin/agents', apiReadLimiter, requireAdmin, async (req, res) => {
+app.get('/api/admin/agents', apiReadLimiter, requireAdminViewer, async (req, res) => {
   try {
     ensureConfigured();
     const agents = await listAgents();
@@ -669,7 +728,7 @@ app.get('/api/admin/agents', apiReadLimiter, requireAdmin, async (req, res) => {
   }
 });
 
-app.get('/api/admin/contracts', apiReadLimiter, requireAdmin, async (req, res) => {
+app.get('/api/admin/contracts', apiReadLimiter, requireAdminViewer, async (req, res) => {
   try {
     ensureConfigured();
     const contracts = await listAllContracts();
@@ -726,17 +785,24 @@ app.patch('/api/admin/contracts/:id/sent', requireAdmin, async (req, res) => {
     const updated = await updateBaserowContract(contractId, {
       stato_contratto: sent ? 'Inviato' : 'Caricato',
     });
+    const supplyRows = await listBaserowSuppliesForContract(contractId);
+    const updatedSupplies = await Promise.all(
+      supplyRows.map((supply) =>
+        updateBaserowSupply(supply.id, { stato: sent ? 'Inviato' : 'Caricato' })
+      )
+    );
     invalidateAdminStatsCache();
-    res.json(normalizeContract(updated));
+    res.json(normalizeContract(updated, updatedSupplies));
   } catch (error) {
     handleApiError(res, error, 'ADMIN_CONTRACT_NOT_UPDATED', 'Stato contratto non aggiornato.');
   }
 });
 
-app.get('/api/admin/stats', apiReadLimiter, requireAdmin, async (req, res) => {
+app.get('/api/admin/stats', apiReadLimiter, requireAdminViewer, async (req, res) => {
   try {
     ensureConfigured();
-    const requestedMonth = normalizeCompetenceMonth(req.query.month, { strict: false }) || currentMonthKey();
+    const requestedMonth =
+      normalizeCompetenceMonth(req.query.month, { strict: false }) || currentMonthKey();
     const stats = await getCached(adminStatsCacheKeyForMonth(requestedMonth), async () => {
       const [agents, contracts] = await Promise.all([listAgents(), listAllContracts()]);
       return buildAdminStats(agents, contracts, {
@@ -751,7 +817,7 @@ app.get('/api/admin/stats', apiReadLimiter, requireAdmin, async (req, res) => {
   }
 });
 
-app.get('/api/admin/supplier-cutoffs', apiReadLimiter, requireAdmin, async (req, res) => {
+app.get('/api/admin/supplier-cutoffs', apiReadLimiter, requireAdminViewer, async (req, res) => {
   try {
     ensureConfigured();
     ensureSupplierCutoffConfigEnabled();
@@ -805,7 +871,7 @@ app.get('/api/clients', apiReadLimiter, requireAuth, async (req, res) => {
     ensureConfigured();
     const agentId = req.session.agentId;
     const currentUser = await getCurrentAgent(agentId);
-    const isAdmin = currentUser.ruolo === 'admin';
+    const isAdmin = canViewAdminData(currentUser);
 
     const cacheKey = clientsCacheKey(isAdmin ? 'admin' : agentId);
     const clients = await getCached(cacheKey, async () => {
@@ -832,6 +898,7 @@ app.patch('/api/clients/:id', requireAuth, async (req, res) => {
     const clientId = Number(req.params.id);
     const agentId = req.session.agentId;
     const currentUser = await getCurrentAgent(agentId);
+    assertCanWrite(currentUser);
 
     // Verifica proprietà o admin
     const clientRow = await getBaserowClient(clientId);
@@ -893,9 +960,12 @@ module.exports = {
   agentToBaserowPayload,
   SqliteSessionStore,
   buildAdminStats,
+  createContractSupplies,
+  canViewAdminData,
   cleanText,
   computeCompetenceMonthFromCutoff,
   contractCommissionValue,
+  contractStatusUnitCount,
   contractCompetenceMonth,
   contractCompetenceQuarter,
   contractCompetenceYear,
@@ -916,6 +986,7 @@ module.exports = {
   normalizeAgent,
   normalizeCompetenceMonth,
   normalizeContract,
+  normalizeSupply,
   normalizeClient,
   normalizeStatus,
   numberValue,
@@ -925,7 +996,11 @@ module.exports = {
   sanitizeAgentInput,
   sanitizeContractInput,
   selectValue,
+  supplyPayloadFromRow,
+  syncContractSupplies,
   todayIsoDate,
+  updateSupplyStatuses,
+  writableBaserowValue,
 };
 
 function isConfigured() {
@@ -968,6 +1043,35 @@ function requireAdmin(req, res, next) {
       handleApiError(res, error, 'ADMIN_CHECK_FAILED', 'Permesso admin non verificato.');
     }
   });
+}
+
+function requireAdminViewer(req, res, next) {
+  requireAuth(req, res, async () => {
+    try {
+      const agent = await getCurrentAgent(req.session.agentId);
+      if (!canViewAdminData(agent)) {
+        res.status(403).json({
+          error: 'ADMIN_VIEW_REQUIRED',
+          message: 'Permesso di visualizzazione amministrativa richiesto.',
+        });
+        return;
+      }
+      req.agent = agent;
+      next();
+    } catch (error) {
+      handleApiError(res, error, 'ADMIN_CHECK_FAILED', 'Permesso amministrativo non verificato.');
+    }
+  });
+}
+
+function canViewAdminData(agent) {
+  return agent?.ruolo === 'admin' || agent?.ruolo === 'spettatore';
+}
+
+function assertCanWrite(agent) {
+  if (agent?.ruolo === 'spettatore') {
+    throw publicError(403, 'READ_ONLY_ROLE', 'L’account Spettatore è in sola lettura.');
+  }
 }
 
 function attachSession(req, res, next) {
@@ -1073,6 +1177,7 @@ function supplierCutoffCacheKey() {
 
 function invalidateContractsCache(agentId) {
   invalidateCacheByPrefix(`contracts:${agentId}`);
+  apiCache.delete('contracts:all');
 }
 
 function invalidateClientsCache(agentId) {
@@ -1215,7 +1320,7 @@ async function listContracts(agentId) {
     params,
     `contratti agente ${agentId}`
   );
-  return rows.filter((row) => isCurrentAgentContract(row, agentId)).map(normalizeContract);
+  return normalizeContractsWithSupplies(rows.filter((row) => isCurrentAgentContract(row, agentId)));
 }
 
 async function listAgents() {
@@ -1233,7 +1338,29 @@ async function listAllContracts() {
     order_by: '-data_inserimento',
   });
   const rows = await fetchAllBaserowRows(CONFIG.contrattiTableId, params, 'lista contratti admin');
-  return rows.map(normalizeContract);
+  return normalizeContractsWithSupplies(rows);
+}
+
+async function normalizeContractsWithSupplies(contractRows) {
+  if (!CONFIG.fornitureTableId || !contractRows.length) {
+    return contractRows.map((row) => normalizeContract(row));
+  }
+
+  const supplyRows = await fetchAllBaserowRows(
+    CONFIG.fornitureTableId,
+    new URLSearchParams({ user_field_names: 'true' }),
+    'lista forniture'
+  );
+  const suppliesByContract = new Map();
+  supplyRows.forEach((row) => {
+    const supply = normalizeSupply(row);
+    const contractId = Number(supply.contrattoId);
+    if (!contractId) return;
+    if (!suppliesByContract.has(contractId)) suppliesByContract.set(contractId, []);
+    suppliesByContract.get(contractId).push(supply);
+  });
+
+  return contractRows.map((row) => normalizeContract(row, suppliesByContract.get(Number(row.id))));
 }
 
 function ensureSupplierCutoffConfigEnabled() {
@@ -1535,6 +1662,219 @@ async function deleteBaserowContract(contractId) {
   }
 }
 
+function ensureSuppliesConfigured() {
+  if (!CONFIG.fornitureTableId) {
+    throw publicError(
+      503,
+      'SUPPLIES_TABLE_NOT_CONFIGURED',
+      'Tabella Forniture non configurata. Imposta BASEROW_TABLE_FORNITURE_ID.'
+    );
+  }
+}
+
+async function listBaserowSuppliesForContract(contractId) {
+  if (!CONFIG.fornitureTableId) return [];
+  const params = new URLSearchParams({
+    user_field_names: 'true',
+    filter_type: 'AND',
+    filters: JSON.stringify({
+      filter_type: 'AND',
+      filters: [{ field: 'contratto', type: 'link_row_has', value: String(contractId) }],
+    }),
+  });
+  const rows = await fetchAllBaserowRows(
+    CONFIG.fornitureTableId,
+    params,
+    `forniture contratto ${contractId}`
+  );
+  return rows.filter((row) => Number(linkedAgentId(row.contratto)) === Number(contractId));
+}
+
+async function createBaserowSupply(payload) {
+  ensureSuppliesConfigured();
+  return baserowFetch(
+    `/api/database/rows/table/${CONFIG.fornitureTableId}/?user_field_names=true`,
+    { method: 'POST', body: JSON.stringify(payload) }
+  );
+}
+
+async function updateBaserowSupply(supplyId, payload) {
+  ensureSuppliesConfigured();
+  return baserowFetch(
+    `/api/database/rows/table/${CONFIG.fornitureTableId}/${supplyId}/?user_field_names=true`,
+    { method: 'PATCH', body: JSON.stringify(payload) }
+  );
+}
+
+async function deleteBaserowSupply(supplyId) {
+  ensureSuppliesConfigured();
+  const response = await fetch(
+    `${CONFIG.baserowBaseUrl}/api/database/rows/table/${CONFIG.fornitureTableId}/${supplyId}/?user_field_names=true`,
+    { method: 'DELETE', headers: { Authorization: `Token ${CONFIG.baserowToken}` } }
+  );
+  if (!response.ok) {
+    const body = await response.text();
+    const error = new Error(`Baserow API ${response.status}: ${body}`);
+    error.status = response.status;
+    throw error;
+  }
+}
+
+function desiredSupplyTypes(contract) {
+  if (contract.tipoFornitura === 'dual') return ['luce', 'gas'];
+  return contract.tipoFornitura ? [contract.tipoFornitura] : [];
+}
+
+function buildSupplyPayload(contract, contractId, type, status) {
+  const payment =
+    type === 'luce'
+      ? contract.metodoPagamentoLuce || contract.metodoPagamento
+      : contract.metodoPagamentoGas || contract.metodoPagamento;
+  const committedPower = type === 'luce' ? contract.potenzaImpegnata : null;
+  return {
+    nome: `${contract.ragioneSociale || 'CONTRATTO'} - ${type.toUpperCase()}`,
+    contratto: [contractId],
+    tipo_fornitura: type,
+    stato: status,
+    metodo_pagamento: payment || null,
+    pod: type === 'luce' ? contract.pod : '',
+    pdr: type === 'gas' ? contract.pdr : '',
+    metodo_inserimento: contract.metodoInserimento || null,
+    potenza_impegnata: committedPower,
+    potenza_disponibile: committedPower === null ? null : Number((committedPower * 1.1).toFixed(2)),
+    consumo_annuo: contract.consumoAnnuo,
+  };
+}
+
+function writableBaserowValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      if (item && typeof item === 'object') return item.id ?? item.value ?? item;
+      return item;
+    });
+  }
+  if (value && typeof value === 'object' && Object.hasOwn(value, 'value')) {
+    return value.value;
+  }
+  return value ?? null;
+}
+
+function restorePayload(row, fieldNames) {
+  return Object.fromEntries(
+    fieldNames.map((fieldName) => [fieldName, writableBaserowValue(row[fieldName])])
+  );
+}
+
+function supplyPayloadFromRow(row) {
+  return restorePayload(row, [
+    'nome',
+    'contratto',
+    'tipo_fornitura',
+    'stato',
+    'metodo_pagamento',
+    'pod',
+    'pdr',
+    'metodo_inserimento',
+    'potenza_impegnata',
+    'potenza_disponibile',
+    'consumo_annuo',
+  ]);
+}
+
+async function runCompensations(actions, context) {
+  for (const action of actions) {
+    try {
+      await action();
+    } catch (error) {
+      console.error(`[compensation ${context}]`, error.message);
+    }
+  }
+}
+
+async function createContractSupplies(contract, contractId, status) {
+  if (!CONFIG.fornitureTableId) return [];
+  const created = [];
+  try {
+    for (const type of desiredSupplyTypes(contract)) {
+      const supplyStatus =
+        status === 'Bozza'
+          ? 'Bozza'
+          : type === 'luce'
+            ? contract.statoLuce || status
+            : contract.statoGas || status;
+      created.push(
+        await createBaserowSupply(buildSupplyPayload(contract, contractId, type, supplyStatus))
+      );
+    }
+    return created;
+  } catch (error) {
+    await Promise.allSettled(created.map((supply) => deleteBaserowSupply(supply.id)));
+    throw error;
+  }
+}
+
+async function syncContractSupplies(contract, contractId, fallbackStatus) {
+  if (!CONFIG.fornitureTableId) return [];
+  const existingRows = await listBaserowSuppliesForContract(contractId);
+  const existingByType = new Map(existingRows.map((row) => [selectValue(row.tipo_fornitura), row]));
+  const desiredTypes = desiredSupplyTypes(contract);
+  const saved = [];
+  const compensations = [];
+
+  try {
+    for (const type of desiredTypes) {
+      const existing = existingByType.get(type);
+      const existingStatus = existing ? selectValue(existing.stato) : '';
+      const status =
+        fallbackStatus === 'Bozza'
+          ? 'Bozza'
+          : type === 'luce'
+            ? contract.statoLuce || existingStatus || fallbackStatus
+            : contract.statoGas || existingStatus || fallbackStatus;
+      const payload = buildSupplyPayload(contract, contractId, type, status);
+      if (existing) {
+        saved.push(await updateBaserowSupply(existing.id, payload));
+        compensations.unshift(() =>
+          updateBaserowSupply(existing.id, supplyPayloadFromRow(existing))
+        );
+      } else {
+        const created = await createBaserowSupply(payload);
+        saved.push(created);
+        compensations.unshift(() => deleteBaserowSupply(created.id));
+      }
+    }
+
+    const obsolete = existingRows.filter(
+      (row) => !desiredTypes.includes(selectValue(row.tipo_fornitura))
+    );
+    for (const row of obsolete) {
+      await deleteBaserowSupply(row.id);
+      compensations.unshift(() => createBaserowSupply(supplyPayloadFromRow(row)));
+    }
+    return saved;
+  } catch (error) {
+    await runCompensations(compensations, `sync contratto ${contractId}`);
+    throw error;
+  }
+}
+
+async function updateSupplyStatuses(supplyRows, status) {
+  const updated = [];
+  const compensations = [];
+  try {
+    for (const supply of supplyRows) {
+      updated.push(await updateBaserowSupply(supply.id, { stato: status }));
+      compensations.unshift(() =>
+        updateBaserowSupply(supply.id, { stato: selectValue(supply.stato) || 'Caricato' })
+      );
+    }
+    return updated;
+  } catch (error) {
+    await runCompensations(compensations, 'aggiornamento stati');
+    throw error;
+  }
+}
+
 async function createBaserowAgent(payload) {
   return baserowFetch(`/api/database/rows/table/${CONFIG.agentiTableId}/?user_field_names=true`, {
     method: 'POST',
@@ -1679,7 +2019,9 @@ function normalizeClient(row) {
     pec: cleanText(row.pec).toLowerCase(),
     cellulare: row.cellulare || '',
     indirizzoFatturazione: row.indirizzo_fatturazione || '',
-    metodoPagamento: selectValue(row.metodo_pagamento || row.metodoPagamento || row['Metodo pagamento']),
+    metodoPagamento: selectValue(
+      row.metodo_pagamento || row.metodoPagamento || row['Metodo pagamento']
+    ),
     iban: row.iban || row.IBAN || '',
     agenteId: Number(linkedAgentId(row.agente)),
   };
@@ -1749,6 +2091,15 @@ function sanitizeContractInput(input, { allowDraft = false } = {}) {
     pod: upperText(input.pod),
     pdr: upperText(input.pdr),
     metodoPagamento: cleanText(input.metodoPagamento).toLowerCase(),
+    metodoPagamentoLuce: cleanText(
+      input.metodoPagamentoLuce || input.metodoPagamento
+    ).toLowerCase(),
+    metodoPagamentoGas: cleanText(input.metodoPagamentoGas || input.metodoPagamento).toLowerCase(),
+    statoLuce: normalizeStatus(input.statoLuce || input.statoContratto || 'Caricato'),
+    statoGas: normalizeStatus(input.statoGas || input.statoContratto || 'Caricato'),
+    metodoInserimento: cleanText(input.metodoInserimento),
+    potenzaImpegnata: optionalNonNegativeNumber(input.potenzaImpegnata, 'POWER_INVALID'),
+    consumoAnnuo: optionalNonNegativeNumber(input.consumoAnnuo, 'ANNUAL_CONSUMPTION_INVALID'),
     iban: cleanText(input.iban).replace(/\s+/g, '').toUpperCase(),
     piva: upperText(input.piva),
     email: cleanText(input.email).toLowerCase(),
@@ -1831,7 +2182,41 @@ function sanitizeContractInput(input, { allowDraft = false } = {}) {
     throw publicError(400, 'PAYMENT_METHOD_INVALID', 'Metodo di pagamento non valido.');
   }
 
-  if (!allowDraft && contract.metodoPagamento === 'rid' && !contract.iban) {
+  if (contract.tipoFornitura === 'dual') {
+    if (
+      (!allowDraft || contract.metodoPagamentoLuce) &&
+      !allowedPaymentMethods.has(contract.metodoPagamentoLuce)
+    ) {
+      throw publicError(400, 'LIGHT_PAYMENT_METHOD_INVALID', 'Pagamento Luce non valido.');
+    }
+    if (
+      (!allowDraft || contract.metodoPagamentoGas) &&
+      !allowedPaymentMethods.has(contract.metodoPagamentoGas)
+    ) {
+      throw publicError(400, 'GAS_PAYMENT_METHOD_INVALID', 'Pagamento Gas non valido.');
+    }
+    if (!allowedStatuses.has(contract.statoLuce) || !allowedStatuses.has(contract.statoGas)) {
+      throw publicError(400, 'DUAL_STATUS_INVALID', 'Stato Luce o Stato Gas non valido.');
+    }
+  }
+
+  if (
+    normalizeSupplierKey(contract.fornitore) === 'hera' &&
+    (!allowDraft || contract.metodoInserimento) &&
+    !allowedInsertionMethods.has(contract.metodoInserimento)
+  ) {
+    throw publicError(
+      400,
+      'INSERTION_METHOD_INVALID',
+      'Seleziona AppAround o Cartaceo come metodo di inserimento Hera.'
+    );
+  }
+
+  const requiresIban =
+    contract.metodoPagamento === 'rid' ||
+    (contract.tipoFornitura === 'dual' &&
+      (contract.metodoPagamentoLuce === 'rid' || contract.metodoPagamentoGas === 'rid'));
+  if (!allowDraft && requiresIban && !contract.iban) {
     throw publicError(400, 'IBAN_REQUIRED', "Inserisci l'IBAN.");
   }
 
@@ -1852,6 +2237,16 @@ function sanitizeContractInput(input, { allowDraft = false } = {}) {
   }
 
   return contract;
+}
+
+function optionalNonNegativeNumber(value, code) {
+  const cleaned = cleanText(value).replace(',', '.');
+  if (!cleaned) return null;
+  const parsed = Number(cleaned);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw publicError(400, code, 'Inserisci un valore numerico valido e non negativo.');
+  }
+  return parsed;
 }
 
 function sanitizeAgentInput(input, { requirePassword }) {
@@ -1876,7 +2271,7 @@ function sanitizeAgentInput(input, { requirePassword }) {
     throw publicError(400, 'AGENT_EMAIL_INVALID', 'Email agente non valida.');
   }
 
-  if (!['agente', 'admin'].includes(agent.ruolo)) {
+  if (!['agente', 'admin', 'spettatore'].includes(agent.ruolo)) {
     throw publicError(400, 'AGENT_ROLE_INVALID', 'Ruolo agente non valido.');
   }
 
@@ -1949,8 +2344,45 @@ function publicAgent(agent) {
   };
 }
 
-function normalizeContract(row) {
+function normalizeSupply(row) {
+  return {
+    id: row.id,
+    contrattoId: linkedAgentId(row.contratto),
+    tipoFornitura: selectValue(row.tipo_fornitura),
+    stato: selectValue(row.stato) || 'Caricato',
+    metodoPagamento: selectValue(row.metodo_pagamento),
+    pod: row.pod || '',
+    pdr: row.pdr || '',
+    metodoInserimento: selectValue(row.metodo_inserimento),
+    potenzaImpegnata:
+      row.potenza_impegnata === null || row.potenza_impegnata === ''
+        ? null
+        : numberValue(row.potenza_impegnata),
+    potenzaDisponibile:
+      row.potenza_disponibile === null || row.potenza_disponibile === ''
+        ? null
+        : numberValue(row.potenza_disponibile),
+    consumoAnnuo:
+      row.consumo_annuo === null || row.consumo_annuo === ''
+        ? null
+        : numberValue(row.consumo_annuo),
+  };
+}
+
+function normalizeContract(row, supplyRows = []) {
   const status = selectValue(row.stato_contratto) || 'Caricato';
+  const supplies = (supplyRows || []).map((supply) =>
+    supply?.tipoFornitura ? supply : normalizeSupply(supply)
+  );
+  const lightSupply = supplies.find((supply) => supply.tipoFornitura === 'luce');
+  const gasSupply = supplies.find((supply) => supply.tipoFornitura === 'gas');
+  const supplyType = selectValue(row.tipo_fornitura);
+  const statoLuce =
+    lightSupply?.stato || (supplyType === 'luce' || supplyType === 'dual' ? status : '');
+  const statoGas =
+    gasSupply?.stato || (supplyType === 'gas' || supplyType === 'dual' ? status : '');
+  const aggregateStatus =
+    statoLuce && statoGas && statoLuce !== statoGas ? 'Misto' : statoLuce || statoGas || status;
   const cbSnapshot = numberValue(row.cb_unitaria_snapshot);
   const cbMaturata =
     row.cb_maturata !== undefined
@@ -1960,6 +2392,7 @@ function normalizeContract(row) {
         : cbSnapshot;
   const normalized = {
     id: row.id,
+    codiceCrm: row.codice_crm || `CRM-${row.id}`,
     agenteId: linkedAgentId(row.agente),
     agenteNome: (Array.isArray(row.agente) && row.agente[0]?.value) || '',
     dataInserimento: row.data_inserimento || '',
@@ -1981,10 +2414,16 @@ function normalizeContract(row) {
       '',
     nomeOfferta: row.nome_offerta || '',
     tipoOperazione: multiSelectValue(row.tipo_operazione),
-    tipoFornitura: selectValue(row.tipo_fornitura),
-    pod: row.pod || '',
-    pdr: row.pdr || '',
+    tipoFornitura: supplyType,
+    pod: lightSupply?.pod || row.pod || '',
+    pdr: gasSupply?.pdr || row.pdr || '',
     metodoPagamento: selectValue(row.metodo_pagamento),
+    metodoPagamentoLuce:
+      lightSupply?.metodoPagamento ||
+      (supplyType === 'luce' || supplyType === 'dual' ? selectValue(row.metodo_pagamento) : ''),
+    metodoPagamentoGas:
+      gasSupply?.metodoPagamento ||
+      (supplyType === 'gas' || supplyType === 'dual' ? selectValue(row.metodo_pagamento) : ''),
     iban: row.iban || '',
     fileContratto: fileValue(row.file_contratto),
     piva: row.piva || '',
@@ -1993,7 +2432,14 @@ function normalizeContract(row) {
     indirizzoFatturazione: row.indirizzo_fatturazione || '',
     indirizzoFornitura: row.indirizzo_fornitura || '',
     descrizione: row.descrizione || '',
-    statoContratto: status,
+    statoContratto: aggregateStatus,
+    statoLuce,
+    statoGas,
+    metodoInserimento: lightSupply?.metodoInserimento || gasSupply?.metodoInserimento || '',
+    potenzaImpegnata: lightSupply?.potenzaImpegnata ?? null,
+    potenzaDisponibile: lightSupply?.potenzaDisponibile ?? null,
+    consumoAnnuo: lightSupply?.consumoAnnuo ?? gasSupply?.consumoAnnuo ?? null,
+    forniture: supplies,
     cbUnitariaSnapshot: cbSnapshot,
     cbMaturata,
     dataInizioFornitura: row.data_inizio_fornitura || '',
@@ -2009,8 +2455,8 @@ function normalizeContract(row) {
   };
 }
 
-function normalizeContractForAssignedAgent(row, assignedAgent) {
-  const normalized = normalizeContract(row);
+function normalizeContractForAssignedAgent(row, assignedAgent, supplies = []) {
+  const normalized = normalizeContract(row, supplies);
   return {
     ...normalized,
     agenteId: Number(assignedAgent?.id) || normalized.agenteId,
@@ -2040,7 +2486,9 @@ function buildAdminStats(agents, contracts, competence = {}) {
   });
   const quarter = competence.quarterKey || quarterFromMonthKey(month);
   const year = competence.yearKey || month.slice(0, 4);
-  const operationalContracts = contracts.filter((contract) => contract.statoContratto !== 'Bozza');
+  const operationalContracts = contracts.filter((contract) =>
+    contractSupplyUnits(contract).some((unit) => unit.stato !== 'Bozza')
+  );
   const monthlyContracts = operationalContracts.filter(
     (contract) => contractCompetenceMonth(contract) === month
   );
@@ -2060,33 +2508,35 @@ function buildAdminStats(agents, contracts, competence = {}) {
     const agentYearContracts = yearContracts.filter(
       (contract) => Number(contract.agenteId) === Number(agent.id)
     );
-    const ok = agentContracts.filter((contract) => contract.statoContratto === 'OK');
-    const okTrimestre = agentQuarterContracts.filter(
-      (contract) => contract.statoContratto === 'OK'
-    );
-    const okAnno = agentYearContracts.filter((contract) => contract.statoContratto === 'OK');
-    const targetMensile = agentContracts.filter(isCountedInTargetProgress);
-    const targetTrimestrale = agentQuarterContracts.filter(isCountedInTargetProgress);
-    const targetAnnuale = agentYearContracts.filter(isCountedInTargetProgress);
-    const caricati = agentContracts.filter((contract) => contract.statoContratto === 'Caricato');
-    const inviati = agentContracts.filter((contract) => contract.statoContratto === 'Inviato');
-    const ko = agentContracts.filter((contract) => contract.statoContratto === 'K.O.');
-    const switchOut = agentContracts.filter(
-      (contract) => contract.statoContratto === 'Switch - Out'
-    );
     const contractUnits = sumContractUnits(agentContracts);
-    const okUnits = sumContractUnits(ok);
-    const okTrimestreUnits = sumContractUnits(okTrimestre);
-    const okAnnoUnits = sumContractUnits(okAnno);
-    const targetMensileUnits = sumContractUnits(targetMensile);
-    const targetTrimestraleUnits = sumContractUnits(targetTrimestrale);
-    const targetAnnualeUnits = sumContractUnits(targetAnnuale);
-    const caricatiUnits = sumContractUnits(caricati);
-    const inviatiUnits = sumContractUnits(inviati);
-    const koUnits = sumContractUnits(ko);
-    const switchOutUnits = sumContractUnits(switchOut);
-    const cbValidata = sumContractCommissions(ok);
-    const cbPotenziale = sumContractCommissions([...ok, ...caricati, ...inviati]);
+    const okUnits = sumContractStatusUnits(agentContracts, 'OK');
+    const okTrimestreUnits = sumContractStatusUnits(agentQuarterContracts, 'OK');
+    const okAnnoUnits = sumContractStatusUnits(agentYearContracts, 'OK');
+    const targetMensileUnits = agentContracts.reduce(
+      (sum, contract) => sum + contractTargetUnitCount(contract),
+      0
+    );
+    const targetTrimestraleUnits = agentQuarterContracts.reduce(
+      (sum, contract) => sum + contractTargetUnitCount(contract),
+      0
+    );
+    const targetAnnualeUnits = agentYearContracts.reduce(
+      (sum, contract) => sum + contractTargetUnitCount(contract),
+      0
+    );
+    const caricatiUnits = sumContractStatusUnits(agentContracts, 'Caricato');
+    const inviatiUnits = sumContractStatusUnits(agentContracts, 'Inviato');
+    const koUnits = sumContractStatusUnits(agentContracts, 'K.O.');
+    const switchOutUnits = sumContractStatusUnits(agentContracts, 'Switch - Out');
+    const cbValidata = agentContracts.reduce(
+      (sum, contract) => sum + contractStatusCommissionValue(contract, 'OK'),
+      0
+    );
+    const cbPotenziale = agentContracts.reduce(
+      (sum, contract) =>
+        sum + contractStatusCommissionValue(contract, ['OK', 'Caricato', 'Inviato']),
+      0
+    );
 
     return {
       id: agent.id,
@@ -2116,10 +2566,6 @@ function buildAdminStats(agents, contracts, competence = {}) {
       percentualeTargetAnnuale: percent(targetAnnualeUnits, agent.targetAnnuale),
     };
   });
-  const targetMensileContracts = monthlyContracts.filter(isCountedInTargetProgress);
-  const targetTrimestraleContracts = quarterContracts.filter(isCountedInTargetProgress);
-  const targetAnnualeContracts = yearContracts.filter(isCountedInTargetProgress);
-
   return {
     month,
     quarter,
@@ -2127,28 +2573,32 @@ function buildAdminStats(agents, contracts, competence = {}) {
     totals: {
       practices: monthlyContracts.length,
       contracts: sumContractUnits(monthlyContracts),
-      ok: sumContractUnits(monthlyContracts.filter((contract) => contract.statoContratto === 'OK')),
-      caricati: sumContractUnits(
-        monthlyContracts.filter((contract) => contract.statoContratto === 'Caricato')
+      ok: sumContractStatusUnits(monthlyContracts, 'OK'),
+      caricati: sumContractStatusUnits(monthlyContracts, 'Caricato'),
+      inviati: sumContractStatusUnits(monthlyContracts, 'Inviato'),
+      ko: sumContractStatusUnits(monthlyContracts, 'K.O.'),
+      switchOut: sumContractStatusUnits(monthlyContracts, 'Switch - Out'),
+      targetMensileDone: monthlyContracts.reduce(
+        (sum, contract) => sum + contractTargetUnitCount(contract),
+        0
       ),
-      inviati: sumContractUnits(
-        monthlyContracts.filter((contract) => contract.statoContratto === 'Inviato')
+      targetTrimestraleDone: quarterContracts.reduce(
+        (sum, contract) => sum + contractTargetUnitCount(contract),
+        0
       ),
-      ko: sumContractUnits(
-        monthlyContracts.filter((contract) => contract.statoContratto === 'K.O.')
+      targetAnnualeDone: yearContracts.reduce(
+        (sum, contract) => sum + contractTargetUnitCount(contract),
+        0
       ),
-      switchOut: sumContractUnits(
-        monthlyContracts.filter((contract) => contract.statoContratto === 'Switch - Out')
+      cbValidata: monthlyContracts.reduce(
+        (sum, contract) => sum + contractStatusCommissionValue(contract, 'OK'),
+        0
       ),
-      targetMensileDone: sumContractUnits(targetMensileContracts),
-      targetTrimestraleDone: sumContractUnits(targetTrimestraleContracts),
-      targetAnnualeDone: sumContractUnits(targetAnnualeContracts),
-      cbValidata: monthlyContracts
-        .filter((contract) => contract.statoContratto === 'OK')
-        .reduce((sum, contract) => sum + contractCommissionValue(contract), 0),
-      cbPotenziale: monthlyContracts
-        .filter((contract) => ['OK', 'Caricato', 'Inviato'].includes(contract.statoContratto))
-        .reduce((sum, contract) => sum + contractCommissionValue(contract), 0),
+      cbPotenziale: monthlyContracts.reduce(
+        (sum, contract) =>
+          sum + contractStatusCommissionValue(contract, ['OK', 'Caricato', 'Inviato']),
+        0
+      ),
     },
     agents: agentRows,
   };
@@ -2161,14 +2611,6 @@ function currentMonthKey() {
 
 function percent(done, target) {
   return target ? Math.min(Math.round((done / target) * 100), 100) : 0;
-}
-
-function isCountedInTargetProgress(contract) {
-  return (
-    ['OK', 'Caricato', 'Inviato'].includes(String(contract?.statoContratto || '').trim()) &&
-    cleanText(contract?.categoriaCliente).toLowerCase() === 'prospect' &&
-    !contractHasOperation(contract, 'cambio listino')
-  );
 }
 
 function contractHasOperation(contract, expectedOperation) {
@@ -2197,8 +2639,56 @@ function contractUnitCount(contract) {
   return 1;
 }
 
+function contractSupplyUnits(contract) {
+  if (Array.isArray(contract?.forniture) && contract.forniture.length) {
+    return contract.forniture.flatMap((supply) => {
+      const type = cleanText(supply.tipoFornitura).toLowerCase();
+      const points = type === 'luce' ? contract.pod : contract.pdr;
+      const count = countLabeledSupplyRows(points, type === 'luce' ? 'pod' : 'pdr') || 1;
+      return Array.from({ length: count }, () => ({
+        stato: supply.stato || contract.statoContratto,
+        cb: numberValue(contract.cbUnitariaSnapshot || contract.cbMaturata),
+      }));
+    });
+  }
+
+  return Array.from({ length: contractUnitCount(contract) }, () => ({
+    stato: contract.statoContratto,
+    cb: numberValue(contract.cbUnitariaSnapshot || contract.cbMaturata),
+  }));
+}
+
+function contractStatusUnitCount(contract, status) {
+  return contractSupplyUnits(contract).filter((unit) => unit.stato === status).length;
+}
+
+function sumContractStatusUnits(items, status) {
+  return items.reduce((sum, contract) => sum + contractStatusUnitCount(contract, status), 0);
+}
+
+function contractStatusCommissionValue(contract, statuses) {
+  const allowed = new Set(Array.isArray(statuses) ? statuses : [statuses]);
+  return contractSupplyUnits(contract)
+    .filter((unit) => allowed.has(unit.stato))
+    .reduce((sum, unit) => sum + unit.cb, 0);
+}
+
+function contractTargetUnitCount(contract) {
+  if (
+    cleanText(contract?.categoriaCliente).toLowerCase() !== 'prospect' ||
+    contractHasOperation(contract, 'cambio listino')
+  ) {
+    return 0;
+  }
+  return contractSupplyUnits(contract).filter((unit) =>
+    ['OK', 'Caricato', 'Inviato'].includes(unit.stato)
+  ).length;
+}
+
 function multipodUnitCount(contract) {
-  return countLabeledSupplyRows(contract?.pod, 'pod') + countLabeledSupplyRows(contract?.pdr, 'pdr');
+  return (
+    countLabeledSupplyRows(contract?.pod, 'pod') + countLabeledSupplyRows(contract?.pdr, 'pdr')
+  );
 }
 
 function countLabeledSupplyRows(value, kind) {
@@ -2217,10 +2707,6 @@ function contractCommissionValue(contract) {
     return Number(contract.commissionValue);
   }
   return numberValue(contract.cbMaturata) * contractUnitCount(contract);
-}
-
-function sumContractCommissions(items) {
-  return items.reduce((sum, contract) => sum + contractCommissionValue(contract), 0);
 }
 
 function normalizeIsoDate(value) {
@@ -2310,9 +2796,12 @@ function quarterFromMonthKey(monthKey) {
 
 function contractCompetenceMonth(contract) {
   const byRef = normalizeCompetenceMonth(contract.meseRiferimento, { strict: false });
-  return byRef || normalizeCompetenceMonth(cleanText(contract.dataInserimento).slice(0, 7), {
-    strict: false,
-  });
+  return (
+    byRef ||
+    normalizeCompetenceMonth(cleanText(contract.dataInserimento).slice(0, 7), {
+      strict: false,
+    })
+  );
 }
 
 function contractCompetenceQuarter(contract) {

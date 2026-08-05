@@ -261,6 +261,20 @@ const statusColors = {
   'Switch - Out': '#dc2626',
 };
 
+function isAdminViewer() {
+  return agent?.ruolo === 'admin' || agent?.ruolo === 'spettatore';
+}
+
+function isReadOnlyUser() {
+  return agent?.ruolo === 'spettatore';
+}
+
+function userRoleLabel(role) {
+  if (role === 'admin') return 'Admin';
+  if (role === 'spettatore') return 'Spettatore';
+  return 'Agente';
+}
+
 const today = new Date();
 let currentCompetence = {
   month: monthKey(today),
@@ -395,8 +409,14 @@ document.getElementById('metodo-pagamento').addEventListener('change', () => {
   updateConditionalFields();
 });
 document
-  .getElementById('fornitore-input')
-  .addEventListener('change', () => updateStartDatePrediction());
+  .getElementById('metodo-pagamento-luce')
+  .addEventListener('change', updateConditionalFields);
+document.getElementById('metodo-pagamento-gas').addEventListener('change', updateConditionalFields);
+document.getElementById('potenza-impegnata').addEventListener('input', updateAvailablePower);
+document.getElementById('fornitore-input').addEventListener('change', () => {
+  updateStartDatePrediction();
+  updateConditionalFields();
+});
 setupSameAddressSync();
 
 document.addEventListener('input', (event) => {
@@ -550,6 +570,10 @@ setInterval(() => {
 
 document.getElementById('contract-form').addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (isReadOnlyUser()) {
+    setFormFeedback('error', 'L’account Spettatore è in sola lettura.');
+    return;
+  }
   const formElement = event.currentTarget;
   const form = new FormData(formElement);
   const saveMode = event.submitter?.dataset.saveMode === 'draft' ? 'draft' : 'submit';
@@ -747,6 +771,9 @@ async function loadAndRenderContracts({ silent = false, force = false } = {}) {
 }
 
 function setActivePage(pageId) {
+  if (pageId === 'new-contract' && isReadOnlyUser()) {
+    pageId = 'dashboard';
+  }
   const previousPage = activePage;
   activePage = pageId;
   document
@@ -779,7 +806,7 @@ function setActivePage(pageId) {
   // Nascondi "Nuovo contratto" quick-action nelle pagine dove è fuori contesto
   const quickBtn = document.querySelector('.quick-action');
   if (quickBtn) {
-    quickBtn.hidden = pageId === 'admin';
+    quickBtn.hidden = pageId === 'admin' || isReadOnlyUser();
   }
 
   if (pageId === 'new-contract') {
@@ -792,7 +819,7 @@ function setActivePage(pageId) {
   if (pageId === 'contracts') {
     if (previousPage !== 'contracts') {
       syncContractsMonthFilterToSelection();
-      const needsAdminContracts = agent?.ruolo === 'admin' && !adminDataLoaded;
+      const needsAdminContracts = isAdminViewer() && !adminDataLoaded;
       if (needsAdminContracts) {
         setContractsScopeFeedback('Caricamento contratti...');
       } else {
@@ -810,28 +837,29 @@ function setActivePage(pageId) {
 function currentMonthContracts() {
   return contracts.filter(
     (contract) =>
-      contractMonthRef(contract) === selectedViewMonth && contract.statoContratto !== 'Bozza'
+      contractMonthRef(contract) === selectedViewMonth &&
+      contractSupplyUnits(contract).some((unit) => unit.stato !== 'Bozza')
   );
 }
 
 function getSummary(monthly = currentMonthContracts()) {
-  const ok = monthly.filter((contract) => contract.statoContratto === 'OK');
-  const caricati = monthly.filter((contract) => contract.statoContratto === 'Caricato');
-  const inviati = monthly.filter((contract) => contract.statoContratto === 'Inviato');
-  const ko = monthly.filter((contract) => contract.statoContratto === 'K.O.');
-  const switchOut = monthly.filter((contract) => contract.statoContratto === 'Switch - Out');
+  const ok = monthly.filter((contract) => contractHasStatus(contract, 'OK'));
+  const caricati = monthly.filter((contract) => contractHasStatus(contract, 'Caricato'));
+  const inviati = monthly.filter((contract) => contractHasStatus(contract, 'Inviato'));
+  const ko = monthly.filter((contract) => contractHasStatus(contract, 'K.O.'));
+  const switchOut = monthly.filter((contract) => contractHasStatus(contract, 'Switch - Out'));
   const scartati = monthly.filter(
-    (contract) => contract.statoContratto === 'K.O.' || contract.statoContratto === 'Switch - Out'
+    (contract) => contractHasStatus(contract, 'K.O.') || contractHasStatus(contract, 'Switch - Out')
   );
   const monthlyUnits = sumContractUnits(monthly);
-  const okUnits = sumContractUnits(ok);
-  const caricatiUnits = sumContractUnits(caricati);
-  const inviatiUnits = sumContractUnits(inviati);
-  const koUnits = sumContractUnits(ko);
-  const switchOutUnits = sumContractUnits(switchOut);
-  const scartatiUnits = sumContractUnits(scartati);
-  const cbValidata = sumContractCommissions(ok);
-  const cbPotenziale = sumContractCommissions([...ok, ...caricati, ...inviati]);
+  const okUnits = sumContractStatusUnits(monthly, 'OK');
+  const caricatiUnits = sumContractStatusUnits(monthly, 'Caricato');
+  const inviatiUnits = sumContractStatusUnits(monthly, 'Inviato');
+  const koUnits = sumContractStatusUnits(monthly, 'K.O.');
+  const switchOutUnits = sumContractStatusUnits(monthly, 'Switch - Out');
+  const scartatiUnits = koUnits + switchOutUnits;
+  const cbValidata = sumContractStatusCommissions(monthly, 'OK');
+  const cbPotenziale = sumContractStatusCommissions(monthly, ['OK', 'Caricato', 'Inviato']);
   const mancanti = Math.max(agent.targetMensile - okUnits, 0);
   const targetPercent = percent(okUnits, agent.targetMensile);
 
@@ -877,33 +905,24 @@ function renderDashboard() {
     isCountedInMonthlyOverallProgress(contract)
   );
   const targetOk = summary.monthly.filter(
-    (contract) => isCountedInProgress(contract) && contract.statoContratto === 'OK'
+    (contract) => isCountedInProgress(contract) && contractHasStatus(contract, 'OK')
   );
-  const dashboardOk = dashboardMonthly.filter((contract) => contract.statoContratto === 'OK');
-  const dashboardCaricati = dashboardMonthly.filter(
-    (contract) => contract.statoContratto === 'Caricato'
-  );
-  const dashboardInviati = dashboardMonthly.filter(
-    (contract) => contract.statoContratto === 'Inviato'
-  );
-  const dashboardScartati = dashboardMonthly.filter(
-    (contract) => contract.statoContratto === 'K.O.' || contract.statoContratto === 'Switch - Out'
+  const dashboardInviati = dashboardMonthly.filter((contract) =>
+    contractHasStatus(contract, 'Inviato')
   );
   const dashboardSummary = {
     ...summary,
     monthlyUnits: sumContractUnits(dashboardMonthly),
-    okUnits: sumContractUnits(dashboardOk),
-    caricatiUnits: sumContractUnits(dashboardCaricati),
-    inviatiUnits: sumContractUnits(dashboardInviati),
-    scartatiUnits: sumContractUnits(dashboardScartati),
-    cbValidata: sumContractCommissions(dashboardOk),
-    cbPotenziale: sumContractCommissions([
-      ...dashboardOk,
-      ...dashboardCaricati,
-      ...dashboardInviati,
-    ]),
+    okUnits: sumContractStatusUnits(dashboardMonthly, 'OK'),
+    caricatiUnits: sumContractStatusUnits(dashboardMonthly, 'Caricato'),
+    inviatiUnits: sumContractStatusUnits(dashboardMonthly, 'Inviato'),
+    scartatiUnits:
+      sumContractStatusUnits(dashboardMonthly, 'K.O.') +
+      sumContractStatusUnits(dashboardMonthly, 'Switch - Out'),
+    cbValidata: sumContractStatusCommissions(dashboardMonthly, 'OK'),
+    cbPotenziale: sumContractStatusCommissions(dashboardMonthly, ['OK', 'Caricato', 'Inviato']),
   };
-  dashboardSummary.targetUnits = sumContractUnits(targetOk);
+  dashboardSummary.targetUnits = sumContractStatusUnits(targetOk, 'OK');
   dashboardSummary.mancanti = Math.max(agent.targetMensile - dashboardSummary.targetUnits, 0);
   dashboardSummary.targetPercent = percent(dashboardSummary.targetUnits, agent.targetMensile);
   renderMetrics('dashboard-metrics', [
@@ -1042,13 +1061,12 @@ function renderBarChart() {
     const label = capitalize(
       new Intl.DateTimeFormat('it-IT', { month: 'short' }).format(date)
     ).replace('.', '');
-    const value = sumContractUnits(
+    const value = sumContractStatusUnits(
       contracts.filter(
         (contract) =>
-          contractMonthRef(contract) === key &&
-          contract.statoContratto === 'OK' &&
-          isCountedInMonthlyOverallProgress(contract)
-      )
+          contractMonthRef(contract) === key && isCountedInMonthlyOverallProgress(contract)
+      ),
+      'OK'
     );
     return [label, value, key === selectedViewMonth];
   });
@@ -1087,7 +1105,11 @@ function renderContractsTable() {
   );
   const category = selectedCategory;
 
-  populateSupplierFilterOptions('contracts-supplier-filter', sourceContracts, contractsSupplierFilter);
+  populateSupplierFilterOptions(
+    'contracts-supplier-filter',
+    sourceContracts,
+    contractsSupplierFilter
+  );
   const selectedSupplier = String(contractsSupplierFilter || 'all')
     .trim()
     .toLowerCase();
@@ -1098,6 +1120,7 @@ function renderContractsTable() {
       contract.cellulare,
       contract.email,
       contract.piva,
+      contract.codiceCrm,
       contract.idContratto,
       contract.pod,
       contract.pdr,
@@ -1106,7 +1129,7 @@ function renderContractsTable() {
       .toLowerCase()
       .includes(search);
     const matchesMonth = month === 'all' || contractMonthRef(contract) === month;
-    const matchesStatus = status === 'all' || contract.statoContratto === status;
+    const matchesStatus = status === 'all' || contractHasStatus(contract, status);
     const matchesCategory =
       category === 'all' ||
       String(contract.categoriaCliente || '')
@@ -1119,9 +1142,7 @@ function renderContractsTable() {
         .trim()
         .toLowerCase() === selectedSupplier;
     const matchesScopeAgent =
-      agent?.ruolo !== 'admin' ||
-      !selectedAgentIds.size ||
-      selectedAgentIds.has(String(contract.agenteId));
+      !isAdminViewer() || !selectedAgentIds.size || selectedAgentIds.has(String(contract.agenteId));
     return (
       matchesSearch &&
       matchesMonth &&
@@ -1175,7 +1196,7 @@ function renderContractsTable() {
 function renderContractsSummary(filteredContracts, _sourceContracts, monthFilter) {
   const summary = document.getElementById('contracts-summary');
   if (!summary) return;
-  if (agent?.ruolo !== 'admin') {
+  if (!isAdminViewer()) {
     summary.innerHTML = '';
     return;
   }
@@ -1201,30 +1222,51 @@ function contractRow(contract) {
       <td data-label="Cliente"><strong>${escapeHtml(contract.ragioneSociale)}</strong>${multipodBadge(contract)}</td>
       <td data-label="Data inserimento">${formatDate.format(new Date(contract.dataInserimento))}</td>
       <td data-label="Mese competenza">${escapeHtml(contractMonthLabel(contract))}</td>
-      <td data-label="Stato">${statusBadge(contract.statoContratto)}</td>
+      <td data-label="Stato">${contractStatusBadges(contract)}</td>
       <td data-label="Fornitore">${escapeHtml(contract.fornitore || 'Non inserito')}</td>
       <td data-label="Fornitura">${escapeHtml(capitalize(contract.tipoFornitura || 'Non inserita'))}</td>
-      <td data-label="ID contratto">${escapeHtml(contract.idContratto || 'ID non inserito')}</td>
+      <td data-label="ID contratto">${escapeHtml(contractIdentifier(contract))}</td>
       <td data-label="Tipo operazione">${escapeHtml(formatList(contract.tipoOperazione) || 'Non inserita')}</td>
     </tr>
   `;
+}
+
+function contractIdentifier(contract) {
+  const identifiers = [contract.codiceCrm, contract.idContratto].filter(Boolean);
+  return identifiers.join(' · ') || `CRM-${contract.id}`;
 }
 
 function multipodBadge(contract) {
   return multipodUnitCount(contract) > 0 ? '<span class="badge multipod">Multipunto</span>' : '';
 }
 
+function contractStatusBadges(contract) {
+  if (String(contract.tipoFornitura).toLowerCase() !== 'dual') {
+    return statusBadge(contract.statoContratto);
+  }
+  return `<div class="dual-statuses"><span>Luce ${statusBadge(contract.statoLuce)}</span><span>Gas ${statusBadge(contract.statoGas)}</span></div>`;
+}
+
 function openContractModal(contractLike) {
   const contract = findContractById(contractLike);
   if (!contract) return;
-  const isCondominio = String(contract.tipoCliente || '').trim().toLowerCase() === 'condominio';
+  const isCondominio =
+    String(contract.tipoCliente || '')
+      .trim()
+      .toLowerCase() === 'condominio';
 
   document.getElementById('contract-detail-title').textContent =
     contract.ragioneSociale || 'Contratto';
   document.getElementById('contract-detail-content').innerHTML = [
     detailItem('Cliente', contract.ragioneSociale),
-    detailItem('ID contratto', contract.idContratto || 'Non inserito'),
-    detailItem('Stato', capitalize(contract.statoContratto)),
+    detailItem('Codice CRM', contract.codiceCrm || `CRM-${contract.id}`),
+    detailItem('ID contratto commerciale', contract.idContratto || 'Non inserito'),
+    ...(String(contract.tipoFornitura).toLowerCase() === 'dual'
+      ? [
+          detailItem('Stato Luce', capitalize(contract.statoLuce)),
+          detailItem('Stato Gas', capitalize(contract.statoGas)),
+        ]
+      : [detailItem('Stato', capitalize(contract.statoContratto))]),
     detailItem('Agente', contract.agenteNome || agentNameById(contract.agenteId) || 'Sconosciuto'),
     detailItem('Data inserimento', formatDate.format(new Date(contract.dataInserimento))),
     detailItem('Mese competenza', contractMonthLabel(contract)),
@@ -1248,7 +1290,24 @@ function openContractModal(contractLike) {
     detailItem('Conteggio target', contractUnitCount(contract)),
     detailItem('POD', contract.pod || 'Non inserito'),
     detailItem('PDR', contract.pdr || 'Non inserito'),
-    detailItem('Metodo pagamento', capitalize(contract.metodoPagamento || 'Non inserito')),
+    ...(String(contract.tipoFornitura).toLowerCase() === 'dual'
+      ? [
+          detailItem('Pagamento Luce', capitalize(contract.metodoPagamentoLuce || 'Non inserito')),
+          detailItem('Pagamento Gas', capitalize(contract.metodoPagamentoGas || 'Non inserito')),
+        ]
+      : [detailItem('Metodo pagamento', capitalize(contract.metodoPagamento || 'Non inserito'))]),
+    ...(contract.metodoInserimento
+      ? [detailItem('Metodo di inserimento', contract.metodoInserimento)]
+      : []),
+    ...(contract.potenzaImpegnata !== null && contract.potenzaImpegnata !== undefined
+      ? [
+          detailItem('Potenza impegnata', `${contract.potenzaImpegnata} kW`),
+          detailItem('Potenza disponibile', `${contract.potenzaDisponibile} kW`),
+        ]
+      : []),
+    ...(contract.consumoAnnuo !== null && contract.consumoAnnuo !== undefined
+      ? [detailItem('Consumo annuo', contract.consumoAnnuo)]
+      : []),
     detailItem('IBAN', contract.iban ? maskIban(contract.iban) : 'Non inserito'),
     fileDetailItem(contract.fileContratto),
     detailItem('CB', formatCurrency(contractCommissionValue(contract))),
@@ -1362,6 +1421,7 @@ function renderCbPage() {
       contract.cellulare,
       contract.email,
       contract.piva,
+      contract.codiceCrm,
       contract.idContratto,
       contract.pod,
       contract.pdr,
@@ -1370,44 +1430,39 @@ function renderCbPage() {
       .toLowerCase()
       .includes(search)
   );
-  const filteredOk = filteredMonthly.filter((contract) => contract.statoContratto === 'OK');
-  const filteredCaricati = filteredMonthly.filter(
-    (contract) => contract.statoContratto === 'Caricato'
-  );
-  const filteredInviati = filteredMonthly.filter(
-    (contract) => contract.statoContratto === 'Inviato'
-  );
-  const filteredKo = filteredMonthly.filter((contract) => contract.statoContratto === 'K.O.');
-
   syncMultiSelectValues('cb-category-filter', cbCategoryFilters);
   syncMultiSelectValues('cb-operation-filter', cbOperationFilters);
   renderMetrics('cb-metrics-money', [
     {
       label: 'CB del mese',
       value: formatCurrency(
-        sumContractCommissions([...filteredOk, ...filteredCaricati, ...filteredInviati])
+        sumContractStatusCommissions(filteredMonthly, ['OK', 'Caricato', 'Inviato'])
       ),
       accent: 'blue',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
     },
     {
       label: 'CB validata (OK)',
-      value: formatCurrency(sumContractCommissions(filteredOk)),
+      value: formatCurrency(sumContractStatusCommissions(filteredMonthly, 'OK')),
       accent: 'green',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>',
     },
     {
       label: 'CB in attesa',
-      value: formatCurrency(sumContractCommissions([...filteredCaricati, ...filteredInviati])),
+      value: formatCurrency(sumContractStatusCommissions(filteredMonthly, ['Caricato', 'Inviato'])),
       accent: 'amber',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
     },
   ]);
   renderMetrics('cb-metrics-counts', [
-    { label: 'OK', value: sumContractUnits(filteredOk), accent: 'green' },
-    { label: 'Caricati', value: sumContractUnits(filteredCaricati), accent: 'blue' },
-    { label: 'Inviati', value: sumContractUnits(filteredInviati), accent: 'blue' },
-    { label: 'K.O.', value: sumContractUnits(filteredKo), accent: 'red' },
+    { label: 'OK', value: sumContractStatusUnits(filteredMonthly, 'OK'), accent: 'green' },
+    {
+      label: 'Caricati',
+      value: sumContractStatusUnits(filteredMonthly, 'Caricato'),
+      accent: 'blue',
+    },
+    { label: 'Inviati', value: sumContractStatusUnits(filteredMonthly, 'Inviato'), accent: 'blue' },
+    { label: 'K.O.', value: sumContractStatusUnits(filteredMonthly, 'K.O.'), accent: 'red' },
   ]);
 
   const table = document.getElementById('cb-table');
@@ -1419,7 +1474,7 @@ function renderCbPage() {
       (contract) => `
         <tr data-contract-id="${contract.id}" tabindex="0" aria-label="Apri dettaglio contratto ${escapeHtml(contract.ragioneSociale)}">
           <td data-label="Cliente"><strong>${escapeHtml(contract.ragioneSociale)}</strong></td>
-          <td data-label="Stato">${statusBadge(contract.statoContratto)}</td>
+          <td data-label="Stato">${contractStatusBadges(contract)}</td>
           <td data-label="CB">${formatCurrency(contractCommissionValue(contract))}</td>
           <td data-label="Data">${formatDate.format(new Date(contract.dataInserimento))}</td>
         </tr>
@@ -1452,12 +1507,16 @@ function populateSupplierFilterOptions(selectId, list, selectedValue = 'all') {
   const select = document.getElementById(selectId);
   if (!select) return;
   const options = supplierOptionsFromContracts(list);
-  const normalizedSelected = String(selectedValue || 'all').trim().toLowerCase();
+  const normalizedSelected = String(selectedValue || 'all')
+    .trim()
+    .toLowerCase();
   const allowedValues = new Set(['all', ...options.map((item) => item.toLowerCase())]);
   const safeSelected = allowedValues.has(normalizedSelected) ? normalizedSelected : 'all';
   select.innerHTML = [
     '<option value="all">Fornitore: tutti</option>',
-    ...options.map((item) => `<option value="${escapeHtml(item.toLowerCase())}">${escapeHtml(item)}</option>`),
+    ...options.map(
+      (item) => `<option value="${escapeHtml(item.toLowerCase())}">${escapeHtml(item)}</option>`
+    ),
   ].join('');
   select.value = safeSelected;
   if (selectId === 'contracts-supplier-filter') contractsSupplierFilter = safeSelected;
@@ -1565,7 +1624,8 @@ function syncContractEditorUi() {
 function populateContractForm(contract) {
   const form = document.getElementById('contract-form');
   const multipodRows = parseMultipodRowsFromContract(contract);
-  const competenceMonth = contractMonthRef(contract) || selectedViewMonth || currentCompetence.month || monthKey(today);
+  const competenceMonth =
+    contractMonthRef(contract) || selectedViewMonth || currentCompetence.month || monthKey(today);
   form.elements.ragioneSociale.value = contract.ragioneSociale || '';
   form.elements.cellulare.value = contract.cellulare || '';
   form.elements.tipoCliente.value = contract.tipoCliente || '';
@@ -1584,6 +1644,16 @@ function populateContractForm(contract) {
   form.elements.pod.value = contract.pod || '';
   form.elements.pdr.value = contract.pdr || '';
   form.elements.metodoPagamento.value = contract.metodoPagamento || '';
+  form.elements.metodoPagamentoLuce.value =
+    contract.metodoPagamentoLuce || contract.metodoPagamento || '';
+  form.elements.metodoPagamentoGas.value =
+    contract.metodoPagamentoGas || contract.metodoPagamento || '';
+  form.elements.statoLuce.value = contract.statoLuce || contract.statoContratto || 'Caricato';
+  form.elements.statoGas.value = contract.statoGas || contract.statoContratto || 'Caricato';
+  form.elements.metodoInserimento.value = contract.metodoInserimento || '';
+  form.elements.potenzaImpegnata.value = contract.potenzaImpegnata ?? '';
+  form.elements.potenzaDisponibile.value = contract.potenzaDisponibile ?? '';
+  form.elements.consumoAnnuo.value = contract.consumoAnnuo ?? '';
   form.elements.iban.value = contract.iban || '';
   setAddressAutocompleteValue('indirizzo-fatturazione-input', contract.indirizzoFatturazione || '');
   setAddressAutocompleteValue('indirizzo-fornitura-input', contract.indirizzoFornitura || '');
@@ -1639,6 +1709,8 @@ function resetContractEditor({ keepFeedback = false } = {}) {
     ensureAdminAgentsReady();
   }
   form.elements.statoContratto.value = 'Caricato';
+  form.elements.statoLuce.value = 'Caricato';
+  form.elements.statoGas.value = 'Caricato';
   updateConditionalFields();
   syncContractEditorUi();
   if (!keepFeedback) {
@@ -1704,7 +1776,9 @@ async function startDuplicatingContract(contractLike) {
 }
 
 async function startDuplicatingCurrentContract() {
-  const contractId = Number(document.getElementById('duplicate-contract-button').dataset.contractId);
+  const contractId = Number(
+    document.getElementById('duplicate-contract-button').dataset.contractId
+  );
   if (!contractId) return;
   await startDuplicatingContract(contractId);
 }
@@ -1786,8 +1860,16 @@ function buildContractDraft(form, saveMode = 'submit') {
     cellulare: String(form.get('cellulare')).trim(),
     tipoCliente,
     categoriaCliente: String(form.get('categoriaCliente')).trim(),
-    amministratore: isCondominio ? String(form.get('amministratore') || '').trim().toUpperCase() : '',
-    pec: showPec ? String(form.get('pec') || '').trim().toLowerCase() : '',
+    amministratore: isCondominio
+      ? String(form.get('amministratore') || '')
+          .trim()
+          .toUpperCase()
+      : '',
+    pec: showPec
+      ? String(form.get('pec') || '')
+          .trim()
+          .toLowerCase()
+      : '',
     fornitore,
     exFornitore: String(form.get('exFornitore')).trim(),
     nomeOfferta: String(form.get('nomeOfferta')).trim(),
@@ -1797,7 +1879,18 @@ function buildContractDraft(form, saveMode = 'submit') {
     pdr,
     multipod: multipodEnabled,
     multipodRows,
-    metodoPagamento: String(form.get('metodoPagamento')).trim(),
+    metodoPagamento:
+      tipoFornitura === 'dual'
+        ? String(form.get('metodoPagamentoLuce')).trim()
+        : String(form.get('metodoPagamento')).trim(),
+    metodoPagamentoLuce: String(form.get('metodoPagamentoLuce')).trim(),
+    metodoPagamentoGas: String(form.get('metodoPagamentoGas')).trim(),
+    statoLuce: saveMode === 'draft' ? 'Bozza' : String(form.get('statoLuce') || 'Caricato'),
+    statoGas: saveMode === 'draft' ? 'Bozza' : String(form.get('statoGas') || 'Caricato'),
+    metodoInserimento: String(form.get('metodoInserimento')).trim(),
+    potenzaImpegnata: String(form.get('potenzaImpegnata')).trim(),
+    potenzaDisponibile: String(form.get('potenzaDisponibile')).trim(),
+    consumoAnnuo: String(form.get('consumoAnnuo')).trim(),
     iban: String(form.get('iban')).trim(),
     piva: String(form.get('piva')).trim(),
     email: String(form.get('email')).trim(),
@@ -1833,6 +1926,14 @@ function buildContractFormData(draft) {
     'pod',
     'pdr',
     'metodoPagamento',
+    'metodoPagamentoLuce',
+    'metodoPagamentoGas',
+    'statoLuce',
+    'statoGas',
+    'metodoInserimento',
+    'potenzaImpegnata',
+    'potenzaDisponibile',
+    'consumoAnnuo',
     'iban',
     'piva',
     'email',
@@ -1926,16 +2027,32 @@ function validateContractDraft(draft, saveMode = 'submit') {
     return 'Inserisci il POD.';
   }
 
-  if (!draft.multipod && (draft.tipoFornitura === 'gas' || draft.tipoFornitura === 'dual') && !draft.pdr) {
+  if (
+    !draft.multipod &&
+    (draft.tipoFornitura === 'gas' || draft.tipoFornitura === 'dual') &&
+    !draft.pdr
+  ) {
     return 'Inserisci il PDR.';
   }
 
-  if (!draft.metodoPagamento) {
+  if (draft.tipoFornitura === 'dual') {
+    if (!draft.metodoPagamentoLuce || !draft.metodoPagamentoGas) {
+      return 'Seleziona Pagamento Luce e Pagamento Gas.';
+    }
+  } else if (!draft.metodoPagamento) {
     return 'Seleziona il metodo di pagamento.';
   }
 
-  if (draft.metodoPagamento === 'rid' && !draft.iban) {
+  const requiresIban =
+    draft.metodoPagamento === 'rid' ||
+    draft.metodoPagamentoLuce === 'rid' ||
+    draft.metodoPagamentoGas === 'rid';
+  if (requiresIban && !draft.iban) {
     return "Inserisci l'IBAN per il RID.";
+  }
+
+  if (normalizeSupplierKey(draft.fornitore) === 'hera' && !draft.metodoInserimento) {
+    return 'Seleziona il metodo di inserimento Hera.';
   }
 
   if (draft.iban && !IBAN_RE.test(draft.iban.replace(/\s+/g, '').toUpperCase())) {
@@ -2070,16 +2187,30 @@ function updateConditionalFields() {
   const tipoFornitura = document.getElementById('tipo-fornitura').value;
   const tipoCliente = document.getElementById('tipo-cliente').value;
   const metodoPagamento = document.getElementById('metodo-pagamento').value;
+  const metodoPagamentoLuce = document.getElementById('metodo-pagamento-luce').value;
+  const metodoPagamentoGas = document.getElementById('metodo-pagamento-gas').value;
+  const isDual = tipoFornitura === 'dual';
+  const isHera = normalizeSupplierKey(document.getElementById('fornitore-input').value) === 'hera';
   const multipod = isMultipodEnabled();
   const showPod = tipoFornitura === 'luce' || tipoFornitura === 'dual';
   const showPdr = tipoFornitura === 'gas' || tipoFornitura === 'dual';
-  const showIban = metodoPagamento === 'rid';
+  const showIban = isDual
+    ? metodoPagamentoLuce === 'rid' || metodoPagamentoGas === 'rid'
+    : metodoPagamento === 'rid';
   const showAmministratore = tipoCliente === 'Condominio';
   const showPec = tipoCliente === 'Business' || tipoCliente === 'Condominio';
   const showExtraFields = showAmministratore || showPec;
 
   toggleField('pod-field', showPod && !multipod);
   toggleField('pdr-field', showPdr && !multipod);
+  toggleField('insertion-method-field', isHera);
+  toggleField('single-payment-field', !isDual);
+  toggleField('light-payment-field', isDual);
+  toggleField('gas-payment-field', isDual);
+  toggleField('light-status-field', isDual, { required: false });
+  toggleField('gas-status-field', isDual, { required: false });
+  toggleField('committed-power-field', showPod, { required: false });
+  toggleField('available-power-field', showPod, { required: false });
   toggleField('iban-field', showIban);
   toggleElementVisibility('customer-extra-fields', showExtraFields);
   toggleField('amministratore-field', showAmministratore);
@@ -2087,12 +2218,23 @@ function updateConditionalFields() {
   toggleFieldVisibility('indirizzo-fornitura-input', !multipod);
   toggleFieldVisibility('same-address-checkbox', !multipod);
   updateMultipodUi();
+  updateAvailablePower();
+}
+
+function updateAvailablePower() {
+  const committed = Number(document.getElementById('potenza-impegnata')?.value);
+  const available = document.getElementById('potenza-disponibile');
+  if (!available) return;
+  available.value =
+    Number.isFinite(committed) && committed >= 0
+      ? String(Number((committed * 1.1).toFixed(2)))
+      : '';
 }
 
 function toggleField(id, isVisible, { required = true } = {}) {
   const field = document.getElementById(id);
   if (!field) return;
-  const input = field.querySelector('input');
+  const input = field.querySelector('input, select, textarea');
   field.hidden = !isVisible;
   if (!input) return;
   input.required = isVisible && required;
@@ -2395,10 +2537,7 @@ function resetUserDataState() {
     const input = document.getElementById(id);
     if (input) input.value = '';
   });
-  [
-    'status-filter',
-    'contracts-category-filter',
-  ].forEach((id) => {
+  ['status-filter', 'contracts-category-filter'].forEach((id) => {
     const select = document.getElementById(id);
     if (select) select.value = 'all';
   });
@@ -2419,7 +2558,10 @@ function invalidateAdminContractsCache() {
 
 function updateAdminVisibility() {
   document.querySelectorAll('.admin-only').forEach((element) => {
-    element.hidden = agent.ruolo !== 'admin';
+    element.hidden = !isAdminViewer();
+  });
+  document.querySelectorAll('.write-only, [data-go-page="new-contract"]').forEach((element) => {
+    element.hidden = isReadOnlyUser();
   });
   populateContractsAgentFilterOptions();
   populateContractAgentOptions();
@@ -2427,7 +2569,7 @@ function updateAdminVisibility() {
 
 function populateContractsAgentFilterOptions() {
   const container = document.getElementById('contracts-agent-filter');
-  if (!container || agent?.ruolo !== 'admin') return;
+  if (!container || !isAdminViewer()) return;
   const selectedIds = new Set(contractsAgentFilterIds.map(String));
   const options = (adminState.agents.length ? adminState.agents : [agent])
     .slice()
@@ -2522,7 +2664,7 @@ function populateContractAgentOptions(preferredValue = '') {
 }
 
 async function ensureAdminAgentsReady({ force = false } = {}) {
-  if (agent?.ruolo !== 'admin') return [];
+  if (!isAdminViewer()) return [];
   if (!force && adminAgentsLoaded) return adminState.agents;
   if (typeof baserowClient === 'undefined' || !baserowClient.isConfigured()) {
     return adminState.agents;
@@ -2533,7 +2675,7 @@ async function ensureAdminAgentsReady({ force = false } = {}) {
   const refreshPromise = baserowClient
     .listAdminAgents()
     .then((agents) => {
-      if (requestVersion !== userDataVersion || agent?.ruolo !== 'admin') return [];
+      if (requestVersion !== userDataVersion || !isAdminViewer()) return [];
       adminState.agents = Array.isArray(agents) ? agents : [];
       adminAgentsLoaded = true;
       populateContractsAgentFilterOptions();
@@ -2558,10 +2700,10 @@ async function ensureAdminAgentsReady({ force = false } = {}) {
 }
 
 async function renderAdminPage({ force = false, month = selectedViewMonth } = {}) {
-  if (agent?.ruolo !== 'admin') return;
+  if (!isAdminViewer()) return;
   try {
     const result = await refreshAdminData({ force, month });
-    if (!result || agent?.ruolo !== 'admin') return;
+    if (!result || !isAdminViewer()) return;
     const { stats, agents, adminContracts } = result;
     populateContractsAgentFilterOptions();
     syncAdminFilterControls();
@@ -2591,11 +2733,11 @@ async function renderAdminPage({ force = false, month = selectedViewMonth } = {}
 }
 
 async function ensureAdminContractsScopeReady({ force = false } = {}) {
-  if (agent?.ruolo !== 'admin') return;
+  if (!isAdminViewer()) return;
 
   try {
     const result = await refreshAdminData({ force });
-    if (!result || agent?.ruolo !== 'admin') return;
+    if (!result || !isAdminViewer()) return;
     populateContractsAgentFilterOptions();
     renderMonthFilter();
     renderContractsTable();
@@ -2622,14 +2764,9 @@ async function ensureAdminContractsScopeReady({ force = false } = {}) {
 }
 
 async function refreshAdminData({ force = false, month = selectedViewMonth } = {}) {
-  if (agent?.ruolo !== 'admin') return null;
+  if (!isAdminViewer()) return null;
   const requestedMonth = String(month || currentCompetence.month || monthKey(today));
-  if (
-    !force &&
-    adminDataLoaded &&
-    adminState.stats &&
-    adminState.statsMonth === requestedMonth
-  ) {
+  if (!force && adminDataLoaded && adminState.stats && adminState.statsMonth === requestedMonth) {
     return {
       stats: adminState.stats,
       agents: adminState.agents,
@@ -2656,7 +2793,7 @@ async function refreshAdminData({ force = false, month = selectedViewMonth } = {
   const requestVersion = userDataVersion;
   const refreshPromise = Promise.all([statsPromise, agentsPromise, contractsPromise])
     .then(([stats, agents, adminContracts]) => {
-      if (requestVersion !== userDataVersion || agent?.ruolo !== 'admin') return null;
+      if (requestVersion !== userDataVersion || !isAdminViewer()) return null;
       adminState.stats = stats;
       adminState.statsMonth = requestedMonth;
       adminState.agents = agents;
@@ -2725,7 +2862,7 @@ function renderAdminAgentList(stats, agents) {
   document.getElementById('admin-agent-list').innerHTML = filteredAgents
     .map((agentRow) => {
       const row = statsByAgent.get(Number(agentRow.id)) || {};
-      const roleLabel = agentRow.ruolo === 'admin' ? 'Admin' : 'Agente';
+      const roleLabel = userRoleLabel(agentRow.ruolo);
       return `
         <article class="admin-agent-card compact ${Number(adminState.editingAgentId) === Number(agentRow.id) ? 'is-selected' : ''}">
           <header>
@@ -2747,7 +2884,7 @@ function renderAdminAgentList(stats, agents) {
             <div><span>CB validata</span><strong>${formatCurrency(row.cbValidata || 0)}</strong></div>
             <div><span>CB potenziale</span><strong>${formatCurrency(row.cbPotenziale || 0)}</strong></div>
           </div>
-          <button class="secondary-button compact-button" type="button" data-edit-agent="${agentRow.id}">Apri modifica</button>
+          ${isReadOnlyUser() ? '' : `<button class="secondary-button compact-button" type="button" data-edit-agent="${agentRow.id}">Apri modifica</button>`}
         </article>
       `;
     })
@@ -2775,6 +2912,7 @@ function renderAdminContracts(adminContracts, agents) {
       matchesSmartSearch(
         [
           contract.ragioneSociale,
+          contract.codiceCrm,
           contract.idContratto,
           contract.email,
           contract.cellulare,
@@ -2797,21 +2935,22 @@ function renderAdminContracts(adminContracts, agents) {
     const matchesStatus =
       hasSearchQuery ||
       adminState.contractStatus === 'all' ||
-      contract.statoContratto === adminState.contractStatus;
+      contractHasStatus(contract, adminState.contractStatus);
     const matchesSent =
       hasSearchQuery ||
       adminState.contractSentFilter === 'all' ||
       (adminState.contractSentFilter === 'pending' &&
-        contract.statoContratto !== 'Inviato' &&
-        contract.statoContratto !== 'Bozza') ||
-      (adminState.contractSentFilter === 'sent' && contract.statoContratto === 'Inviato');
+        !contractAllStatuses(contract, 'Inviato') &&
+        !contractAllStatuses(contract, 'Bozza')) ||
+      (adminState.contractSentFilter === 'sent' && contractAllStatuses(contract, 'Inviato'));
     return matchesQuery && matchesAgent && matchesOperation && matchesStatus && matchesSent;
   });
   const rows = filteredRows.slice().sort((left, right) => {
     if (adminState.contractSort === 'unsent') {
-      if ((left.statoContratto === 'Inviato') !== (right.statoContratto === 'Inviato')) {
+      if (contractAllStatuses(left, 'Inviato') !== contractAllStatuses(right, 'Inviato')) {
         return (
-          Number(left.statoContratto === 'Inviato') - Number(right.statoContratto === 'Inviato')
+          Number(contractAllStatuses(left, 'Inviato')) -
+          Number(contractAllStatuses(right, 'Inviato'))
         );
       }
       return String(right.dataInserimento).localeCompare(String(left.dataInserimento));
@@ -2824,11 +2963,13 @@ function renderAdminContracts(adminContracts, agents) {
     return String(right.dataInserimento).localeCompare(String(left.dataInserimento));
   });
 
-  const okDaInviare = filteredRows.filter((contract) => contract.statoContratto === 'OK').length;
-  const caricatiDaGestire = filteredRows.filter(
-    (contract) => contract.statoContratto === 'Caricato'
+  const okDaInviare = filteredRows.filter((contract) => contractHasStatus(contract, 'OK')).length;
+  const caricatiDaGestire = filteredRows.filter((contract) =>
+    contractHasStatus(contract, 'Caricato')
   ).length;
-  const inviati = filteredRows.filter((contract) => contract.statoContratto === 'Inviato').length;
+  const inviati = filteredRows.filter((contract) =>
+    contractAllStatuses(contract, 'Inviato')
+  ).length;
   const daInviareOra = okDaInviare + caricatiDaGestire;
 
   counters.innerHTML = [
@@ -2846,24 +2987,31 @@ function renderAdminContracts(adminContracts, agents) {
     .map(
       (contract) => `
         <tr class="${adminContractRowClass(contract)}" data-admin-contract-view="${contract.id}">
-          <td data-label="Sel.">
+          <td data-label="Sel.">${
+            isReadOnlyUser()
+              ? '—'
+              : `
             <input
               class="admin-row-checkbox"
               type="checkbox"
               data-admin-contract-select="${contract.id}"
               ${selectedIds.has(Number(contract.id)) ? 'checked' : ''}
               aria-label="Seleziona contratto ${escapeHtml(contract.ragioneSociale || 'Cliente')}"
-            />
-          </td>
+            />`
+          }</td>
           <td data-label="Cliente"><strong>${escapeHtml(contract.ragioneSociale || 'Cliente')}</strong></td>
-          <td data-label="ID">${escapeHtml(contract.idContratto || 'ID non inserito')}</td>
+          <td data-label="ID">${escapeHtml(contractIdentifier(contract))}</td>
           <td data-label="Agente">${escapeHtml(agentNames.get(Number(contract.agenteId)) || 'Non assegnato')}</td>
-          <td data-label="Stato">${statusBadge(contract.statoContratto)}</td>
+          <td data-label="Stato">${contractStatusBadges(contract)}</td>
           <td data-label="Fornitura">${escapeHtml(capitalize(contract.tipoFornitura || 'Non inserita'))}</td>
           <td data-label="Azione">
-            <button class="secondary-button compact-button" type="button" data-admin-contract-sent="${contract.id}" data-admin-contract-next="${contract.statoContratto === 'Inviato' ? 'false' : 'true'}">
-              ${contract.statoContratto === 'Inviato' ? 'Riporta a Caricato' : 'Segna inviato'}
-            </button>
+            ${
+              isReadOnlyUser()
+                ? 'Sola lettura'
+                : `<button class="secondary-button compact-button" type="button" data-admin-contract-sent="${contract.id}" data-admin-contract-next="${contractAllStatuses(contract, 'Inviato') ? 'false' : 'true'}">
+              ${contractAllStatuses(contract, 'Inviato') ? 'Riporta a Caricato' : 'Segna inviato'}
+            </button>`
+            }
           </td>
         </tr>
       `
@@ -3030,18 +3178,16 @@ function applyAdminQuickFilter(mode) {
 }
 
 function getMultiSelectValues(elementId) {
-  return Array.from(
-    document.querySelectorAll(`#${elementId} input[type="checkbox"]:checked`)
-  ).map((input) => input.value);
+  return Array.from(document.querySelectorAll(`#${elementId} input[type="checkbox"]:checked`)).map(
+    (input) => input.value
+  );
 }
 
 function syncMultiSelectValues(elementId, values) {
   const selectedValues = new Set((values || []).map(String));
-  document
-    .querySelectorAll(`#${elementId} input[type="checkbox"]`)
-    .forEach((input) => {
-      input.checked = selectedValues.has(input.value);
-    });
+  document.querySelectorAll(`#${elementId} input[type="checkbox"]`).forEach((input) => {
+    input.checked = selectedValues.has(input.value);
+  });
 }
 
 function toggleAdminContractSelection(contractId, isSelected) {
@@ -3077,8 +3223,8 @@ async function bulkMarkSelectedSent() {
       adminState.contracts.some(
         (contract) =>
           Number(contract.id) === id &&
-          contract.statoContratto !== 'Inviato' &&
-          contract.statoContratto !== 'Bozza'
+          !contractAllStatuses(contract, 'Inviato') &&
+          !contractAllStatuses(contract, 'Bozza')
       )
     );
 
@@ -3116,8 +3262,8 @@ function updateAdminBulkBar(rows) {
   const actionableSelected = adminState.contracts.filter(
     (contract) =>
       adminState.selectedContractIds.map(Number).includes(Number(contract.id)) &&
-      contract.statoContratto !== 'Inviato' &&
-      contract.statoContratto !== 'Bozza'
+      !contractAllStatuses(contract, 'Inviato') &&
+      !contractAllStatuses(contract, 'Bozza')
   ).length;
 
   bar.hidden = rows.length === 0;
@@ -3151,7 +3297,7 @@ function fillAdminAgentForm(agentRow) {
     'Stai modificando un agente esistente. Salva le modifiche oppure annulla.';
   document.getElementById('admin-editing-title').textContent = `Modifica: ${agentRow.nome}`;
   document.getElementById('admin-editing-subtitle').textContent =
-    `${agentRow.email} · ${agentRow.ruolo === 'admin' ? 'Admin' : 'Agente'}`;
+    `${agentRow.email} · ${userRoleLabel(agentRow.ruolo)}`;
   banner.hidden = false;
   createModeButton.classList.remove('is-active');
   createModeButton.setAttribute('aria-selected', 'false');
@@ -3577,7 +3723,11 @@ function renderContractCompetenceMonthOptions(preferredValue = '') {
 
   const options = getCompetenceMonthOptions();
   const selected = String(
-    preferredValue || select.value || selectedViewMonth || currentCompetence.month || monthKey(today)
+    preferredValue ||
+      select.value ||
+      selectedViewMonth ||
+      currentCompetence.month ||
+      monthKey(today)
   ).trim();
 
   select.innerHTML = options
@@ -3625,7 +3775,7 @@ function isCambioListinoOperation(contract) {
 }
 
 function visibleContractsByScope() {
-  if (agent?.ruolo !== 'admin') {
+  if (!isAdminViewer()) {
     return contracts;
   }
   return adminState.contracts;
@@ -3669,8 +3819,57 @@ function contractUnitCount(contract) {
   return 1;
 }
 
+function contractSupplyUnits(contract) {
+  if (Array.isArray(contract?.forniture) && contract.forniture.length) {
+    return contract.forniture.flatMap((supply) => {
+      const type = String(supply.tipoFornitura || '').toLowerCase();
+      const value = type === 'luce' ? contract.pod : contract.pdr;
+      const pointCount = countLabeledSupplyRows(value, type === 'luce' ? 'pod' : 'pdr') || 1;
+      return Array.from({ length: pointCount }, () => ({
+        stato: supply.stato || contract.statoContratto,
+        cb: Number(contract.cbUnitariaSnapshot || contract.cbMaturata || 0),
+      }));
+    });
+  }
+  return Array.from({ length: contractUnitCount(contract) }, () => ({
+    stato: contract.statoContratto,
+    cb: Number(contract.cbUnitariaSnapshot || contract.cbMaturata || 0),
+  }));
+}
+
+function contractStatusUnitCount(contract, status) {
+  return contractSupplyUnits(contract).filter((unit) => unit.stato === status).length;
+}
+
+function contractHasStatus(contract, status) {
+  return contractStatusUnitCount(contract, status) > 0;
+}
+
+function contractAllStatuses(contract, status) {
+  const units = contractSupplyUnits(contract);
+  return units.length > 0 && units.every((unit) => unit.stato === status);
+}
+
+function sumContractStatusUnits(items, status) {
+  return items.reduce((sum, contract) => sum + contractStatusUnitCount(contract, status), 0);
+}
+
+function sumContractStatusCommissions(items, statuses) {
+  const allowed = new Set(Array.isArray(statuses) ? statuses : [statuses]);
+  return items.reduce(
+    (sum, contract) =>
+      sum +
+      contractSupplyUnits(contract)
+        .filter((unit) => allowed.has(unit.stato))
+        .reduce((unitSum, unit) => unitSum + unit.cb, 0),
+    0
+  );
+}
+
 function multipodUnitCount(contract) {
-  return countLabeledSupplyRows(contract?.pod, 'pod') + countLabeledSupplyRows(contract?.pdr, 'pdr');
+  return (
+    countLabeledSupplyRows(contract?.pod, 'pod') + countLabeledSupplyRows(contract?.pdr, 'pdr')
+  );
 }
 
 function countLabeledSupplyRows(value, kind) {
@@ -3689,10 +3888,6 @@ function contractCommissionValue(contract) {
     return Number(contract.commissionValue);
   }
   return Number(contract.cbMaturata || 0) * contractUnitCount(contract);
-}
-
-function sumContractCommissions(items) {
-  return items.reduce((sum, contract) => sum + contractCommissionValue(contract), 0);
 }
 
 function isAllowedContractFile(file) {
@@ -4004,11 +4199,15 @@ function fillClientFieldsFromLookup(client) {
   form.elements.pec.value = client.pec || '';
   form.elements.cellulare.value = client.cellulare;
   const paymentData = resolveClientPaymentData(client);
-  const metodoPagamento = String(paymentData.metodoPagamento || '').trim().toLowerCase();
+  const metodoPagamento = String(paymentData.metodoPagamento || '')
+    .trim()
+    .toLowerCase();
   if (metodoPagamento) {
     form.elements.metodoPagamento.value = metodoPagamento;
     if (metodoPagamento === 'rid') {
-      form.elements.iban.value = String(paymentData.iban || '').trim().toUpperCase();
+      form.elements.iban.value = String(paymentData.iban || '')
+        .trim()
+        .toUpperCase();
     }
   }
   setAddressAutocompleteValue('indirizzo-fatturazione-input', client.indirizzoFatturazione || '');

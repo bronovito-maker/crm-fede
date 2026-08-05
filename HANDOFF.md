@@ -55,6 +55,7 @@ public/
 | `BASEROW_TABLE_FORNITORI_ID`        | 930259     | Fornitori disponibili      |
 | `BASEROW_TABLE_CUTOFF_FORNITORI_ID` | 930260     | Cut-off per fornitore      |
 | `BASEROW_TABLE_CLIENTI_ID`          | 931646     | Anagrafica clienti         |
+| `BASEROW_TABLE_FORNITURE_ID`        | 1117525    | Utenze Luce/Gas collegate  |
 
 Altre variabili Baserow rilevanti:
 
@@ -70,6 +71,30 @@ Altre variabili Baserow rilevanti:
 
 - **agent** — vede e gestisce solo i propri contratti + clienti assegnati
 - **admin** — vede tutto, gestisce agenti, cut-off fornitori, statistiche globali
+- **spettatore** — vede contratti, clienti, statistiche e pannello Admin, ma non può creare, modificare o eliminare dati
+
+La tabella `Contratti` usa come campo principale `codice_crm`, formula
+`concat('CRM-', row_id())`. Il valore e automatico, stabile e valorizzato anche per lo storico;
+`id_contratto` resta il codice commerciale opzionale.
+
+### Checklist rilascio Forniture
+
+1. Impostare nel servizio di produzione `BASEROW_TABLE_FORNITURE_ID=1117525`.
+2. Eseguire `npm ci`, `npm test`, `npm run lint`, `npm run build` e `npm audit --omit=dev`.
+3. Eseguire `npm run baserow:migrate-forniture`: il risultato atteso dopo la migrazione e
+   `alreadyComplete: 211`, `contractsToMigrate: 0`, `supplyRowsToCreate: 0`.
+4. Dopo il deploy, verificare con un contratto Dual controllato la creazione delle righe Luce e
+   Gas e i relativi stati/pagamenti.
+5. Accedere con un utente `spettatore` e verificare viste Admin disponibili, assenza di `Nuovo
+Contratto` e risposta `403 READ_ONLY_ROLE` a ogni tentativo di scrittura.
+
+## Modello Contratti e Forniture
+
+- `Contratti` contiene una sola riga per pratica e conserva cliente, agente, competenza, documenti e dati commerciali comuni.
+- `Forniture` contiene una riga per ogni utenza collegata: una per Luce, una per Gas. Un Dual ha quindi un contratto padre e due forniture figlie.
+- Stato e metodo di pagamento sono autorevoli sulla singola fornitura. I campi omonimi presenti in `Contratti` restano come compatibilità per lo storico.
+- I contratti storici senza righe in `Forniture` continuano a essere letti dai campi legacy; la migrazione può essere eseguita senza interrompere il CRM.
+- Creazione, modifica ed eliminazione di un contratto devono mantenere sincronizzate tutte le forniture collegate.
 
 ---
 
@@ -85,6 +110,8 @@ Al riavvio del server le sessioni non vengono perse, ma quelle scadute vengono r
 - Upload documenti: `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_ENDPOINT`, `R2_PUBLIC_URL`.
 - Notifiche email: `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `NOTIFY_EMAIL`. Se mancano, la notifica viene semplicemente saltata.
 - Cache letture API: `API_CACHE_TTL_MS`, default 15 secondi.
+- Setup schema Forniture: `BASEROW_JWT_TOKEN=... npm run baserow:setup-forniture`.
+- Migrazione chirurgica dei soli Dual storici: `npm run baserow:migrate-forniture` crea un report senza scrivere; l'applicazione richiede anche il conteggio esatto mostrato dal dry-run, ad esempio `npm run baserow:migrate-forniture -- --apply --confirm=211`.
 
 ---
 

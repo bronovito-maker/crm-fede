@@ -1,5 +1,7 @@
 'use strict';
 
+process.env.BASEROW_TABLE_FORNITURE_ID = '';
+
 const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
@@ -14,8 +16,10 @@ const {
   agentToBaserowPayload,
   SqliteSessionStore,
   buildAdminStats,
+  canViewAdminData,
   computeCompetenceMonthFromCutoff,
   contractCommissionValue,
+  contractStatusUnitCount,
   contractCompetenceMonth,
   contractUnitCount,
   createSession,
@@ -35,6 +39,7 @@ const {
   normalizeCompetenceMonth,
   normalizeClient,
   normalizeContract,
+  normalizeSupply,
   normalizeStatus,
   numberValue,
   selectValue,
@@ -82,6 +87,55 @@ describe('contractUnitCount', () => {
       }),
       2
     );
+  });
+});
+
+describe('forniture collegate', () => {
+  const contractRow = {
+    id: 90,
+    tipo_fornitura: { value: 'dual' },
+    stato_contratto: { value: 'Caricato' },
+    metodo_pagamento: { value: 'rid' },
+    cb_unitaria_snapshot: 85,
+    pod: 'IT001E123',
+    pdr: '040000001',
+  };
+
+  it('normalizza e aggrega stati distinti Luce e Gas', () => {
+    const contract = normalizeContract(contractRow, [
+      normalizeSupply({
+        id: 1,
+        contratto: [{ id: 90 }],
+        tipo_fornitura: { value: 'luce' },
+        stato: { value: 'OK' },
+        metodo_pagamento: { value: 'rid' },
+        pod: 'IT001E123',
+      }),
+      normalizeSupply({
+        id: 2,
+        contratto: [{ id: 90 }],
+        tipo_fornitura: { value: 'gas' },
+        stato: { value: 'Caricato' },
+        metodo_pagamento: { value: 'bollettino' },
+        pdr: '040000001',
+      }),
+    ]);
+
+    assert.equal(contract.statoContratto, 'Misto');
+    assert.equal(contract.statoLuce, 'OK');
+    assert.equal(contract.statoGas, 'Caricato');
+    assert.equal(contract.metodoPagamentoLuce, 'rid');
+    assert.equal(contract.metodoPagamentoGas, 'bollettino');
+    assert.equal(contractStatusUnitCount(contract, 'OK'), 1);
+    assert.equal(contractStatusUnitCount(contract, 'Caricato'), 1);
+  });
+});
+
+describe('permessi spettatore', () => {
+  it('abilita le viste admin senza attribuire il ruolo admin', () => {
+    assert.equal(canViewAdminData({ ruolo: 'spettatore' }), true);
+    assert.equal(canViewAdminData({ ruolo: 'admin' }), true);
+    assert.equal(canViewAdminData({ ruolo: 'agente' }), false);
   });
 });
 
@@ -1494,11 +1548,22 @@ describe('HTTP routes', () => {
 
   it('PATCH /api/contracts/:id/status aggiorna lo stato solo se il contratto appartiene all agente', async () => {
     const agentId = 7;
+    const agentTableId = process.env.BASEROW_TABLE_AGENTI_ID;
     const contractTableId = process.env.BASEROW_TABLE_CONTRATTI_ID;
     let patchSeen = false;
 
     global.fetch = async (url, options = {}) => {
       const parsed = new URL(url);
+
+      if (parsed.pathname === `/api/database/rows/table/${agentTableId}/${agentId}/`) {
+        return mockJsonResponse({
+          id: agentId,
+          nome: 'Agente Test',
+          email: 'agente@example.it',
+          ruolo: { value: 'agente' },
+          attivo: true,
+        });
+      }
 
       if (parsed.pathname === `/api/database/rows/table/${contractTableId}/900/`) {
         if ((options.method || 'GET') === 'PATCH') {
@@ -1925,6 +1990,37 @@ describe('HTTP routes', () => {
     assert.equal(response.status, 200);
     assert.equal(response.body.ok, true);
     assert.equal(deleteSeen, true);
+  });
+
+  it('POST /api/contracts blocca lo spettatore anche chiamando direttamente il backend', async () => {
+    const spectatorId = 19;
+    const agentTableId = process.env.BASEROW_TABLE_AGENTI_ID;
+    let contractWriteSeen = false;
+
+    global.fetch = async (url, options = {}) => {
+      const parsed = new URL(url);
+      if (parsed.pathname === `/api/database/rows/table/${agentTableId}/${spectatorId}/`) {
+        return mockJsonResponse({
+          id: spectatorId,
+          nome: 'Spettatore Test',
+          email: 'viewer@example.it',
+          ruolo: { value: 'spettatore' },
+          attivo: true,
+        });
+      }
+      if ((options.method || 'GET') !== 'GET') contractWriteSeen = true;
+      return mockJsonResponse({ detail: 'not found' }, { status: 404 });
+    };
+
+    const response = await invokeRouteJson(app, '/api/contracts', 'post', {
+      session: { agentId: spectatorId },
+      body: { ragioneSociale: 'NON DEVE ESSERE SALVATO' },
+      files: [],
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal(response.body.error, 'READ_ONLY_ROLE');
+    assert.equal(contractWriteSeen, false);
   });
 });
 

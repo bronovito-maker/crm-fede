@@ -164,7 +164,7 @@
             <span class="nav-short"><span class="nav-icon" aria-hidden="true">🏠</span>Home</span
             ><span class="nav-full">Dashboard</span>
           </button>
-          <button class="nav-item" type="button" data-page="new-contract">
+          <button class="nav-item write-only" type="button" data-page="new-contract">
             <span class="nav-short"><span class="nav-icon" aria-hidden="true">➕</span>Nuovo</span
             ><span class="nav-full">Nuovo contratto</span>
           </button>
@@ -218,7 +218,11 @@
             </div>
           </div>
           <div class="topbar-actions">
-            <button class="primary-button quick-action" type="button" data-go-page="new-contract">
+            <button
+              class="primary-button quick-action write-only"
+              type="button"
+              data-go-page="new-contract"
+            >
               Nuovo contratto
             </button>
             <div
@@ -502,6 +506,14 @@
                       placeholder="Es. A2A Energia"
                     />
                   </label>
+                  <label class="conditional-field full-span" id="insertion-method-field" hidden>
+                    <span>Metodo di inserimento <span class="req" aria-hidden="true">*</span></span>
+                    <select name="metodoInserimento" id="metodo-inserimento">
+                      <option value="">Seleziona</option>
+                      <option value="AppAround">AppAround</option>
+                      <option value="Cartaceo">Cartaceo</option>
+                    </select>
+                  </label>
                   <label>
                     <span>Nome offerta <span class="req" aria-hidden="true">*</span></span>
                     <input
@@ -581,13 +593,83 @@
                     PDR
                     <input name="pdr" type="text" data-uppercase="true" placeholder="Numero PDR" />
                   </label>
-                  <label>
+                  <label id="single-payment-field">
                     <span>Metodo pagamento <span class="req" aria-hidden="true">*</span></span>
                     <select name="metodoPagamento" id="metodo-pagamento" required>
                       <option value="">Seleziona</option>
                       <option value="bollettino">Bollettino</option>
                       <option value="rid">RID</option>
                     </select>
+                  </label>
+                  <label class="conditional-field" id="light-payment-field" hidden>
+                    <span>Pagamento Luce <span class="req" aria-hidden="true">*</span></span>
+                    <select name="metodoPagamentoLuce" id="metodo-pagamento-luce">
+                      <option value="">Seleziona</option>
+                      <option value="bollettino">Bollettino</option>
+                      <option value="rid">RID</option>
+                    </select>
+                  </label>
+                  <label class="conditional-field" id="gas-payment-field" hidden>
+                    <span>Pagamento Gas <span class="req" aria-hidden="true">*</span></span>
+                    <select name="metodoPagamentoGas" id="metodo-pagamento-gas">
+                      <option value="">Seleziona</option>
+                      <option value="bollettino">Bollettino</option>
+                      <option value="rid">RID</option>
+                    </select>
+                  </label>
+                  <label class="conditional-field" id="light-status-field" hidden>
+                    Stato Luce
+                    <select name="statoLuce" id="stato-luce">
+                      <option value="Bozza">Bozza</option>
+                      <option value="Caricato" selected>Caricato</option>
+                      <option value="Inviato">Inviato</option>
+                      <option value="OK">OK</option>
+                      <option value="K.O.">K.O.</option>
+                      <option value="Switch - Out">Switch - Out</option>
+                    </select>
+                  </label>
+                  <label class="conditional-field" id="gas-status-field" hidden>
+                    Stato Gas
+                    <select name="statoGas" id="stato-gas">
+                      <option value="Bozza">Bozza</option>
+                      <option value="Caricato" selected>Caricato</option>
+                      <option value="Inviato">Inviato</option>
+                      <option value="OK">OK</option>
+                      <option value="K.O.">K.O.</option>
+                      <option value="Switch - Out">Switch - Out</option>
+                    </select>
+                  </label>
+                  <label class="conditional-field" id="committed-power-field" hidden>
+                    Potenza impegnata (kW)
+                    <input
+                      name="potenzaImpegnata"
+                      id="potenza-impegnata"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputmode="decimal"
+                    />
+                  </label>
+                  <label class="conditional-field" id="available-power-field" hidden>
+                    Potenza disponibile (kW)
+                    <input
+                      name="potenzaDisponibile"
+                      id="potenza-disponibile"
+                      type="number"
+                      step="0.01"
+                      readonly
+                      aria-readonly="true"
+                    />
+                  </label>
+                  <label>
+                    Consumo annuo
+                    <input
+                      name="consumoAnnuo"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputmode="decimal"
+                    />
                   </label>
                   <label class="conditional-field" id="iban-field" hidden>
                     IBAN
@@ -742,10 +824,7 @@
               <option value="K.O.">Stato: K.O.</option>
               <option value="Switch - Out">Stato: Switch Out</option>
             </select>
-            <select
-              id="contracts-category-filter"
-              aria-label="Filtra per categoria cliente"
-            >
+            <select id="contracts-category-filter" aria-label="Filtra per categoria cliente">
               <option value="all">Clienti: tutti</option>
               <option value="prospect">Clienti: Prospect</option>
               <option value="switch ricorrente">Clienti: Switch ricorrenti</option>
@@ -897,6 +976,7 @@
               <form
                 class="filters admin-toolbar admin-competence-form"
                 id="admin-supplier-cutoff-form"
+                class="write-only"
               >
                 <label>
                   Mese
@@ -999,7 +1079,7 @@
                 id="admin-contract-counters"
                 aria-label="Contatori operativi contratti"
               ></div>
-              <div class="admin-bulk-bar" id="admin-bulk-bar" hidden>
+              <div class="admin-bulk-bar write-only" id="admin-bulk-bar" hidden>
                 <strong id="admin-bulk-count">0 selezionati</strong>
                 <div class="admin-bulk-actions">
                   <button
@@ -1083,7 +1163,7 @@
               </div>
             </article>
 
-            <article class="panel" id="admin-agent-editor">
+            <article class="panel write-only" id="admin-agent-editor">
               <div class="panel-heading">
                 <h2>Gestione account agente</h2>
                 <div class="panel-heading-actions">
@@ -1210,6 +1290,7 @@
                       <select name="ruolo" required>
                         <option value="agente">Agente</option>
                         <option value="admin">Admin</option>
+                        <option value="spettatore">Spettatore</option>
                       </select>
                     </label>
                     <label class="check-line">
@@ -1277,13 +1358,13 @@
         </div>
         <div class="detail-grid" id="contract-detail-content"></div>
         <div class="modal-actions">
-          <button class="secondary-button" type="button" id="duplicate-contract-button">
+          <button class="secondary-button write-only" type="button" id="duplicate-contract-button">
             Duplica contratto
           </button>
-          <button class="secondary-button" type="button" id="edit-contract-button">
+          <button class="secondary-button write-only" type="button" id="edit-contract-button">
             Modifica contratto
           </button>
-          <button class="danger-button" type="button" id="delete-contract-button">
+          <button class="danger-button write-only" type="button" id="delete-contract-button">
             Elimina contratto
           </button>
         </div>

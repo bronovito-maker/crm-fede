@@ -1,5 +1,7 @@
 'use strict';
 
+process.env.BASEROW_TABLE_FORNITURE_ID = '';
+
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const { sanitizeContractInput, sanitizeAgentInput } = require('../server');
@@ -114,6 +116,47 @@ describe('sanitizeContractInput', () => {
         pdr: '04000000001',
       });
       assert.equal(result.tipoFornitura, 'dual');
+    });
+
+    it('normalizza stati e pagamenti separati per un dual', () => {
+      const result = sanitizeContractInput({
+        ...validContract,
+        tipoFornitura: 'dual',
+        pod: 'IT001E12345678',
+        pdr: '04000000001',
+        metodoPagamentoLuce: 'rid',
+        metodoPagamentoGas: 'bollettino',
+        statoLuce: 'OK',
+        statoGas: 'Caricato',
+      });
+
+      assert.equal(result.metodoPagamentoLuce, 'rid');
+      assert.equal(result.metodoPagamentoGas, 'bollettino');
+      assert.equal(result.statoLuce, 'OK');
+      assert.equal(result.statoGas, 'Caricato');
+    });
+
+    it('richiede il metodo di inserimento per Hera', () => {
+      throwsWithCode(
+        () => sanitizeContractInput({ ...validContract, fornitore: 'Hera' }),
+        'INSERTION_METHOD_INVALID'
+      );
+      const result = sanitizeContractInput({
+        ...validContract,
+        fornitore: 'Hera',
+        metodoInserimento: 'AppAround',
+      });
+      assert.equal(result.metodoInserimento, 'AppAround');
+    });
+
+    it('accetta potenza e consumo non negativi', () => {
+      const result = sanitizeContractInput({
+        ...validContract,
+        potenzaImpegnata: '6,6',
+        consumoAnnuo: '4200',
+      });
+      assert.equal(result.potenzaImpegnata, 6.6);
+      assert.equal(result.consumoAnnuo, 4200);
     });
 
     it('accetta una bozza con dati parziali se allowDraft=true', () => {
@@ -392,6 +435,14 @@ describe('sanitizeAgentInput', () => {
         { requirePassword: true }
       );
       assert.equal(result.ruolo, 'admin');
+    });
+
+    it('accetta ruolo spettatore', () => {
+      const result = sanitizeAgentInput(
+        { ...validAgent, ruolo: 'spettatore' },
+        { requirePassword: true }
+      );
+      assert.equal(result.ruolo, 'spettatore');
     });
 
     it('non richiede password se requirePassword=false e campo vuoto', () => {

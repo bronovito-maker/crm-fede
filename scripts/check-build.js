@@ -10,6 +10,8 @@ const filesToCheck = [
   'public/motivationQuotes.js',
   'scripts/hash-password.js',
   'scripts/fix-competence-month.js',
+  'scripts/setup-baserow-forniture.js',
+  'scripts/migrate-contract-supplies.js',
 ];
 
 let hasErrors = false;
