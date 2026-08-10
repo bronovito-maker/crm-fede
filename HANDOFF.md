@@ -1,259 +1,287 @@
-# Handoff — CRM Fede Energia
+# Handoff CRM Fede Energia
 
-> Stato al 2026-08-10. Da leggere prima di iniziare qualsiasi modifica al progetto.
+> Stato verificato all'11 agosto 2026. Leggere questo documento prima di modificare codice, schema Baserow o dati storici.
 
----
+## Sintesi
 
-## Come lavorare su questo progetto
+Il modello Contratti/Forniture e attivo:
 
-- Rispondere sempre in **italiano**
-- L'utente è il **product owner**, non un developer: descrive le cose in termini di business/UX
-- Modifiche **conservative**: non aggiungere feature non richieste, non refactorare codice non toccato
-- Quando ci sono opzioni tecniche da scegliere, presentarle brevemente e procedere subito con quella scelta
+- una riga `Contratti` per pratica commerciale;
+- una riga `Forniture` per ogni POD/PDR;
+- Dual standard separato in Luce e Gas;
+- multipunto gestito nel form e nella modifica;
+- pagamenti, stati e consumi separati per vettore;
+- ruolo `spettatore` in sola lettura;
+- `codice_crm` automatico come identificativo tecnico del contratto.
 
----
+La migrazione Baserow multipunto e stata eseguita con successo. Il repository e stato testato e pubblicato su `main`, ma lo stato del deploy Render successivo non e verificato da questo documento.
 
-## Stack tecnico
+## Stato produzione Baserow
 
-| Layer       | Tecnologia                                                      |
-| ----------- | --------------------------------------------------------------- |
-| Backend     | Node.js + Express (`server.js`, ~2500 righe)                    |
-| Frontend    | Vanilla JS SPA — nessun framework (`public/app.js` ~4200 righe) |
-| Database    | Baserow (REST API) — nessun ORM, chiamate HTTP dirette          |
-| Sessioni    | SQLite locale con `better-sqlite3` (`sessions.db` di default)   |
-| File upload | multer in memoria + storage R2/S3 compatibile                   |
-| Immagini    | `sharp` per normalizzazione/compressione immagini caricate      |
-| Email       | Resend opzionale per notifica nuovo contratto                   |
-| Sicurezza   | helmet (CSP), bcryptjs, express-rate-limit, cookie HttpOnly     |
+Verifica live dell'11 agosto 2026:
 
-**Avvio dev**: `npm run dev`
+| Tabella            |      ID | Stato                                                             |
+| ------------------ | ------: | ----------------------------------------------------------------- |
+| `Agenti`           |  925635 | Ruoli inclusi `agente`, `admin`, `spettatore`                     |
+| `Contratti`        |  925638 | Primary `codice_crm` formula; link a Clienti e Forniture presenti |
+| `Competenze`       |  928679 | Tabella legacy; non usata dal salvataggio corrente                |
+| `Fornitori`        |  930259 | Elenco fornitori                                                  |
+| `Cutoff_fornitori` |  930260 | Cut-off per fornitore/mese                                        |
+| `Clienti`          |  931646 | Collegata a Agenti e Forniture; schema da completare              |
+| `Forniture`        | 1117525 | Schema multipunto completo                                        |
 
----
+Esito migrazione del 10 agosto 2026:
 
-## File principali
+- 47 contratti multipunto storici individuati;
+- 165 punti fisici creati;
+- 46 righe aggregate sostituite;
+- 408 forniture esistenti arricchite;
+- 619 operazioni totali completate;
+- 573 righe finali in `Forniture`;
+- 0 duplicati;
+- 0 link cliente mancanti;
+- 0 indirizzi multipunto mancanti;
+- dry-run finale con `operations: 0`.
 
+I report con snapshot, checkpoint e ID creati sono in `migration-reports/`, directory ignorata da Git.
+
+## Blocco da risolvere prima del prossimo rilascio
+
+La tabella live `Clienti` non contiene ancora:
+
+- `pec`;
+- `metodo_pagamento`;
+- `iban`.
+
+Il backend usa questi campi in `normalizeClient`, `syncClientFromContract` e in parte negli aggiornamenti cliente. Finche lo schema non viene allineato, la sincronizzazione automatica del cliente puo fallire e restituire `null`, anche se il contratto viene salvato.
+
+Procedura consigliata:
+
+1. Creare in `Clienti` `pec` come Email o Text.
+2. Creare `metodo_pagamento` come Single select con `bollettino` e `rid`.
+3. Creare `iban` come Text.
+4. Verificare un nuovo contratto con P.IVA e controllare il link `cliente` su padre e figlie.
+5. Verificare la modifica di PEC, pagamento e IBAN senza errori Baserow.
+6. Eseguire nuovamente l'intera suite prima del deploy.
+
+Non aggiungere colonne omonime con maiuscole o spazi: il backend usa esattamente i nomi sopra.
+
+## Configurazione Render
+
+Variabili Baserow necessarie per il modello corrente:
+
+```dotenv
+BASEROW_BASE_URL=https://api.baserow.io
+BASEROW_TOKEN=...
+BASEROW_TABLE_AGENTI_ID=925635
+BASEROW_TABLE_CONTRATTI_ID=925638
+BASEROW_TABLE_COMPETENZE_ID=928679
+BASEROW_TABLE_FORNITORI_ID=930259
+BASEROW_TABLE_CUTOFF_FORNITORI_ID=930260
+BASEROW_TABLE_CLIENTI_ID=931646
+BASEROW_TABLE_FORNITURE_ID=1117525
 ```
-server.js                  — tutti gli endpoint REST /api/*
-public/
-  app.js                   — tutta la logica SPA (login, form contratto, tabelle, admin)
-  index.html               — HTML della SPA
-  styles.css               — CSS (mobile-first, CSS grid, CSS custom properties)
-  baserowClient.js         — wrapper fetch verso /api/* (il browser NON parla con Baserow direttamente)
-  config.js                — costanti statiche (ENABLE_DEMO_FALLBACK)
-.env                       — chiavi API, ID tabelle Baserow, Google Maps key
+
+I nomi campo configurabili e i servizi opzionali sono elencati in [.env.example](./.env.example).
+
+`BASEROW_JWT_TOKEN` non e una variabile runtime e non deve restare su Render: serve solo temporaneamente allo script di setup schema.
+
+Configurazione consigliata del servizio:
+
+```text
+Build command: npm ci
+Start command: npm start
+Health check: /api/health
+NODE_ENV: production
 ```
 
----
+Il filesystem Render puo essere effimero. Se `SESSION_DB_PATH` punta al disco locale senza persistent disk, le sessioni possono perdersi a redeploy/riavvio. Per mantenerle serve un percorso su volume persistente oppure un session store esterno.
 
-## Tabelle Baserow principali
+## Ruoli
 
-| Variabile .env                      | ID tabella | Scopo                      |
-| ----------------------------------- | ---------- | -------------------------- |
-| `BASEROW_TABLE_AGENTI_ID`           | 925635     | Agenti (utenti del CRM)    |
-| `BASEROW_TABLE_CONTRATTI_ID`        | 925638     | Contratti                  |
-| `BASEROW_TABLE_COMPETENZE_ID`       | 928679     | Cut-off mensili competenza |
-| `BASEROW_TABLE_FORNITORI_ID`        | 930259     | Fornitori disponibili      |
-| `BASEROW_TABLE_CUTOFF_FORNITORI_ID` | 930260     | Cut-off per fornitore      |
-| `BASEROW_TABLE_CLIENTI_ID`          | 931646     | Anagrafica clienti         |
-| `BASEROW_TABLE_FORNITURE_ID`        | 1117525    | Utenze Luce/Gas collegate  |
+### Agente
 
-Altre variabili Baserow rilevanti:
+- vede contratti nel proprio scope;
+- crea, modifica ed elimina i contratti consentiti;
+- vede i clienti assegnati e quelli senza agente;
+- non accede alle viste amministrative globali.
 
-- `BASEROW_FIELD_COMPETENZE_MESE` / `BASEROW_FIELD_COMPETENZE_CUTOFF`
-- `BASEROW_FIELD_FORNITORI_NOME`
-- `BASEROW_FIELD_CUTOFF_FORNITORE`, `BASEROW_FIELD_CUTOFF_MESE`, `BASEROW_FIELD_CUTOFF_DATA`
-- `BASEROW_FIELD_EX_FORNITORE`
-- `BASEROW_FIELD_CONTRATTI_AGENTE`
+### Admin
 
----
+- vede dati e statistiche globali;
+- assegna contratti ad altri agenti;
+- crea/modifica account;
+- modifica cut-off e stato inviato;
+- dispone di tutte le scritture applicative.
 
-## Ruoli utente
+### Spettatore
 
-- **agent** — vede e gestisce solo i propri contratti + clienti assegnati
-- **admin** — vede tutto, gestisce agenti, cut-off fornitori, statistiche globali
-- **spettatore** — vede contratti, clienti, statistiche e pannello Admin, ma non può creare, modificare o eliminare dati
+- vede tutto cio che espongono le viste amministrative;
+- non vede `Nuovo contratto`;
+- non puo creare, modificare o eliminare contratti/clienti;
+- non puo gestire agenti o cut-off;
+- riceve `403 READ_ONLY_ROLE` o `403 ADMIN_REQUIRED` sui tentativi diretti di scrittura.
 
-La tabella `Contratti` usa come campo principale `codice_crm`, formula
-`concat('CRM-', row_id())`. Il valore e automatico, stabile e valorizzato anche per lo storico;
-`id_contratto` resta il codice commerciale opzionale.
+## Modello Contratti/Forniture
 
-### Checklist rilascio Forniture
+`Contratti` conserva dati comuni: cliente, agente, fornitore, offerta, documenti, competenza e campi legacy.
 
-1. Impostare nel servizio di produzione `BASEROW_TABLE_FORNITURE_ID=1117525`.
-2. Eseguire `npm ci`, `npm test`, `npm run lint`, `npm run build` e `npm audit --omit=dev`.
-3. Eseguire `npm run baserow:migrate-multipoint` e controllare il report in `migration-reports/`.
-4. Applicare solo con il conteggio esatto del dry-run: `npm run baserow:migrate-multipoint -- --apply --confirm=N`.
-5. Ripetere il dry-run: il risultato atteso e `operations: 0`.
-6. Dopo il deploy, verificare un Dual standard e un multipunto con almeno 2 POD e 1 PDR.
-7. Accedere con un utente `spettatore` e verificare viste Admin disponibili, assenza di `Nuovo
-Contratto` e risposta `403 READ_ONLY_ROLE` a ogni tentativo di scrittura.
+`Forniture` conserva dati del singolo punto:
 
-## Modello Contratti e Forniture
+- link `contratto`;
+- link `cliente` singolo;
+- `intestatario` ricercabile;
+- POD oppure PDR;
+- indirizzo specifico;
+- stato e pagamento;
+- potenze per i POD;
+- consumo annuo del relativo vettore;
+- metodo di inserimento Hera.
 
-- `Contratti` contiene una sola riga per pratica e conserva cliente, agente, competenza, documenti e dati commerciali comuni.
-- `Forniture` contiene una riga per ogni punto fisico. Un Dual standard ha due figlie; un multipunto con 5 POD e 1 PDR ne ha 6.
-- Ogni figlia mantiene `contratto`, `cliente`, `intestatario`, codice POD/PDR e indirizzo; i POD hanno anche potenza impegnata e disponibile.
-- Stato e metodo di pagamento sono autorevoli sulla singola fornitura. I campi omonimi presenti in `Contratti` restano come compatibilità per lo storico.
-- `consumo_annuo` e interpretato per vettore: kWh sulle righe Luce, Smc sulle righe Gas. Nel CRM i campi sono separati e compaiono solo per le forniture selezionate.
-- I contratti storici senza righe in `Forniture` continuano a essere letti dai campi legacy; la migrazione può essere eseguita senza interrompere il CRM.
-- Creazione, modifica ed eliminazione di un contratto devono mantenere sincronizzate tutte le forniture collegate.
+Il conteggio per statistiche e CB usa il numero reale delle figlie. Se un contratto storico non ha figlie, resta disponibile il fallback sui campi padre.
 
-Migrazione produzione eseguita il 2026-08-10: 47 contratti multipunto convertiti in 165 righe fisiche. Verifica successiva: 573 forniture totali, nessun duplicato, nessun collegamento o indirizzo mancante e dry-run finale con `operations: 0`. I report locali, inclusi snapshot e checkpoint, sono in `migration-reports/` e non sono versionati.
+## Modifica multipunto
 
----
+Il frontend riceve l'array normalizzato `forniture` e inserisce l'ID Baserow in ogni riga del form. Al salvataggio invia `puntiFornitura` JSON.
 
-## Architettura sessioni
+Il backend abbina una figlia in questo ordine:
 
-Le sessioni sono persistenti su SQLite tramite `SqliteSessionStore`. Il database predefinito è `sessions.db` nella root del progetto, configurabile con `SESSION_DB_PATH`. Il cookie si chiama `crm_session`, è `HttpOnly`, `SameSite=Lax` e diventa `secure` in produzione. Il TTL è configurabile via `SESSION_TTL_HOURS`.
+1. ID esplicito presente nel contratto corrente;
+2. coppia `tipo:codice`;
+3. fallback per tipo solo quando esiste esattamente un punto desiderato e una riga esistente dello stesso tipo.
 
-Al riavvio del server le sessioni non vengono perse, ma quelle scadute vengono ripulite all'avvio e poi ogni ora.
+Le righe non trattenute vengono eliminate. ID duplicati, codici duplicati o punti incompatibili col tipo contratto sono bloccati dalla validazione.
 
-## Configurazione servizi esterni
+## Stati e pagamenti
 
-- Google Maps: `GOOGLE_MAPS_API_KEY`, esposta al frontend solo tramite `GET /api/config` dopo login.
-- Upload documenti: `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_ENDPOINT`, `R2_PUBLIC_URL`.
-- Notifiche email: `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `NOTIFY_EMAIL`. Se mancano, la notifica viene semplicemente saltata.
-- Cache letture API: `API_CACHE_TTL_MS`, default 15 secondi.
-- Setup schema Forniture: `BASEROW_JWT_TOKEN=... npm run baserow:setup-forniture`.
-- Migrazione multipunto storica: `npm run baserow:migrate-multipoint` crea un report senza scrivere. L'applicazione richiede il conteggio esatto mostrato dal dry-run; il report include snapshot precedenti, ID creati e checkpoint progressivi.
+Per i Dual:
 
----
+- `statoLuce` aggiorna tutte le righe Luce;
+- `statoGas` aggiorna tutte le righe Gas;
+- `metodoPagamentoLuce` e `metodoPagamentoGas` restano separati;
+- stati diversi vengono mostrati come `Misto` sul riepilogo.
 
-## Funzionalità implementate
+La route `PATCH /api/contracts/:id/status` aggiorna padre e tutte le figlie. Una modifica manuale del padre in Baserow viene recepita se le figlie hanno ancora uno stato uniforme. Considerare il TTL cache, predefinito 15 secondi.
 
-### Form contratto a 2 colonne
+## Consumi e potenze
 
-Il form "Nuovo contratto" / "Modifica contratto" è layout a 2 colonne:
+- `Consumo annuo luce` appare per Luce/Dual e viene salvato in kWh sulle righe Luce.
+- `Consumo annuo gas` appare per Gas/Dual e viene salvato in Smc sulle righe Gas.
+- Per il multipunto ogni POD espone la propria potenza impegnata.
+- La potenza disponibile e read-only nel browser e ricalcolata dal server con `impegnata * 1,10`.
 
-- **Colonna sinistra — Anagrafica Cliente**: ragioneSociale, cellulare, tipoCliente, categoriaCliente, piva, email, indirizzoFatturazione
-- **Campi condizionali anagrafica**: `amministratore` testuale solo per `tipoCliente = Condominio`; `PEC` visibile per `Business` e `Condominio`
-- **Colonna destra — Dati Contratto**: idContratto, meseCompetenza, fornitore, exFornitore, nomeOfferta, tipoOperazione, tipoFornitura, POD/PDR, multipunto, metodoPagamento, IBAN, agenteId (solo admin), indirizzoFornitura
-- **Full-width sotto**: Documenti contratto, Note/descrizione
-- CSS: `.contract-form-cols` — grid 1 colonna su mobile, 2 colonne a ≥ 1024px
+Per i dati storici la migrazione ha conservato i valori disponibili senza inventare potenze o consumi mancanti.
 
-Il form supporta due modalità di salvataggio:
+## Hera
 
-- **Salva bozza**: salva con stato `Bozza` e validazioni minime.
-- **Salva contratto**: salva con stato `Caricato` se era una bozza o mantiene lo stato esistente in modifica.
+Selezionando Hera compare `Metodo di inserimento`, obbligatorio per il salvataggio completo. Valori ammessi, case-sensitive:
 
-### Multipunto POD/PDR
+- `AppAround`;
+- `Cartaceo`.
 
-Il checkbox "Multipunto" permette di aggiungere piu POD/PDR. Ogni riga del form diventa una riga autonoma in `Forniture`; ogni POD espone codice, indirizzo e potenza impegnata, mentre la disponibile e calcolata al +10%. In modifica vengono riutilizzati gli ID delle figlie, cosi pagamenti e dati non si duplicano. Il conteggio unita usa direttamente il numero di righe figlie.
+## Competenza e cut-off
 
-### Anagrafica integrata nel contratto (pagina Anagrafiche eliminata)
+Ordine applicato:
 
-Non esiste più una pagina separata "Anagrafiche". Il campo ragione sociale include una ricerca su clienti esistenti e compila i dati anagrafici trovati. Modificare un contratto aggiorna automaticamente anche l'anagrafica del cliente collegato via `PATCH /api/clients/:clienteId`. Il server propaga la modifica a tutti i contratti dello stesso cliente tramite `propagateClientUpdateToContracts`.
+1. Se il form invia un mese competenza valido, il server lo usa.
+2. Altrimenti cerca il cut-off del fornitore per il mese di inserimento.
+3. Entro il cut-off incluso assegna il mese successivo.
+4. Dopo il cut-off assegna due mesi dopo il mese di inserimento.
+5. Senza cut-off mantiene il mese di inserimento.
 
-### Validazioni form contratto (`validateContractDraft` in app.js)
+Quando si verifica un problema di competenza controllare prima `Cutoff_fornitori`, il nome normalizzato del fornitore e il valore gia salvato in `mese_riferimento`. Modificare `Competenze` non cambia il calcolo corrente dei nuovi contratti.
 
-- **Salva bozza**: richiede almeno uno tra ragioneSociale, cellulare, email, P.IVA/CF
-- **Salva contratto** (submit completo): tutti i campi obbligatori + **almeno 1 allegato** (documento obbligatorio)
-- **POD obbligatorio** quando tipoFornitura = `"luce"` o `"dual"`
-- **PDR obbligatorio** quando tipoFornitura = `"gas"` o `"dual"`
-- IBAN obbligatorio se metodoPagamento = `"rid"`
-- Email e P.IVA validate con regex
-- PEC opzionale ma validata come email se compilata
-- Nome amministratore obbligatorio per i condomini
-- P.IVA/CF accetta 11 cifre oppure 16 caratteri alfanumerici
-- File contratto: massimo 10 file, 15 MB per file, estensioni/documenti/immagini consentiti dalla whitelist del server
+## Operazioni Baserow
 
-I campi POD e PDR sono anche gestiti da `toggleField()` che imposta `input.required = true/false` quando i campi diventano visibili/nascosti.
+### Setup schema
 
-### Google Maps Places Autocomplete
-
-- Applicato a: `#indirizzo-fatturazione-input` e `#indirizzo-fornitura-input`
-- API usata: `PlaceAutocompleteElement` (nuova API Google, non deprecata)
-- Restrizione: solo Italia, tipo "address"
-- La chiave API è in `.env` → esposta al browser via `GET /api/config` (restituisce solo `{ googleMapsApiKey }`)
-- `initGoogleMapsAutocomplete()` viene chiamata dopo il login avvenuto con successo
-- **Approccio tecnico**: l'input originale diventa `type="hidden"` (mantiene il `name` per FormData), `<gmp-place-autocomplete>` lo sostituisce visivamente
-- Lo script Maps viene caricato dinamicamente con `libraries=places&callback=_initMapsCallback`
-- CSS: `gmp-place-autocomplete::part(input)` per stile identico agli altri input del form
-- CSP (helmet in server.js) include: `maps.googleapis.com`, `maps.gstatic.com`, `fonts.googleapis.com`
-- Funzioni helper:
-  - `setAddressAutocompleteValue(inputId, value)` — precompila il campo quando si modifica un contratto esistente
-  - `resetAddressAutocompleteValues()` — pulisce i campi quando si resetta il form
-
-### Login con supporto password manager
-
-- `id="login-email"` e `id="login-password"` sugli input
-- `autocomplete="username"` sull'email (riconosciuto da Apple Passwords, Chrome, Firefox)
-- `autocomplete="current-password"` sulla password
-- Label con `for` esplicito collegato all'`id`
-
-### Sincronizzazione cliente ↔ contratto
-
-- **Creazione contratto** → `syncClientFromContract` (server.js) crea/aggiorna il record Clienti (match su P.IVA)
-  - Include i campi: `tipo_cliente`, `categoria_cliente`, metodo pagamento, IBAN e agente assegnato quando disponibili
-- **Modifica contratto** → aggiorna il contratto + aggiorna il cliente + propaga a tutti i contratti collegati
-
-### Competenza mensile e cut-off
-
-Il contratto salva `mese_riferimento`, `trimestre_riferimento` e `anno_riferimento`. La competenza viene risolta dal server in base al mese scelto nel form e ai cut-off per fornitore: dal giorno successivo al cut-off, il contratto passa alla competenza del mese successivo.
-
-Gli admin gestiscono i cut-off in pagina Admin tramite tabella `Cut-off fornitori`.
-
-### Admin operativo
-
-La pagina Admin include:
-
-- metriche globali e per stato
-- gestione cut-off fornitore per mese
-- tabella contratti globale con ricerca, filtri multi-agente/multi-operazione, stato, ordinamento e vista inviati/da inviare
-- selezione multipla contratti e azione "Segna inviati"
-- lista agenti con filtri per nome/email, ruolo e stato account
-- creazione/modifica agenti con password hashata lato server
-
-### Valori case-sensitive importanti
-
-`categoriaCliente` ha valori **case-sensitive**: `"Prospect"` e `"Switch ricorrente"` (P maiuscola, S maiuscola). Il server li valida così. Non chiamare `.toLowerCase()` su questi valori.
-
-Stati contratto validi: `"Bozza"`, `"Caricato"`, `"Inviato"`, `"OK"`, `"K.O."`, `"Switch - Out"`.
-
----
-
-## Protezioni e guard importanti
-
-- `renderAdminPage()` ha guard `if (agent?.ruolo !== 'admin') return` — previene chiamate API non autorizzate se il ruolo non è settato correttamente
-- Nel `catch` di `initApp`, se la sessione va in errore dopo che l'agent era già stato impostato, il `ruolo` viene rimosso: `agent = { ...agent, ruolo: undefined }`
-- La 401 su `/api/admin/supplier-cutoffs` può accadere se il server viene riavviato con l'utente loggato — è gestita gracefully
-
----
-
-## Attività pendenti / da verificare
-
-- [ ] Verificare in Baserow che i campi della tabella **Clienti** includano `tipo_cliente`, `categoria_cliente`, `metodo_pagamento`, `iban` e il link agente se usati in produzione.
-- [ ] Verificare in ambiente reale upload documenti su R2: credenziali, bucket, endpoint e URL pubblico.
-- [ ] Verificare invio email Resend con mittente autorizzato e destinatario `NOTIFY_EMAIL`.
-- [ ] Google Maps autocomplete: testare su Safari iOS, soprattutto styling dei componenti Places.
-- [ ] Dopo modifiche rilevanti: eseguire `npm test`, `npm run lint` e `npm run build`.
-
----
-
-## Endpoint API principali
-
+```bash
+BASEROW_JWT_TOKEN=... npm run baserow:setup-forniture
 ```
-GET  /api/session                    — controlla sessione attiva
-POST /api/login                      — login
-POST /api/logout                     — logout
-GET  /api/config                     — configurazione pubblica (es. googleMapsApiKey)
-GET  /api/agent                      — agente corrente
-GET  /api/contracts                  — lista contratti (filtrata per agente)
-GET  /api/competence/current         — competenza corrente
-GET  /api/competenze                 — cut-off competenze
-GET  /api/suppliers                  — lista fornitori
-POST /api/contracts                  — crea contratto + sincronizza cliente
-PATCH /api/contracts/:id             — aggiorna contratto + propaga a cliente
-DELETE /api/contracts/:id            — elimina contratto
-PATCH /api/contracts/:id/status      — aggiorna solo lo stato
-GET  /api/clients                    — lista clienti
-PATCH /api/clients/:id               — aggiorna cliente + propaga a contratti collegati
-GET  /api/admin/agents               — [admin] lista agenti
-POST /api/admin/agents               — [admin] crea agente
-PATCH /api/admin/agents/:id          — [admin] modifica agente
-GET  /api/admin/contracts            — [admin] tutti i contratti
-PATCH /api/admin/contracts/:id/sent  — [admin] segna contratto inviato/non inviato
-GET  /api/admin/stats                — [admin] statistiche globali
-GET  /api/admin/supplier-cutoffs     — [admin] cut-off per fornitore
-PUT  /api/admin/supplier-cutoffs     — [admin] salva cut-off
+
+Lo script aggiunge solo campi mancanti per Contratti/Forniture e l'opzione `spettatore`. Non completa attualmente i tre campi mancanti di `Clienti`; crearli manualmente o estendere lo script in una modifica dedicata.
+
+### Migrazione multipunto
+
+Dry-run:
+
+```bash
+npm run baserow:migrate-multipoint
 ```
+
+Applicazione, solo dopo aver letto il report:
+
+```bash
+npm run baserow:migrate-multipoint -- --apply --confirm=N
+```
+
+La produzione e gia migrata e il dry-run atteso e `operations: 0`. Non eseguire `--apply` con un valore diverso da zero senza una nuova analisi dei dati.
+
+### Script legacy
+
+`npm run baserow:migrate-forniture` appartiene alla prima migrazione Dual. Sul modello multipunto puo segnalare tipi duplicati come anomalie ed e lasciato solo per tracciabilita storica. Non applicarlo in produzione.
+
+## Verifiche rilascio
+
+Automatiche:
+
+```bash
+npm ci
+npm test
+npm run lint
+npm run build
+npm run format:check
+npm audit --omit=dev
+```
+
+Smoke test:
+
+```bash
+npm start
+curl http://localhost:3000/api/health
+```
+
+Checklist manuale:
+
+1. Login Agente e creazione Luce standard.
+2. Creazione Gas standard con consumo gas.
+3. Creazione Dual con stati e pagamenti diversi.
+4. Creazione multipunto con almeno 2 POD e 1 PDR.
+5. Modifica dello stesso multipunto e verifica che il numero di righe non raddoppi.
+6. Eliminazione di un punto e verifica della sola riga corrispondente.
+7. Ricerca in Baserow `Forniture` per intestatario.
+8. Modifica padre a `K.O.` in Baserow, attesa TTL e refresh CRM.
+9. Login Spettatore: dati visibili, `Nuovo contratto` assente, scritture bloccate.
+10. Upload reale su R2 e ricezione notifica Resend, se configurata.
+
+## Test attuali
+
+La suite copre:
+
+- normalizzazione e validazione contratti;
+- punti multipunto, duplicati e potenze;
+- creazione multipla e compensazioni Baserow;
+- aggregazione stati e conteggi unita;
+- cut-off e competenze;
+- autorizzazioni Spettatore;
+- route principali con fetch mockato;
+- sessioni SQLite.
+
+## Attivita aperte
+
+- [ ] Allineare lo schema live `Clienti` con `pec`, `metodo_pagamento`, `iban`.
+- [ ] Eseguire uno smoke test completo sul deploy Render successivo al commit multipunto.
+- [ ] Verificare persistenza `SESSION_DB_PATH` su Render.
+- [ ] Verificare upload R2 con file reale e URL pubblico.
+- [ ] Verificare dominio mittente e consegna Resend.
+- [ ] Testare Google Places e righe multipunto su Safari iOS.
+- [ ] Ruotare eventuali token condivisi fuori dal secret manager e aggiornare Render/.env.
+
+## Regole di manutenzione
+
+- Rispondere e documentare in italiano.
+- Non mettere segreti nei file versionati o nei report committati.
+- Non cambiare manualmente IDs di righe figlie.
+- Non usare comandi Git distruttivi su un worktree con modifiche utente.
+- Prima di migrazioni: dry-run, report, conteggio esatto, backup e verifica post-run.
+- Dopo modifiche al modello: aggiornare `README.md`, `ARCHITETTURA-MVP.md`, `HANDOFF.md` e `.env.example` nello stesso commit.

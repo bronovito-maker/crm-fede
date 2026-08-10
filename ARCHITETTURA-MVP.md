@@ -1,456 +1,353 @@
-# CRM Energia
+# Architettura CRM Fede Energia
+
+> Documento tecnico aggiornato all'11 agosto 2026. Lo schema descritto come "live" e stato verificato direttamente su Baserow.
 
 ## Obiettivo
 
-Prodotto interno per la gestione commerciale energia. L'app aiuta agenti e admin a inserire contratti, controllare CB/target, gestire competenze mensili e mantenere allineate le anagrafiche cliente.
+Il CRM gestisce il ciclo operativo dei contratti energia: inserimento, anagrafica cliente, punti di fornitura, documenti, competenza commerciale, stati, CB, target e viste amministrative.
 
-Principio UI: mobile-first. L'agente deve poter usare l'app da telefono senza zoom, senza tabelle compresse e senza campi inutili.
+Principi del progetto:
 
-## Architettura
+- interfaccia mobile-first utilizzabile dagli agenti sul campo;
+- credenziali e logica autorizzativa solo sul server;
+- una pratica commerciale in `Contratti`, una riga per ogni POD/PDR in `Forniture`;
+- compatibilita in lettura con i campi storici presenti sul contratto padre;
+- modifiche Baserow retroattive eseguite con dry-run, conferma esatta e report locale.
 
-- `server.js`: server Express, serve il frontend e espone API interne controllate.
-- `public/index.html`: shell applicativa, navigazione e pagine principali.
-- `public/styles.css`: design system minimale con layout responsive.
-- `public/app.js`: stato UI, rendering, filtri, feedback e interazioni.
-- `public/baserowClient.js`: client API interno. Non chiama Baserow direttamente.
-- `public/config.js`: solo flag non sensibili per il frontend.
-- `sessions.db`: sessioni persistenti SQLite, generato localmente di default.
-- `.env`: token Baserow, ID tabelle, servizi esterni e opzioni runtime.
+## Stack
 
-Flusso dati:
+| Livello              | Tecnologia                                                          |
+| -------------------- | ------------------------------------------------------------------- |
+| Backend              | Node.js, Express 5                                                  |
+| Frontend             | SPA Vanilla JavaScript, HTML e CSS                                  |
+| Database applicativo | Baserow REST API                                                    |
+| Sessioni             | SQLite tramite `better-sqlite3`                                     |
+| Allegati             | multer in memoria, compressione immagini con `sharp`, storage R2/S3 |
+| Notifiche            | Resend opzionale                                                    |
+| Sicurezza            | Helmet/CSP, bcrypt, cookie HttpOnly, rate limiting                  |
+| Test e qualita       | Node test runner, ESLint, Prettier, controllo sintassi custom       |
 
-```text
-Browser -> /api/* -> server.js -> Baserow
-                       ├-> SQLite sessioni
-                       ├-> R2/S3 compatibile per allegati
-                       └-> Resend per notifiche opzionali
-```
-
-Il browser non deve conoscere token Baserow, ID tabelle, ID campo Baserow, credenziali storage o logica di filtro agente. L'unica configurazione esposta al browser dopo login è la chiave Google Maps via `/api/config`.
-
-### API interne
+File principali:
 
 ```text
-GET    /api/health
-GET    /api/session
-POST   /api/login
-POST   /api/logout
-GET    /api/agent
-GET    /api/config
-GET    /api/contracts
-POST   /api/contracts
-PATCH  /api/contracts/:id
-DELETE /api/contracts/:id
-PATCH  /api/contracts/:id/status
-GET    /api/competence/current
-GET    /api/competenze
-GET    /api/suppliers
-GET    /api/clients
-PATCH  /api/clients/:id
-GET    /api/admin/agents
-POST   /api/admin/agents
-PATCH  /api/admin/agents/:id
-GET    /api/admin/contracts
-PATCH  /api/admin/contracts/:id/sent
-GET    /api/admin/stats
-GET    /api/admin/supplier-cutoffs
-PUT    /api/admin/supplier-cutoffs
+server.js                         API, autenticazione e integrazione Baserow
+public/index.html                 struttura della SPA
+public/app.js                     stato, rendering e interazioni frontend
+public/styles.css                 layout responsive e componenti visuali
+public/baserowClient.js           client HTTP verso /api/*
+scripts/setup-baserow-forniture.js setup schema con JWT temporaneo
+scripts/migrate-multipoint-supplies.js migrazione chirurgica multipunto
+test/                             test di logica, route, validazione e transazioni
 ```
 
-`POST /api/contracts` accetta `multipart/form-data` perché può includere allegati. Il server aggiunge automaticamente agente, data inserimento, competenza, stato (`Bozza` o `Caricato`) e `cb_unitaria_snapshot`. In modifica, gli allegati già caricati possono essere mantenuti tramite lista dei file conservati.
+## Confini di sicurezza
 
-Il login usa email + password. Il server cerca l'agente in Baserow tramite email, confronta la password con `password_hash` e crea una sessione con cookie `HttpOnly`.
-Gli endpoint `/api/admin/*` richiedono `ruolo = admin` nella tabella `Agenti`.
+```text
+Browser -> API Express -> Baserow
+                    |-> SQLite sessioni
+                    |-> R2/S3 allegati
+                    `-> Resend
+```
 
-Le letture principali hanno rate limit e una cache breve (`API_CACHE_TTL_MS`, default 15 secondi). Le scritture invalidano le cache coinvolte.
+Il browser non riceve `BASEROW_TOKEN`, ID interni delle tabelle, credenziali storage o hash password. L'endpoint autenticato `/api/config` espone soltanto `googleMapsApiKey`.
 
-### Configurazione `.env`
+Il server applica:
 
-- `BASEROW_BASE_URL`
+- cookie `crm_session` con `HttpOnly`, `SameSite=Lax` e `Secure` in produzione;
+- sessioni persistenti con durata predefinita di 12 ore;
+- redirect HTTPS quando `NODE_ENV=production` e il proxy invia `x-forwarded-proto`;
+- massimo 10 tentativi login falliti ogni 15 minuti;
+- massimo 120 richieste al minuto sulle letture principali;
+- body JSON massimo 100 KB;
+- massimo 10 allegati da 15 MB ciascuno;
+- whitelist di documenti Office/OpenDocument, PDF e immagini comuni.
+
+## Ruoli e autorizzazioni
+
+| Capacita                                     | Agente                 | Admin | Spettatore |
+| -------------------------------------------- | ---------------------- | ----- | ---------- |
+| Vedere i propri contratti                    | Si                     | Si    | Si         |
+| Vedere tutti i contratti e statistiche Admin | No                     | Si    | Si         |
+| Vedere tutti i clienti                       | No                     | Si    | Si         |
+| Creare/modificare/eliminare contratti        | Si, nel proprio ambito | Si    | No         |
+| Gestire agenti e cut-off                     | No                     | Si    | No         |
+| Vedere `Nuovo contratto`                     | Si                     | Si    | No         |
+
+Le viste amministrative usano `requireAdminViewer`, valido per `admin` e `spettatore`. Le scritture amministrative usano `requireAdmin`, valido solo per `admin`. Le altre scritture chiamano `assertCanWrite`, che risponde `403 READ_ONLY_ROLE` allo Spettatore.
+
+## Modello dati
+
+### Relazioni
+
+```text
+Agenti 1 ---- N Contratti
+Clienti 1 --- N Contratti
+Contratti 1 - N Forniture
+Clienti 1 --- N Forniture
+```
+
+`Contratti` rappresenta la pratica commerciale. `Forniture` rappresenta i punti fisici. Il link `cliente` sulla figlia e affiancato da `intestatario`, utile per ricerca e filtri diretti in Baserow.
+
+Esempi:
+
+| Contratto CRM            | Righe `Contratti` | Righe `Forniture` |
+| ------------------------ | ----------------: | ----------------: |
+| Luce standard            |                 1 |             1 POD |
+| Gas standard             |                 1 |             1 PDR |
+| Dual standard            |                 1 |     1 POD + 1 PDR |
+| Multipunto 5 POD + 1 PDR |                 1 |                 6 |
+
+### Tabella `Agenti` live
+
+| Campo                | Tipo          | Note                                |
+| -------------------- | ------------- | ----------------------------------- |
+| `nome`               | Text, primary | Nome account                        |
+| `email`              | Email         | Identificativo login                |
+| `password_hash`      | Text          | Hash bcrypt, mai password in chiaro |
+| `cb_unitaria`        | Number        | Valore unitario usato per CB        |
+| `target_mensile`     | Number        | Target mese                         |
+| `target_trimestrale` | Number        | Target trimestre                    |
+| `target_annuale`     | Number        | Target anno                         |
+| `ruolo`              | Single select | `agente`, `admin`, `spettatore`     |
+| `attivo`             | Boolean       | Abilitazione account                |
+| `Contratti`          | Link row      | Relazione inversa verso contratti   |
+
+### Tabella `Contratti` live
+
+Campi principali:
+
+| Area                | Campi                                                                                                                                   |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Identita            | `codice_crm` formula primary, `id_contratto` opzionale                                                                                  |
+| Assegnazione        | `agente`, `cliente`, `data_inserimento`                                                                                                 |
+| Cliente             | `ragione_sociale`, `cellulare`, `tipo_cliente`, `categoria_cliente`, `piva`, `email`, `pec`, `amministratore`, `indirizzo_fatturazione` |
+| Commerciale         | `fornitore`, `fornitore_ref`, `ex_fornitore`, `nome_offerta`, `tipo_operazione`, `tipo_fornitura`                                       |
+| Compatibilita punti | `pod`, `pdr`, `indirizzo_fornitura`, `metodo_pagamento`                                                                                 |
+| Stato e CB          | `stato_contratto`, `cb_unitaria_snapshot`, `cb_maturata`                                                                                |
+| Competenza          | `mese_riferimento`, `trimestre_riferimento`, `anno_riferimento`, `data_inizio_fornitura`                                                |
+| Contenuti           | `file_contratto`, `descrizione`                                                                                                         |
+| Relazione inversa   | `Forniture`                                                                                                                             |
+
+`codice_crm` usa la formula `concat('CRM-', row_id())`; e automatico e stabile. `id_contratto` rimane il codice commerciale facoltativo.
+
+I campi POD/PDR/stato/pagamento sul padre restano per compatibilita e riepilogo. I valori operativi per punto sono autorevoli in `Forniture`.
+
+### Tabella `Forniture` live
+
+| Campo                 | Tipo                  | Regola                                        |
+| --------------------- | --------------------- | --------------------------------------------- |
+| `nome`                | Text, primary         | Cliente, vettore e codice punto               |
+| `contratto`           | Link row -> Contratti | Obbligatorio                                  |
+| `cliente`             | Link row -> Clienti   | Una sola relazione                            |
+| `intestatario`        | Text                  | Copia ricercabile del nome cliente            |
+| `tipo_fornitura`      | Single select         | `luce` o `gas`                                |
+| `stato`               | Single select         | Stato operativo del vettore                   |
+| `metodo_pagamento`    | Single select         | `bollettino` o `rid`                          |
+| `pod`                 | Text                  | Solo Luce                                     |
+| `pdr`                 | Text                  | Solo Gas                                      |
+| `indirizzo_fornitura` | Text                  | Indirizzo del singolo punto                   |
+| `metodo_inserimento`  | Single select         | `AppAround` o `Cartaceo` per Hera             |
+| `potenza_impegnata`   | Number                | Solo POD                                      |
+| `potenza_disponibile` | Number                | `potenza_impegnata * 1,10`, calcolata dal CRM |
+| `consumo_annuo`       | Number                | kWh su Luce, Smc su Gas                       |
+
+La modifica CRM riutilizza l'ID della riga figlia quando disponibile. In alternativa il backend effettua un match conservativo per tipo e codice. Le righe non piu presenti nel form vengono eliminate solo dopo aver salvato quelle desiderate; in caso di errore vengono eseguite compensazioni.
+
+### Tabella `Clienti` live
+
+| Campo                    | Tipo               |
+| ------------------------ | ------------------ |
+| `Ragione Sociale`        | Text, primary      |
+| `piva`                   | Text               |
+| `email`                  | Email              |
+| `cellulare`              | Text               |
+| `indirizzo_fatturazione` | Long text          |
+| `agente`                 | Link row -> Agenti |
+| `tipo_cliente`           | Single select      |
+| `categoria_cliente`      | Single select      |
+| `Forniture`              | Link row inverso   |
+
+Attenzione: al controllo dell'11 agosto 2026 lo schema live non include `pec`, `metodo_pagamento` e `iban`, ma il backend li legge o li invia durante alcune sincronizzazioni cliente. Questo disallineamento deve essere risolto e verificato prima del prossimo rilascio applicativo.
+
+### Tabelle di supporto
+
+- `Competenze`: tabella legacy ancora configurabile, ma non usata dal salvataggio corrente.
+- `Fornitori`: elenco fornitori disponibile nel form e nei filtri.
+- `Cutoff_fornitori`: cut-off specifico per coppia fornitore/mese.
+
+## Flusso contratto
+
+### Creazione
+
+1. Il frontend valida il form e invia `multipart/form-data`.
+2. Il server normalizza dati, stati, pagamenti e `puntiFornitura` JSON.
+3. Gli allegati vengono validati, le immagini compresse e i file caricati su R2.
+4. Il server calcola competenza e `cb_unitaria_snapshot`.
+5. Viene creata la riga padre `Contratti`.
+6. Viene sincronizzato e collegato il cliente quando possibile.
+7. Viene creata una riga `Forniture` per ogni POD/PDR.
+8. Se una fornitura fallisce, vengono eliminate le figlie gia create e il padre.
+
+### Modifica
+
+1. Il server verifica proprieta del contratto o ruolo Admin.
+2. Conserva gli allegati esplicitamente mantenuti.
+3. Aggiorna padre e anagrafica cliente.
+4. Aggiorna/crea/elimina le figlie mantenendo gli ID esistenti.
+5. In caso di errore ripristina padre e forniture tramite payload compensativi.
+
+### Eliminazione
+
+Le forniture vengono eliminate prima del contratto padre. Se il padre non puo essere eliminato, il server ricrea le figlie rimosse usando gli snapshot scrivibili.
+
+## Dual, stati e pagamenti
+
+Per un Dual il CRM espone:
+
+- `Pagamento Luce` e `Pagamento Gas`;
+- `Stato Luce` e `Stato Gas`;
+- `Consumo annuo luce` in kWh e `Consumo annuo gas` in Smc.
+
+Uno stato uniforme sulle figlie viene riportato come stato complessivo. Stati diversi producono il valore UI `Misto`. Per compatibilita operativa, una modifica manuale allo stato padre in Baserow viene recepita dal CRM quando tutte le figlie hanno ancora lo stesso stato; stati figlio gia misti rimangono indipendenti.
+
+## Multipunto
+
+Il form `Multipunto` consente di aggiungere piu POD e PDR. Ogni riga richiede, per il salvataggio completo, codice e indirizzo. I POD espongono anche potenza impegnata e disponibile; la disponibile e sempre ricalcolata lato server al +10%, quindi il valore inviato dal browser non e autorevole.
+
+Il backend applica:
+
+- massimo 100 punti per richiesta;
+- tipo ammesso solo `luce` o `gas`;
+- coerenza tra punti e tipo contratto;
+- codice e indirizzo obbligatori fuori dalle bozze;
+- unicita di tipo + codice;
+- unicita degli ID figlia inviati in modifica;
+- numeri non negativi per potenze e consumi.
+
+## Hera
+
+Quando `fornitore` normalizzato e Hera, compare `Metodo di inserimento`. Per un contratto completo il valore deve essere `AppAround` oppure `Cartaceo`. Il campo viene salvato sulle forniture figlie.
+
+## Competenza e cut-off
+
+La competenza e calcolata dal server, non dal browser. Se il mese viene scelto esplicitamente nel form, quel valore viene rispettato. In assenza di scelta:
+
+- senza cut-off configurato: mese della data di inserimento;
+- inserimento entro la data di cut-off inclusa: mese successivo;
+- inserimento dopo il cut-off: due mesi dopo il mese di inserimento.
+
+Il server salva `mese_riferimento`, `trimestre_riferimento` e `anno_riferimento`. Il calcolo corrente consulta `Cutoff_fornitori`; non usa la vecchia tabella `Competenze` come fallback.
+
+## Conteggi, target e CB
+
+- Ogni riga `Forniture` vale una unita.
+- Un Dual standard vale 2 unita.
+- Un multipunto vale il numero reale di POD/PDR.
+- In assenza di figlie, il CRM usa i campi legacy e le righe etichettate sul padre.
+- La CB validata considera le unita `OK`.
+- La CB potenziale considera `OK`, `Caricato` e `Inviato`.
+- `K.O.`, `Switch - Out` e `Bozza` non maturano CB.
+- I target considerano le regole applicative su categoria e tipo operazione gia implementate in `buildAdminStats`.
+
+## API
+
+| Metodo e percorso                     | Accesso                       | Scopo                          |
+| ------------------------------------- | ----------------------------- | ------------------------------ |
+| `GET /api/health`                     | Pubblico                      | Stato configurazione minima    |
+| `GET /api/config`                     | Autenticato                   | Config frontend non sensibile  |
+| `GET /api/session`                    | Pubblico con cookie opzionale | Stato sessione                 |
+| `POST /api/login`                     | Pubblico, limitato            | Login                          |
+| `POST /api/logout`                    | Sessione opzionale            | Logout                         |
+| `GET /api/agent`                      | Autenticato                   | Profilo corrente               |
+| `GET /api/contracts`                  | Autenticato                   | Contratti nello scope utente   |
+| `POST /api/contracts`                 | Agente/Admin                  | Crea contratto e forniture     |
+| `PATCH /api/contracts/:id`            | Proprietario/Admin            | Modifica contratto e forniture |
+| `DELETE /api/contracts/:id`           | Proprietario/Admin            | Elimina contratto e forniture  |
+| `PATCH /api/contracts/:id/status`     | Proprietario/Admin            | Aggiorna stato padre e figlie  |
+| `GET /api/competence/current`         | Autenticato                   | Competenza corrente            |
+| `GET /api/competenze`                 | Autenticato                   | Configurazioni competenza      |
+| `GET /api/suppliers`                  | Autenticato                   | Fornitori                      |
+| `GET /api/clients`                    | Autenticato                   | Clienti filtrati o globali     |
+| `PATCH /api/clients/:id`              | Proprietario/Admin            | Aggiorna e propaga anagrafica  |
+| `GET /api/admin/agents`               | Admin/Spettatore              | Lista agenti                   |
+| `POST /api/admin/agents`              | Admin                         | Crea account                   |
+| `PATCH /api/admin/agents/:id`         | Admin                         | Modifica account               |
+| `GET /api/admin/contracts`            | Admin/Spettatore              | Contratti globali              |
+| `PATCH /api/admin/contracts/:id/sent` | Admin                         | Segna inviato/non inviato      |
+| `GET /api/admin/stats`                | Admin/Spettatore              | Statistiche globali            |
+| `GET /api/admin/supplier-cutoffs`     | Admin/Spettatore              | Legge cut-off                  |
+| `PUT /api/admin/supplier-cutoffs`     | Admin                         | Salva cut-off                  |
+
+## Cache e invalidazione
+
+Le letture principali usano una cache in memoria con TTL predefinito di 15 secondi. Le scritture invalidano le chiavi per contratti, statistiche e clienti coinvolti. Una modifica manuale in Baserow puo quindi richiedere fino al TTL della cache prima di essere visibile nel CRM.
+
+## Migrazioni Baserow
+
+`scripts/setup-baserow-forniture.js` richiede `BASEROW_JWT_TOKEN` per modificare lo schema. Il JWT deve essere temporaneo e non va configurato stabilmente su Render.
+
+`scripts/migrate-multipoint-supplies.js`:
+
+- parte sempre in dry-run;
+- verifica i campi obbligatori;
+- genera report con permessi `0600` in `migration-reports/`;
+- include snapshot precedenti per update/delete;
+- richiede `--apply --confirm=N` con il numero esatto di operazioni;
+- esegue create, update e infine delete;
+- registra checkpoint e ID creati;
+- e idempotente: dopo una migrazione corretta il dry-run deve mostrare `operations: 0`.
+
+Lo script `migrate-contract-supplies.js` e legacy e non deve essere applicato dopo la migrazione multipunto.
+
+## Variabili ambiente
+
+La lista completa, con valori vuoti e commenti, e in [.env.example](./.env.example). In produzione le variabili vanno configurate sul servizio Render; `.env` resta solo locale ed e ignorato da Git.
+
+Minimo runtime:
+
 - `BASEROW_TOKEN`
 - `BASEROW_TABLE_AGENTI_ID`
 - `BASEROW_TABLE_CONTRATTI_ID`
-- `BASEROW_TABLE_COMPETENZE_ID`
-- `BASEROW_TABLE_FORNITORI_ID`
-- `BASEROW_TABLE_CUTOFF_FORNITORI_ID`
+
+Necessarie per il modello completo:
+
+- `BASEROW_TABLE_FORNITURE_ID`
 - `BASEROW_TABLE_CLIENTI_ID`
-- `BASEROW_FIELD_CONTRATTI_AGENTE`
-- `BASEROW_FIELD_COMPETENZE_MESE`
-- `BASEROW_FIELD_COMPETENZE_CUTOFF`
-- `BASEROW_FIELD_FORNITORI_NOME`
-- `BASEROW_FIELD_CUTOFF_FORNITORE`
-- `BASEROW_FIELD_CUTOFF_MESE`
-- `BASEROW_FIELD_CUTOFF_DATA`
-- `BASEROW_FIELD_EX_FORNITORE`
-- `SESSION_TTL_HOURS`
-- `SESSION_DB_PATH`
-- `BCRYPT_ROUNDS`
-- `GOOGLE_MAPS_API_KEY`
-- `R2_ACCESS_KEY_ID`
-- `R2_SECRET_ACCESS_KEY`
-- `R2_BUCKET_NAME`
-- `R2_ENDPOINT`
-- `R2_PUBLIC_URL`
-- `RESEND_API_KEY`
-- `RESEND_FROM_EMAIL`
-- `NOTIFY_EMAIL`
-- `API_CACHE_TTL_MS`
-- `PORT`
+- ID tabelle fornitori e cut-off
+- configurazione R2 per allegati
 
-Le password non devono essere salvate in chiaro. Generare l'hash con `npm run hash-password -- passwordDaUsare` e copiarlo nel campo `password_hash` dell'agente in Baserow.
+Opzionali:
 
-### Fallback demo
+- Google Maps Places;
+- Resend;
+- override nomi campo Baserow;
+- TTL cache/sessioni e percorso SQLite.
 
-Il fallback demo/localStorage resta utile solo aprendo il frontend come file statico o impostando `ENABLE_DEMO_FALLBACK` in `public/config.js`. Quando l'app gira tramite server, se le API non rispondono non deve salvare dati locali in silenzio.
+## Qualita e rilascio
 
-## Pagine
+Prima di ogni push destinato alla produzione:
 
-### Dashboard
-
-Home dell'agente. Mostra:
-
-- Contratti inseriti nel mese
-- Contratti validati
-- Contratti scartati
-- CB maturata
-- CB potenziale
-- Target mensile
-- Mancanti al target
-- Grafici sintetici: donut stati, avanzamento target, andamento mese, confronto mesi
-- Frase motivazionale
-
-### Nuovo contratto
-
-Pagina più importante. Layout a 2 colonne desktop, 1 colonna mobile.
-
-Colonna anagrafica:
-
-- Ragione sociale o nome cliente
-- Cellulare
-- Tipo cliente
-- Amministratore per condomini
-- PEC per business e condomini
-- Categoria cliente: `Prospect` o `Switch ricorrente`
-- P.IVA / codice fiscale
-- Email
-- Indirizzo fatturazione
-
-Colonna contratto:
-
-- ID contratto
-- Mese competenza
-- Fornitore
-- Ex fornitore
-- Nome offerta
-- Tipo operazione
-- Tipo fornitura
-- POD/PDR in base alla fornitura, anche multipunto
-- Metodo pagamento
-- IBAN se pagamento RID
-- Indirizzo fornitura
-- Agente assegnato
-- Documenti contratto: PDF, Office/OpenDocument e immagini da telefono
-- Descrizione / note
-
-Scelta UX: l'agente può salvare una bozza o caricare il contratto completo. Il valore predefinito del contratto completo è `Caricato`; la validazione operativa avviene dopo.
-
-Nel form agente lo stato non deve essere modificabile né visibile. Al suo posto l'agente sceglie la categoria cliente.
-
-Il form include lookup anagrafica clienti: cercando una ragione sociale esistente vengono compilati i dati disponibili.
-
-### Contratti
-
-Lista operativa dell'agente:
-
-- Cliente
-- Data inserimento
-- Stato
-- Tipo cliente
-- CB
-- Telefono
-
-Filtri MVP:
-
-- Ricerca testuale
-- Mese
-- Stato
-- Categoria cliente
-- Tipo operazione
-- Fornitore
-- Agente, solo per admin
-
-Su mobile la tabella diventa una lista di schede, con etichetta visibile per ogni valore.
-
-### CB
-
-Pagina guadagni:
-
-- CB del mese
-- CB validata
-- CB in attesa
-- Conteggio contratti per stato
-- Tabella sintetica contratti collegati
-- Filtri per mese, ricerca, categoria, operazione e fornitore
-
-### Admin
-
-Visibile solo agli agenti con `ruolo = admin`.
-
-Funzioni admin:
-
-- creazione agente con password hashata lato server
-- lista agenti
-- modifica dati agente
-- modifica ruolo e stato attivo
-- statistiche globali mese corrente
-- statistiche per agente su target mensile, trimestrale e annuale
-- gestione cut-off mensili per fornitore
-- lista globale contratti con filtri operativi
-- selezione multipla contratti e azione "Segna inviati"
-
-## Componenti UI
-
-- `AppShell`: sidebar + contenuto.
-- `NavItem`: voce di navigazione.
-- `Topbar`: mese corrente e agente.
-- `MetricCard`: numero principale con etichetta.
-- `Panel`: blocco contenuto standard.
-- `StatusBadge`: badge stato contratto.
-- `ProgressBar`: avanzamento target.
-- `DonutChart`: distribuzione stati.
-- `LineChart`: andamento mese.
-- `BarChart`: confronto mesi.
-- `ContractForm`: inserimento contratto.
-- `ContractsTable`: tabella contratti con filtri.
-- `AdminContractsTable`: vista admin con filtri, selezione e invio.
-- `AdminAgentEditor`: creazione/modifica account agente.
-- `SupplierCutoffForm`: gestione competenze per fornitore.
-
-## Accessibilita e mobile
-
-- Navigazione con touch target minimi da 44px.
-- Skip link per saltare direttamente al contenuto.
-- Stato pagina attiva esposto con `aria-current`.
-- Tabelle trasformate in card leggibili su mobile.
-- Campi form con autocomplete/inputmode dove utile.
-- Nessun testo importante deve richiedere zoom su telefono.
-
-## Schema Baserow definitivo
-
-### Tabella `Agenti`
-
-| Campo                | Tipo            | Note                              |
-| -------------------- | --------------- | --------------------------------- |
-| `id`                 | Autonumber      | ID interno Baserow                |
-| `nome`               | Testo           | Nome agente                       |
-| `email`              | Email           | Unica per agente                  |
-| `cb_unitaria`        | Numero decimale | Valore CB base per contratto      |
-| `target_mensile`     | Numero intero   | Contratti validati                |
-| `target_trimestrale` | Numero intero   | Contratti validati                |
-| `target_annuale`     | Numero intero   | Contratti validati                |
-| `ruolo`              | Single select   | `agente`, `admin`, `spettatore`   |
-| `attivo`             | Boolean         | Per nascondere agenti disattivati |
-| `password_hash`      | Long text       | Hash bcrypt della password        |
-| `created_at`         | Created on      | Audit                             |
-| `updated_at`         | Last modified   | Audit                             |
-
-### Tabella `Contratti`
-
-Una riga rappresenta una pratica commerciale, anche quando il contratto è Dual. I campi `tipo_fornitura`, `pod`, `pdr`, `metodo_pagamento` e `stato_contratto` rimangono disponibili per compatibilità con i dati storici; per i nuovi inserimenti i dati operativi per singola utenza sono salvati nella tabella `Forniture`.
-
-| Campo                    | Tipo            | Note                                                                                     |
-| ------------------------ | --------------- | ---------------------------------------------------------------------------------------- |
-| `id`                     | Autonumber      | ID interno Baserow                                                                       |
-| `codice_crm`             | Formula         | Campo principale: `concat('CRM-', row_id())`, univoco e automatico                       |
-| `agente`                 | Link to table   | Relazione verso `Agenti`                                                                 |
-| `data_inserimento`       | Date            | Default oggi                                                                             |
-| `data_inizio_fornitura`  | Date            | Data prevista calcolata/gestita dal form                                                 |
-| `id_contratto`           | Testo           | Codice commerciale/esterno opzionale                                                     |
-| `ragione_sociale`        | Testo           | Cliente o azienda                                                                        |
-| `cellulare`              | Testo           | Meglio testo, non numero                                                                 |
-| `tipo_cliente`           | Single select   | `Business`, `Privato`, `Condominio`                                                      |
-| `categoria_cliente`      | Single select   | `Prospect`, `Switch ricorrente`                                                          |
-| `amministratore`         | Testo           | Solo condomini                                                                           |
-| `pec`                    | Email/Testo     | PEC cliente business/condominio                                                          |
-| `fornitore`              | Testo           | Nome fornitore                                                                           |
-| `ex_fornitore`           | Testo           | Campo configurabile con `BASEROW_FIELD_EX_FORNITORE`                                     |
-| `nome_offerta`           | Testo           | Nome offerta venduta                                                                     |
-| `tipo_operazione`        | Multiple select | `switch`, `switch + voltura`, `cambio listino`, `subentro`                               |
-| `tipo_fornitura`         | Single select   | `luce`, `gas`, `dual`                                                                    |
-| `pod`                    | Testo           | Obbligatorio se luce o dual                                                              |
-| `pdr`                    | Testo           | Obbligatorio se gas o dual                                                               |
-| `metodo_pagamento`       | Single select   | `bollettino`, `rid`                                                                      |
-| `iban`                   | Testo           | Obbligatorio se RID                                                                      |
-| `file_contratto`         | File            | Allegati multipli: PDF, Word, Excel, PowerPoint, OpenDocument, JPG, PNG, WebP, HEIC/HEIF |
-| `piva`                   | Testo           | Opzionale                                                                                |
-| `email`                  | Email           | Opzionale                                                                                |
-| `indirizzo_fatturazione` | Long text       | Opzionale                                                                                |
-| `indirizzo_fornitura`    | Long text       | Opzionale                                                                                |
-| `descrizione`            | Long text       | Note                                                                                     |
-| `stato_contratto`        | Single select   | `Bozza`, `Caricato`, `Inviato`, `OK`, `K.O.`, `Switch - Out`                             |
-| `cb_maturata`            | Formula/Numero  | `0` se `K.O.` o `Switch - Out`, altrimenti valore CB                                     |
-| `cb_unitaria_snapshot`   | Numero          | CB agente copiata al momento del caricamento                                             |
-| `mese_riferimento`       | Formula         | `YYYY-MM` da `data_inserimento`                                                          |
-| `trimestre_riferimento`  | Formula         | `YYYY-Qn`                                                                                |
-| `anno_riferimento`       | Formula         | `YYYY`                                                                                   |
-| `created_at`             | Created on      | Audit                                                                                    |
-| `updated_at`             | Last modified   | Audit                                                                                    |
-
-### Tabella `Forniture`
-
-| Campo                 | Tipo          | Note                                                         |
-| --------------------- | ------------- | ------------------------------------------------------------ |
-| `nome`                | Testo         | Etichetta leggibile della fornitura                          |
-| `contratto`           | Link to table | Contratto padre; obbligatorio                                |
-| `cliente`             | Link to table | Intestatario in `Clienti`; una sola relazione                |
-| `intestatario`        | Testo         | Nome/ragione sociale duplicato per ricerca e filtri          |
-| `tipo_fornitura`      | Single select | `luce` oppure `gas`                                          |
-| `stato`               | Single select | `Bozza`, `Caricato`, `Inviato`, `OK`, `K.O.`, `Switch - Out` |
-| `metodo_pagamento`    | Single select | `bollettino`, `rid`; indipendente per Luce e Gas             |
-| `pod`                 | Testo         | Valorizzato per la fornitura Luce                            |
-| `pdr`                 | Testo         | Valorizzato per la fornitura Gas                             |
-| `indirizzo_fornitura` | Testo         | Indirizzo specifico del singolo POD/PDR                      |
-| `metodo_inserimento`  | Single select | `AppAround`, `Cartaceo`; richiesto per Hera                  |
-| `potenza_impegnata`   | Numero        | Potenza inserita manualmente, pertinente alla Luce           |
-| `potenza_disponibile` | Numero        | Calcolata dal CRM come `potenza_impegnata * 1,10`            |
-| `consumo_annuo`       | Numero        | Consumo annuo inserito manualmente                           |
-| `created_at`          | Created on    | Audit                                                        |
-| `updated_at`          | Last modified | Audit                                                        |
-
-Il CRM crea una riga figlia per ogni punto fisico. Un Dual standard genera due righe; un multipunto con 5 POD e 1 PDR ne genera 6, tutte legate allo stesso contratto e cliente. Ogni POD conserva indirizzo e potenze proprie. Se una scrittura fallisce, le operazioni gia eseguite vengono compensate per evitare pratiche parziali.
-
-### Tabella `Clienti`
-
-| Campo                    | Tipo          | Note                                                |
-| ------------------------ | ------------- | --------------------------------------------------- |
-| `ragione_sociale`        | Testo         | Nome cliente                                        |
-| `piva`                   | Testo         | P.IVA o codice fiscale                              |
-| `email`                  | Email/Testo   | Email cliente                                       |
-| `pec`                    | Email/Testo   | PEC se disponibile                                  |
-| `cellulare`              | Testo         | Telefono                                            |
-| `indirizzo_fatturazione` | Long text     | Indirizzo amministrativo                            |
-| `tipo_cliente`           | Single select | `Business`, `Privato`, `Condominio`                 |
-| `categoria_cliente`      | Single select | `Prospect`, `Switch ricorrente`                     |
-| `metodo_pagamento`       | Single select | `bollettino`, `rid`                                 |
-| `iban`                   | Testo         | IBAN se disponibile                                 |
-| `agente`                 | Link to table | Agente assegnato, se configurato nello schema reale |
-
-### Tabelle competenze e fornitori
-
-- `Competenze`: mese competenza e cut-off generale.
-- `Fornitori`: elenco fornitori mostrati nel form e nei filtri.
-- `Cut-off fornitori`: cut-off specifico per fornitore e mese.
-
-Dal giorno successivo al cut-off del fornitore, i contratti entrano nella competenza del mese successivo.
-
-### Calcoli consigliati
-
-- `cb_maturata`: se `stato_contratto = K.O.` o `Switch - Out`, valore `0`; altrimenti usa la CB unitaria dell'agente o un numero copiato al momento dell'inserimento.
-- `mese_riferimento`: anno e mese da `data_inserimento`.
-- `trimestre_riferimento`: anno + trimestre da `data_inserimento`.
-- `anno_riferimento`: anno da `data_inserimento`.
-
-Per stabilità contabile, usare `cb_unitaria_snapshot` nel contratto. Così una modifica futura alla CB dell'agente non cambia lo storico.
-
-Il frontend e il server contano le unità così:
-
-- righe multipunto `POD n:` / `PDR n:` se presenti
-- `dual` = 2 unità
-- `luce` o `gas` = 1 unità
-
-La commissione totale usa `cb_maturata * unità`, salvo presenza di un valore commissione già normalizzato.
-
-### Vista Baserow consigliata
-
-- `Contratti - agente corrente`: filtrata per agente.
-- `Contratti - mese corrente`: filtrata per `mese_riferimento`.
-- `Contratti - validati`: `stato_contratto = OK`.
-- `Contratti - in attesa`: `stato_contratto = Caricato`.
-- `Contratti - bozze`: `stato_contratto = Bozza`.
-- `Contratti - inviati`: `stato_contratto = Inviato`.
-- `Contratti - scartati`: `stato_contratto = K.O.` oppure `Switch - Out`.
-
-### Permessi minimi
-
-- Agente: crea contratti, legge solo contratti collegati al proprio agente, non modifica target.
-- Admin: modifica agenti, target, stati contratto e dati economici.
-- Spettatore: stessi dati visibili all'Admin, nessun endpoint di scrittura e nessun accesso al form Nuovo contratto.
-
-## Comandi
-
-```text
-npm run dev             Avvio sviluppo con watch
-npm start               Avvio produzione locale
-npm test                Test Node
-npm run lint            ESLint
-npm run build           Controllo build/statico
-npm run hash-password   Genera hash bcrypt
-npm run baserow:setup-forniture    Crea/aggiorna lo schema con BASEROW_JWT_TOKEN
-npm run baserow:migrate-forniture  Anteprima migrazione Contratti -> Forniture
-npm run baserow:migrate-multipoint Anteprima migrazione chirurgica multipunto
+```bash
+npm test
+npm run lint
+npm run build
+npm run format:check
+npm audit --omit=dev
 ```
 
-## Regole operative
+Per le verifiche manuali usare almeno:
 
-- La CB validata conta solo contratti `OK` e usa lo stesso moltiplicatore del target.
-- La CB potenziale conta `OK` + `Caricato` + `Inviato` e usa lo stesso moltiplicatore del target.
-- I contratti `K.O.` e `Switch - Out` valgono `0`.
-- Il target si misura sui contratti `OK`, non sugli inseriti.
-- Le statistiche e i target usano il conteggio unità: multipunto se presente, altrimenti `dual` vale 2 e luce/gas valgono 1.
-- `Contratti` resta una sola pratica; `Forniture` contiene una riga per ogni POD/PDR, con stato e pagamento per vettore.
-- `consumo_annuo` sulla riga Luce rappresenta il consumo luce in kWh; sulla riga Gas rappresenta il consumo gas in Smc.
-- Lo stato padre modificato direttamente in Baserow viene recepito dal CRM quando le righe figlie hanno ancora uno stato uniforme; gli stati misti restano indipendenti.
-- L'agente vede solo i propri contratti.
-- Validazione: lo stato `OK/K.O./Switch - Out` dovrebbe essere gestito da admin o backoffice, non dall'agente standard.
+1. Luce standard.
+2. Gas standard.
+3. Dual con pagamenti e stati diversi.
+4. Multipunto con almeno 2 POD e 1 PDR.
+5. Modifica del multipunto senza duplicare le righe.
+6. Stato `K.O.` modificato in Baserow e ricaricato dopo il TTL.
+7. Login Spettatore e tentativi di scrittura bloccati.
 
-## Schermate principali
+## Limiti noti
 
-```text
-Desktop
-
-┌───────────────┬──────────────────────────────────────────────┐
-│ Logo + agente │ Mese selezionato                   Agente    │
-│ Dashboard     │ Dashboard                                    │
-│ Nuovo         │ [KPI][KPI][KPI][KPI]                         │
-│ Contratti     │ [KPI][KPI][KPI][KPI]                         │
-│ CB            │                                              │
-│ Admin         │ [Donut stati]          [Target mensile]      │
-│               │ [Andamento mese]       [Confronto mesi]      │
-└───────────────┴──────────────────────────────────────────────┘
-
-Nuovo contratto
-
-┌──────────────────────────────────────────────────────────────┐
-│ Nuovo contratto                                               │
-├──────────────────────────────┬───────────────────────────────┤
-│ Anagrafica cliente           │ Dati contratto                │
-│ Ragione sociale              │ ID / mese competenza          │
-│ Cellulare, tipo, categoria   │ Fornitore, offerta, operazione│
-│ P.IVA/CF, email, indirizzo   │ POD/PDR, pagamento, agente    │
-│ Documenti e note                                             │
-│                         [Salva bozza] [Salva contratto]      │
-└──────────────────────────────────────────────────────────────┘
-
-Mobile
-
-┌─────────────────────┐
-│ Logo + nav scroll   │
-├─────────────────────┤
-│ Dashboard           │
-│ [KPI]               │
-│ [KPI]               │
-│ [Donut stati]       │
-│ [Target]            │
-│ [Grafici]           │
-└─────────────────────┘
-```
-
-## Cosa rimandare
-
-- Pipeline commerciale
-- Task e appuntamenti
-- Email marketing
-- Feed attività
-- Ruoli complessi
-- Automazioni avanzate
-- Report amministrativi
+- Lo schema `Clienti` live e incompleto rispetto ai campi usati dal backend; vedere HANDOFF.
+- Le transazioni tra Baserow, R2 e SQLite sono applicative, non ACID distribuite.
+- Le modifiche dirette in Baserow non generano eventi push; il CRM le vede al refresh/scadenza cache.
+- I report di migrazione sono locali e ignorati da Git: vanno conservati in un backup operativo sicuro se necessari per audit.
