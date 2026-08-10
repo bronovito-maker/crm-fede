@@ -661,10 +661,20 @@
                       aria-readonly="true"
                     />
                   </label>
-                  <label>
-                    Consumo annuo
+                  <label class="conditional-field" id="light-consumption-field" hidden>
+                    Consumo annuo luce (kWh)
                     <input
-                      name="consumoAnnuo"
+                      name="consumoAnnuoLuce"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputmode="decimal"
+                    />
+                  </label>
+                  <label class="conditional-field" id="gas-consumption-field" hidden>
+                    Consumo annuo gas (Smc)
+                    <input
+                      name="consumoAnnuoGas"
                       type="number"
                       min="0"
                       step="0.01"

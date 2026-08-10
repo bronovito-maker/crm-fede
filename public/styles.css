@@ -2394,6 +2394,10 @@ td[data-label='Cliente'] strong {
    Forms/grids go 2-column
    ============================================= */
 @media (min-width: 640px) {
+  .multipod-row-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   /* Restore top sticky sidebar */
   .sidebar {
     position: sticky;

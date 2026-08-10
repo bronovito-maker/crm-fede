@@ -7,6 +7,7 @@ const jwtToken = process.env.BASEROW_JWT_TOKEN || '';
 const suppliesTableId = Number(process.env.BASEROW_TABLE_FORNITURE_ID || 1117525);
 const contractsTableId = Number(process.env.BASEROW_TABLE_CONTRATTI_ID || 925638);
 const agentsTableId = Number(process.env.BASEROW_TABLE_AGENTI_ID || 925635);
+const clientsTableId = Number(process.env.BASEROW_TABLE_CLIENTI_ID || 931646);
 
 async function api(method, pathname, body) {
   const response = await fetch(`${baseUrl}${pathname}`, {
@@ -67,6 +68,13 @@ async function run() {
     has_related_field: true,
   });
   await ensureField(fields, {
+    name: 'cliente',
+    type: 'link_row',
+    link_row_table_id: clientsTableId,
+    has_related_field: true,
+  });
+  await ensureField(fields, { name: 'intestatario', type: 'text' });
+  await ensureField(fields, {
     name: 'tipo_fornitura',
     type: 'single_select',
     select_options: [
@@ -96,6 +104,7 @@ async function run() {
   });
   await ensureField(fields, { name: 'pod', type: 'text' });
   await ensureField(fields, { name: 'pdr', type: 'text' });
+  await ensureField(fields, { name: 'indirizzo_fornitura', type: 'text' });
   await ensureField(fields, {
     name: 'metodo_inserimento',
     type: 'single_select',

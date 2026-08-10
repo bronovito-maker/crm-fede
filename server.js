@@ -391,6 +391,8 @@ app.post(
         insertionDate,
         contract.fornitore
       );
+      const initialStatus = saveMode === 'draft' ? 'Bozza' : 'Caricato';
+      const parentStatus = aggregateParentSupplyStatus(contract, initialStatus);
       const payload = normalizeBaserowContractPayload({
         agente: [assignedAgent.id],
         data_inserimento: insertionDate,
@@ -416,7 +418,7 @@ app.post(
         indirizzo_fatturazione: contract.indirizzoFatturazione,
         indirizzo_fornitura: contract.indirizzoFornitura,
         descrizione: contract.descrizione,
-        stato_contratto: saveMode === 'draft' ? 'Bozza' : 'Caricato',
+        stato_contratto: parentStatus,
         data_inizio_fornitura: contract.dataInizioFornitura,
         mese_riferimento: competencePeriod.monthKey,
         trimestre_riferimento: competencePeriod.quarterKey,
@@ -441,37 +443,20 @@ app.post(
       }
 
       const created = await createBaserowContract(payload);
+      const clientData = contractClientData(contract, assignedAgentId);
+      const clientId = await syncClientFromContract(clientData);
+      if (clientId) await linkContractToClient(created.id, clientId);
       let createdSupplies;
       try {
         createdSupplies = await createContractSupplies(
           contract,
           created.id,
-          saveMode === 'draft' ? 'Bozza' : 'Caricato'
+          initialStatus,
+          clientId
         );
       } catch (error) {
         await deleteBaserowContract(created.id).catch(() => {});
         throw error;
-      }
-
-      // Assicuriamoci che il cliente sia sincronizzato/creato
-      const clientData = {
-        ragioneSociale: contract.ragioneSociale,
-        piva: contract.piva,
-        email: contract.email,
-        cellulare: contract.cellulare,
-        indirizzoFatturazione: contract.indirizzoFatturazione,
-        tipoCliente: contract.tipoCliente,
-        categoriaCliente: contract.categoriaCliente,
-        metodoPagamento: contract.metodoPagamento,
-        iban: contract.iban,
-        agenteId: assignedAgentId,
-      };
-      const clientId = await syncClientFromContract(clientData);
-
-      // Il contratto e gia persistito: un errore accessorio sull'anagrafica non deve
-      // trasformare il salvataggio riuscito in un falso errore per l'utente.
-      if (clientId) {
-        await linkContractToClient(created.id, clientId);
       }
 
       invalidateContractsCache(assignedAgent.id);
@@ -530,6 +515,9 @@ app.patch(
           : selectValue(existing.stato_contratto) === 'Bozza'
             ? 'Caricato'
             : selectValue(existing.stato_contratto) || 'Caricato';
+      const parentStatus = aggregateParentSupplyStatus(contract, nextStatus);
+      const clientData = contractClientData(contract, assignedAgentId);
+      const clientId = await syncClientFromContract(clientData);
       const insertionDate = existingNormalized.dataInserimento || todayIsoDate();
       const competencePeriod = await resolveRequestedCompetencePeriod(
         contract.meseCompetenza || existingNormalized.meseRiferimento,
@@ -561,7 +549,7 @@ app.patch(
         indirizzo_fatturazione: contract.indirizzoFatturazione,
         indirizzo_fornitura: contract.indirizzoFornitura,
         descrizione: contract.descrizione,
-        stato_contratto: nextStatus,
+        stato_contratto: parentStatus,
         data_inizio_fornitura: contract.dataInizioFornitura,
         mese_riferimento: competencePeriod.monthKey,
         trimestre_riferimento: competencePeriod.quarterKey,
@@ -592,7 +580,7 @@ app.patch(
       const updated = await updateBaserowContract(contractId, payload);
       let updatedSupplies;
       try {
-        updatedSupplies = await syncContractSupplies(contract, contractId, nextStatus);
+        updatedSupplies = await syncContractSupplies(contract, contractId, nextStatus, clientId);
       } catch (error) {
         await updateBaserowContract(
           contractId,
@@ -602,21 +590,6 @@ app.patch(
         );
         throw error;
       }
-
-      // Sincronizzazione anagrafica cliente
-      const clientData = {
-        ragioneSociale: contract.ragioneSociale,
-        piva: contract.piva,
-        email: contract.email,
-        cellulare: contract.cellulare,
-        indirizzoFatturazione: contract.indirizzoFatturazione,
-        tipoCliente: contract.tipoCliente,
-        categoriaCliente: contract.categoriaCliente,
-        metodoPagamento: contract.metodoPagamento,
-        iban: contract.iban,
-        agenteId: assignedAgentId,
-      };
-      const clientId = await syncClientFromContract(clientData);
 
       // Se il contratto non era collegato o è cambiato il cliente
       if (clientId && (!existing.cliente || !existing.cliente.some((c) => c.id === clientId))) {
@@ -1720,29 +1693,76 @@ async function deleteBaserowSupply(supplyId) {
   }
 }
 
-function desiredSupplyTypes(contract) {
-  if (contract.tipoFornitura === 'dual') return ['luce', 'gas'];
-  return contract.tipoFornitura ? [contract.tipoFornitura] : [];
+function desiredSupplyPoints(contract) {
+  if (Array.isArray(contract.puntiFornitura) && contract.puntiFornitura.length) {
+    return contract.puntiFornitura;
+  }
+  const types =
+    contract.tipoFornitura === 'dual'
+      ? ['luce', 'gas']
+      : contract.tipoFornitura
+        ? [contract.tipoFornitura]
+        : [];
+  return types.map((tipoFornitura) => ({
+    id: null,
+    tipoFornitura,
+    codice: tipoFornitura === 'luce' ? contract.pod : contract.pdr,
+    indirizzoFornitura: contract.indirizzoFornitura,
+    potenzaImpegnata: tipoFornitura === 'luce' ? contract.potenzaImpegnata : null,
+  }));
 }
 
-function buildSupplyPayload(contract, contractId, type, status) {
+function aggregateParentSupplyStatus(contract, fallbackStatus) {
+  if (fallbackStatus === 'Bozza') return 'Bozza';
+  if (!contract.hasExplicitSupplyStatuses) return fallbackStatus;
+  const statuses = desiredSupplyPoints(contract).map((point) =>
+    point.tipoFornitura === 'luce'
+      ? contract.statoLuce || fallbackStatus
+      : contract.statoGas || fallbackStatus
+  );
+  return statuses.length && statuses.every((status) => status === statuses[0])
+    ? statuses[0]
+    : fallbackStatus;
+}
+
+function contractClientData(contract, agentId) {
+  return {
+    ragioneSociale: contract.ragioneSociale,
+    piva: contract.piva,
+    email: contract.email,
+    cellulare: contract.cellulare,
+    indirizzoFatturazione: contract.indirizzoFatturazione,
+    tipoCliente: contract.tipoCliente,
+    categoriaCliente: contract.categoriaCliente,
+    metodoPagamento: contract.metodoPagamento,
+    iban: contract.iban,
+    agenteId: agentId,
+  };
+}
+
+function buildSupplyPayload(contract, contractId, point, status, clientId = null) {
+  const type = point.tipoFornitura;
   const payment =
     type === 'luce'
       ? contract.metodoPagamentoLuce || contract.metodoPagamento
       : contract.metodoPagamentoGas || contract.metodoPagamento;
-  const committedPower = type === 'luce' ? contract.potenzaImpegnata : null;
+  const committedPower = type === 'luce' ? point.potenzaImpegnata : null;
+  const code = upperText(point.codice);
   return {
-    nome: `${contract.ragioneSociale || 'CONTRATTO'} - ${type.toUpperCase()}`,
+    nome: `${contract.ragioneSociale || 'CONTRATTO'} - ${type.toUpperCase()} - ${code}`,
     contratto: [contractId],
+    cliente: clientId ? [clientId] : [],
+    intestatario: contract.ragioneSociale,
     tipo_fornitura: type,
     stato: status,
     metodo_pagamento: payment || null,
-    pod: type === 'luce' ? contract.pod : '',
-    pdr: type === 'gas' ? contract.pdr : '',
+    pod: type === 'luce' ? code : '',
+    pdr: type === 'gas' ? code : '',
+    indirizzo_fornitura: point.indirizzoFornitura,
     metodo_inserimento: contract.metodoInserimento || null,
     potenza_impegnata: committedPower,
     potenza_disponibile: committedPower === null ? null : Number((committedPower * 1.1).toFixed(2)),
-    consumo_annuo: contract.consumoAnnuo,
+    consumo_annuo: type === 'luce' ? contract.consumoAnnuoLuce : contract.consumoAnnuoGas,
   };
 }
 
@@ -1769,11 +1789,14 @@ function supplyPayloadFromRow(row) {
   return restorePayload(row, [
     'nome',
     'contratto',
+    'cliente',
+    'intestatario',
     'tipo_fornitura',
     'stato',
     'metodo_pagamento',
     'pod',
     'pdr',
+    'indirizzo_fornitura',
     'metodo_inserimento',
     'potenza_impegnata',
     'potenza_disponibile',
@@ -1791,11 +1814,12 @@ async function runCompensations(actions, context) {
   }
 }
 
-async function createContractSupplies(contract, contractId, status) {
+async function createContractSupplies(contract, contractId, status, clientId = null) {
   if (!CONFIG.fornitureTableId) return [];
   const created = [];
   try {
-    for (const type of desiredSupplyTypes(contract)) {
+    for (const point of desiredSupplyPoints(contract)) {
+      const type = point.tipoFornitura;
       const supplyStatus =
         status === 'Bozza'
           ? 'Bozza'
@@ -1803,7 +1827,9 @@ async function createContractSupplies(contract, contractId, status) {
             ? contract.statoLuce || status
             : contract.statoGas || status;
       created.push(
-        await createBaserowSupply(buildSupplyPayload(contract, contractId, type, supplyStatus))
+        await createBaserowSupply(
+          buildSupplyPayload(contract, contractId, point, supplyStatus, clientId)
+        )
       );
     }
     return created;
@@ -1813,17 +1839,41 @@ async function createContractSupplies(contract, contractId, status) {
   }
 }
 
-async function syncContractSupplies(contract, contractId, fallbackStatus) {
+async function syncContractSupplies(contract, contractId, fallbackStatus, clientId = null) {
   if (!CONFIG.fornitureTableId) return [];
   const existingRows = await listBaserowSuppliesForContract(contractId);
-  const existingByType = new Map(existingRows.map((row) => [selectValue(row.tipo_fornitura), row]));
-  const desiredTypes = desiredSupplyTypes(contract);
+  const existingById = new Map(existingRows.map((row) => [Number(row.id), row]));
+  const existingByKey = new Map(
+    existingRows.map((row) => {
+      const type = selectValue(row.tipo_fornitura);
+      return [`${type}:${upperText(type === 'luce' ? row.pod : row.pdr)}`, row];
+    })
+  );
+  const desiredPoints = desiredSupplyPoints(contract);
+  const desiredCountByType = desiredPoints.reduce((counts, point) => {
+    counts[point.tipoFornitura] = (counts[point.tipoFornitura] || 0) + 1;
+    return counts;
+  }, {});
+  const existingByType = existingRows.reduce((rowsByType, row) => {
+    const type = selectValue(row.tipo_fornitura);
+    if (!rowsByType.has(type)) rowsByType.set(type, []);
+    rowsByType.get(type).push(row);
+    return rowsByType;
+  }, new Map());
+  const retainedIds = new Set();
   const saved = [];
   const compensations = [];
 
   try {
-    for (const type of desiredTypes) {
-      const existing = existingByType.get(type);
+    for (const point of desiredPoints) {
+      const type = point.tipoFornitura;
+      const pointId = Number(point.id);
+      const key = `${type}:${upperText(point.codice)}`;
+      const singleTypeFallback =
+        desiredCountByType[type] === 1 && existingByType.get(type)?.length === 1
+          ? existingByType.get(type)[0]
+          : null;
+      const existing = existingById.get(pointId) || existingByKey.get(key) || singleTypeFallback;
       const existingStatus = existing ? selectValue(existing.stato) : '';
       const status =
         fallbackStatus === 'Bozza'
@@ -1831,22 +1881,22 @@ async function syncContractSupplies(contract, contractId, fallbackStatus) {
           : type === 'luce'
             ? contract.statoLuce || existingStatus || fallbackStatus
             : contract.statoGas || existingStatus || fallbackStatus;
-      const payload = buildSupplyPayload(contract, contractId, type, status);
+      const payload = buildSupplyPayload(contract, contractId, point, status, clientId);
       if (existing) {
+        retainedIds.add(Number(existing.id));
         saved.push(await updateBaserowSupply(existing.id, payload));
         compensations.unshift(() =>
           updateBaserowSupply(existing.id, supplyPayloadFromRow(existing))
         );
       } else {
         const created = await createBaserowSupply(payload);
+        retainedIds.add(Number(created.id));
         saved.push(created);
         compensations.unshift(() => deleteBaserowSupply(created.id));
       }
     }
 
-    const obsolete = existingRows.filter(
-      (row) => !desiredTypes.includes(selectValue(row.tipo_fornitura))
-    );
+    const obsolete = existingRows.filter((row) => !retainedIds.has(Number(row.id)));
     for (const row of obsolete) {
       await deleteBaserowSupply(row.id);
       compensations.unshift(() => createBaserowSupply(supplyPayloadFromRow(row)));
@@ -2071,7 +2121,12 @@ async function uploadContractFile(file) {
 }
 
 function sanitizeContractInput(input, { allowDraft = false } = {}) {
+  const puntiFornitura = sanitizeSupplyPoints(input.puntiFornitura, { allowDraft });
   const contract = {
+    hasExplicitSupplyStatuses:
+      Object.hasOwn(input, 'statoLuce') ||
+      Object.hasOwn(input, 'statoGas') ||
+      Object.hasOwn(input, 'statoContratto'),
     idContratto: upperText(input.idContratto),
     ragioneSociale: upperText(input.ragioneSociale),
     cellulare: cleanText(input.cellulare),
@@ -2099,7 +2154,16 @@ function sanitizeContractInput(input, { allowDraft = false } = {}) {
     statoGas: normalizeStatus(input.statoGas || input.statoContratto || 'Caricato'),
     metodoInserimento: cleanText(input.metodoInserimento),
     potenzaImpegnata: optionalNonNegativeNumber(input.potenzaImpegnata, 'POWER_INVALID'),
-    consumoAnnuo: optionalNonNegativeNumber(input.consumoAnnuo, 'ANNUAL_CONSUMPTION_INVALID'),
+    consumoAnnuoLuce: optionalNonNegativeNumber(
+      input.consumoAnnuoLuce ?? input.consumoAnnuo,
+      'ANNUAL_LIGHT_CONSUMPTION_INVALID'
+    ),
+    consumoAnnuoGas: optionalNonNegativeNumber(
+      input.consumoAnnuoGas ??
+        (cleanText(input.tipoFornitura).toLowerCase() === 'gas' ? input.consumoAnnuo : ''),
+      'ANNUAL_GAS_CONSUMPTION_INVALID'
+    ),
+    puntiFornitura,
     iban: cleanText(input.iban).replace(/\s+/g, '').toUpperCase(),
     piva: upperText(input.piva),
     email: cleanText(input.email).toLowerCase(),
@@ -2110,6 +2174,11 @@ function sanitizeContractInput(input, { allowDraft = false } = {}) {
     dataInizioFornitura: cleanText(input.dataInizioFornitura),
     meseCompetenza: normalizeCompetenceMonth(input.meseCompetenza, { strict: false }),
   };
+  contract.consumoAnnuo = contract.consumoAnnuoLuce ?? contract.consumoAnnuoGas;
+
+  if (!contract.puntiFornitura.length && contract.tipoFornitura) {
+    contract.puntiFornitura = desiredSupplyPoints(contract);
+  }
 
   if (allowDraft) {
     if (!contract.ragioneSociale && !contract.cellulare && !contract.email && !contract.piva) {
@@ -2157,6 +2226,24 @@ function sanitizeContractInput(input, { allowDraft = false } = {}) {
 
   if ((!allowDraft || contract.tipoFornitura) && !allowedSupplyTypes.has(contract.tipoFornitura)) {
     throw publicError(400, 'SUPPLY_TYPE_INVALID', 'Tipo fornitura non valido.');
+  }
+
+  if (!allowDraft && contract.puntiFornitura.length) {
+    const types = new Set(contract.puntiFornitura.map((point) => point.tipoFornitura));
+    if (
+      ((contract.tipoFornitura === 'luce' || contract.tipoFornitura === 'dual') &&
+        !types.has('luce')) ||
+      ((contract.tipoFornitura === 'gas' || contract.tipoFornitura === 'dual') &&
+        !types.has('gas')) ||
+      (contract.tipoFornitura === 'luce' && types.has('gas')) ||
+      (contract.tipoFornitura === 'gas' && types.has('luce'))
+    ) {
+      throw publicError(
+        400,
+        'SUPPLY_POINTS_MISMATCH',
+        'I punti inseriti non corrispondono al tipo di fornitura selezionato.'
+      );
+    }
   }
 
   if (
@@ -2237,6 +2324,61 @@ function sanitizeContractInput(input, { allowDraft = false } = {}) {
   }
 
   return contract;
+}
+
+function sanitizeSupplyPoints(value, { allowDraft = false } = {}) {
+  if (!cleanText(value)) return [];
+  let parsed;
+  try {
+    parsed = typeof value === 'string' ? JSON.parse(value) : value;
+  } catch {
+    throw publicError(400, 'SUPPLY_POINTS_INVALID', 'Elenco punti di fornitura non valido.');
+  }
+  if (!Array.isArray(parsed) || parsed.length > 100) {
+    throw publicError(400, 'SUPPLY_POINTS_INVALID', 'Elenco punti di fornitura non valido.');
+  }
+  const points = parsed.map((point) => {
+    const tipoFornitura = cleanText(point?.tipoFornitura).toLowerCase();
+    const id = Number.parseInt(point?.id, 10);
+    const committedPower =
+      tipoFornitura === 'luce'
+        ? optionalNonNegativeNumber(point?.potenzaImpegnata, 'POWER_INVALID')
+        : null;
+    return {
+      id: Number.isInteger(id) && id > 0 ? id : null,
+      tipoFornitura,
+      codice: upperText(point?.codice),
+      indirizzoFornitura: upperText(point?.indirizzoFornitura),
+      potenzaImpegnata: committedPower,
+      potenzaDisponibile:
+        committedPower === null ? null : Number((committedPower * 1.1).toFixed(2)),
+    };
+  });
+  if (points.some((point) => !['luce', 'gas'].includes(point.tipoFornitura))) {
+    throw publicError(400, 'SUPPLY_POINT_TYPE_INVALID', 'Tipo del punto di fornitura non valido.');
+  }
+  if (!allowDraft && points.some((point) => !point.codice || !point.indirizzoFornitura)) {
+    throw publicError(
+      400,
+      'SUPPLY_POINT_INCOMPLETE',
+      'Compila codice e indirizzo per ogni punto di fornitura.'
+    );
+  }
+  const keys = points
+    .filter((point) => point.codice)
+    .map((point) => `${point.tipoFornitura}:${point.codice}`);
+  if (new Set(keys).size !== keys.length) {
+    throw publicError(400, 'SUPPLY_POINT_DUPLICATE', 'Lo stesso POD o PDR è presente più volte.');
+  }
+  const ids = points.filter((point) => point.id).map((point) => point.id);
+  if (new Set(ids).size !== ids.length) {
+    throw publicError(
+      400,
+      'SUPPLY_POINT_ID_DUPLICATE',
+      'Lo stesso punto di fornitura è stato inviato più volte.'
+    );
+  }
+  return points;
 }
 
 function optionalNonNegativeNumber(value, code) {
@@ -2348,11 +2490,14 @@ function normalizeSupply(row) {
   return {
     id: row.id,
     contrattoId: linkedAgentId(row.contratto),
+    clienteId: linkedAgentId(row.cliente),
+    intestatario: row.intestatario || '',
     tipoFornitura: selectValue(row.tipo_fornitura),
     stato: selectValue(row.stato) || 'Caricato',
     metodoPagamento: selectValue(row.metodo_pagamento),
     pod: row.pod || '',
     pdr: row.pdr || '',
+    indirizzoFornitura: row.indirizzo_fornitura || '',
     metodoInserimento: selectValue(row.metodo_inserimento),
     potenzaImpegnata:
       row.potenza_impegnata === null || row.potenza_impegnata === ''
@@ -2371,16 +2516,30 @@ function normalizeSupply(row) {
 
 function normalizeContract(row, supplyRows = []) {
   const status = selectValue(row.stato_contratto) || 'Caricato';
-  const supplies = (supplyRows || []).map((supply) =>
+  let supplies = (supplyRows || []).map((supply) =>
     supply?.tipoFornitura ? supply : normalizeSupply(supply)
   );
-  const lightSupply = supplies.find((supply) => supply.tipoFornitura === 'luce');
-  const gasSupply = supplies.find((supply) => supply.tipoFornitura === 'gas');
+  const childStatuses = [...new Set(supplies.map((supply) => supply.stato).filter(Boolean))];
+  if (supplies.length && childStatuses.length === 1 && childStatuses[0] !== status) {
+    supplies = supplies.map((supply) => ({ ...supply, stato: status }));
+  }
+  const lightSupplies = supplies.filter((supply) => supply.tipoFornitura === 'luce');
+  const gasSupplies = supplies.filter((supply) => supply.tipoFornitura === 'gas');
+  const lightSupply = lightSupplies[0];
+  const gasSupply = gasSupplies[0];
   const supplyType = selectValue(row.tipo_fornitura);
-  const statoLuce =
-    lightSupply?.stato || (supplyType === 'luce' || supplyType === 'dual' ? status : '');
-  const statoGas =
-    gasSupply?.stato || (supplyType === 'gas' || supplyType === 'dual' ? status : '');
+  const statusForType = (typedSupplies, fallback) => {
+    const statuses = [...new Set(typedSupplies.map((supply) => supply.stato).filter(Boolean))];
+    return statuses.length > 1 ? 'Misto' : statuses[0] || fallback;
+  };
+  const statoLuce = statusForType(
+    lightSupplies,
+    supplyType === 'luce' || supplyType === 'dual' ? status : ''
+  );
+  const statoGas = statusForType(
+    gasSupplies,
+    supplyType === 'gas' || supplyType === 'dual' ? status : ''
+  );
   const aggregateStatus =
     statoLuce && statoGas && statoLuce !== statoGas ? 'Misto' : statoLuce || statoGas || status;
   const cbSnapshot = numberValue(row.cb_unitaria_snapshot);
@@ -2415,8 +2574,8 @@ function normalizeContract(row, supplyRows = []) {
     nomeOfferta: row.nome_offerta || '',
     tipoOperazione: multiSelectValue(row.tipo_operazione),
     tipoFornitura: supplyType,
-    pod: lightSupply?.pod || row.pod || '',
-    pdr: gasSupply?.pdr || row.pdr || '',
+    pod: serializeNormalizedSupplyCodes(lightSupplies, 'pod') || row.pod || '',
+    pdr: serializeNormalizedSupplyCodes(gasSupplies, 'pdr') || row.pdr || '',
     metodoPagamento: selectValue(row.metodo_pagamento),
     metodoPagamentoLuce:
       lightSupply?.metodoPagamento ||
@@ -2430,7 +2589,10 @@ function normalizeContract(row, supplyRows = []) {
     email: row.email || '',
     pec: row.pec || '',
     indirizzoFatturazione: row.indirizzo_fatturazione || '',
-    indirizzoFornitura: row.indirizzo_fornitura || '',
+    indirizzoFornitura:
+      serializeNormalizedSupplyAddresses(lightSupplies, gasSupplies) ||
+      row.indirizzo_fornitura ||
+      '',
     descrizione: row.descrizione || '',
     statoContratto: aggregateStatus,
     statoLuce,
@@ -2439,6 +2601,8 @@ function normalizeContract(row, supplyRows = []) {
     potenzaImpegnata: lightSupply?.potenzaImpegnata ?? null,
     potenzaDisponibile: lightSupply?.potenzaDisponibile ?? null,
     consumoAnnuo: lightSupply?.consumoAnnuo ?? gasSupply?.consumoAnnuo ?? null,
+    consumoAnnuoLuce: lightSupply?.consumoAnnuo ?? null,
+    consumoAnnuoGas: gasSupply?.consumoAnnuo ?? null,
     forniture: supplies,
     cbUnitariaSnapshot: cbSnapshot,
     cbMaturata,
@@ -2453,6 +2617,30 @@ function normalizeContract(row, supplyRows = []) {
     unitCount: contractUnitCount(normalized),
     commissionValue: contractCommissionValue(normalized),
   };
+}
+
+function serializeNormalizedSupplyCodes(supplies, kind) {
+  if (!supplies.length) return '';
+  if (supplies.length === 1) return supplies[0][kind] || '';
+  return supplies
+    .map((supply, index) => `${kind.toUpperCase()} ${index + 1}: ${supply[kind] || ''}`)
+    .join('\n');
+}
+
+function serializeNormalizedSupplyAddresses(lightSupplies, gasSupplies) {
+  const supplies = [
+    ...lightSupplies.map((supply) => ({ kind: 'POD', supply })),
+    ...gasSupplies.map((supply) => ({ kind: 'PDR', supply })),
+  ];
+  if (!supplies.length) return '';
+  if (supplies.length === 1) return supplies[0].supply.indirizzoFornitura || '';
+  const counters = { POD: 0, PDR: 0 };
+  return supplies
+    .map(({ kind, supply }) => {
+      counters[kind] += 1;
+      return `${kind} ${counters[kind]}: ${supply.indirizzoFornitura || ''}`;
+    })
+    .join('\n');
 }
 
 function normalizeContractForAssignedAgent(row, assignedAgent, supplies = []) {
@@ -2622,6 +2810,9 @@ function contractHasOperation(contract, expectedOperation) {
 }
 
 function contractUnitCount(contract) {
+  if (Array.isArray(contract?.forniture) && contract.forniture.length) {
+    return contract.forniture.length;
+  }
   const multipodUnits = multipodUnitCount(contract);
   if (multipodUnits > 0) {
     return multipodUnits;
@@ -2641,15 +2832,10 @@ function contractUnitCount(contract) {
 
 function contractSupplyUnits(contract) {
   if (Array.isArray(contract?.forniture) && contract.forniture.length) {
-    return contract.forniture.flatMap((supply) => {
-      const type = cleanText(supply.tipoFornitura).toLowerCase();
-      const points = type === 'luce' ? contract.pod : contract.pdr;
-      const count = countLabeledSupplyRows(points, type === 'luce' ? 'pod' : 'pdr') || 1;
-      return Array.from({ length: count }, () => ({
-        stato: supply.stato || contract.statoContratto,
-        cb: numberValue(contract.cbUnitariaSnapshot || contract.cbMaturata),
-      }));
-    });
+    return contract.forniture.map((supply) => ({
+      stato: supply.stato || contract.statoContratto,
+      cb: numberValue(contract.cbUnitariaSnapshot || contract.cbMaturata),
+    }));
   }
 
   return Array.from({ length: contractUnitCount(contract) }, () => ({

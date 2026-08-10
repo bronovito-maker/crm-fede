@@ -33,7 +33,9 @@ function quarterFromMonthKey(monthKey) {
 
 async function baserowFetch(pathname, options = {}) {
   if (!CONFIG.baserowToken || !CONFIG.contrattiTableId) {
-    throw new Error('Configurazione Baserow mancante: controlla BASEROW_TOKEN e BASEROW_TABLE_CONTRATTI_ID.');
+    throw new Error(
+      'Configurazione Baserow mancante: controlla BASEROW_TOKEN e BASEROW_TABLE_CONTRATTI_ID.'
+    );
   }
 
   const response = await fetch(`${CONFIG.baserowBaseUrl}${pathname}`, {

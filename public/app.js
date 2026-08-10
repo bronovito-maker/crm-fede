@@ -1305,8 +1305,11 @@ function openContractModal(contractLike) {
           detailItem('Potenza disponibile', `${contract.potenzaDisponibile} kW`),
         ]
       : []),
-    ...(contract.consumoAnnuo !== null && contract.consumoAnnuo !== undefined
-      ? [detailItem('Consumo annuo', contract.consumoAnnuo)]
+    ...(contract.consumoAnnuoLuce !== null && contract.consumoAnnuoLuce !== undefined
+      ? [detailItem('Consumo annuo luce', `${contract.consumoAnnuoLuce} kWh`)]
+      : []),
+    ...(contract.consumoAnnuoGas !== null && contract.consumoAnnuoGas !== undefined
+      ? [detailItem('Consumo annuo gas', `${contract.consumoAnnuoGas} Smc`)]
       : []),
     detailItem('IBAN', contract.iban ? maskIban(contract.iban) : 'Non inserito'),
     fileDetailItem(contract.fileContratto),
@@ -1653,7 +1656,8 @@ function populateContractForm(contract) {
   form.elements.metodoInserimento.value = contract.metodoInserimento || '';
   form.elements.potenzaImpegnata.value = contract.potenzaImpegnata ?? '';
   form.elements.potenzaDisponibile.value = contract.potenzaDisponibile ?? '';
-  form.elements.consumoAnnuo.value = contract.consumoAnnuo ?? '';
+  form.elements.consumoAnnuoLuce.value = contract.consumoAnnuoLuce ?? contract.consumoAnnuo ?? '';
+  form.elements.consumoAnnuoGas.value = contract.consumoAnnuoGas ?? '';
   form.elements.iban.value = contract.iban || '';
   setAddressAutocompleteValue('indirizzo-fatturazione-input', contract.indirizzoFatturazione || '');
   setAddressAutocompleteValue('indirizzo-fornitura-input', contract.indirizzoFornitura || '');
@@ -1842,6 +1846,37 @@ function buildContractDraft(form, saveMode = 'submit') {
   const indirizzoFornitura = multipodEnabled
     ? serializeMultipodAddresses(multipodRows)
     : String(form.get('indirizzoFornitura')).trim();
+  const puntiFornitura = multipodEnabled
+    ? [
+        ...multipodRows.pod.map((row) => ({
+          id: row.id || null,
+          tipoFornitura: 'luce',
+          codice: row.code,
+          indirizzoFornitura: row.address,
+          potenzaImpegnata: row.committedPower,
+        })),
+        ...multipodRows.pdr.map((row) => ({
+          id: row.id || null,
+          tipoFornitura: 'gas',
+          codice: row.code,
+          indirizzoFornitura: row.address,
+        })),
+      ]
+    : [
+        ...(tipoFornitura === 'luce' || tipoFornitura === 'dual'
+          ? [
+              {
+                tipoFornitura: 'luce',
+                codice: pod,
+                indirizzoFornitura,
+                potenzaImpegnata: String(form.get('potenzaImpegnata')).trim(),
+              },
+            ]
+          : []),
+        ...(tipoFornitura === 'gas' || tipoFornitura === 'dual'
+          ? [{ tipoFornitura: 'gas', codice: pdr, indirizzoFornitura }]
+          : []),
+      ];
   const assignedAgentId =
     agent.ruolo === 'admin'
       ? Number.parseInt(String(form.get('agenteId') || ''), 10) || agent.id
@@ -1879,6 +1914,7 @@ function buildContractDraft(form, saveMode = 'submit') {
     pdr,
     multipod: multipodEnabled,
     multipodRows,
+    puntiFornitura,
     metodoPagamento:
       tipoFornitura === 'dual'
         ? String(form.get('metodoPagamentoLuce')).trim()
@@ -1890,7 +1926,8 @@ function buildContractDraft(form, saveMode = 'submit') {
     metodoInserimento: String(form.get('metodoInserimento')).trim(),
     potenzaImpegnata: String(form.get('potenzaImpegnata')).trim(),
     potenzaDisponibile: String(form.get('potenzaDisponibile')).trim(),
-    consumoAnnuo: String(form.get('consumoAnnuo')).trim(),
+    consumoAnnuoLuce: String(form.get('consumoAnnuoLuce')).trim(),
+    consumoAnnuoGas: String(form.get('consumoAnnuoGas')).trim(),
     iban: String(form.get('iban')).trim(),
     piva: String(form.get('piva')).trim(),
     email: String(form.get('email')).trim(),
@@ -1933,7 +1970,8 @@ function buildContractFormData(draft) {
     'metodoInserimento',
     'potenzaImpegnata',
     'potenzaDisponibile',
-    'consumoAnnuo',
+    'consumoAnnuoLuce',
+    'consumoAnnuoGas',
     'iban',
     'piva',
     'email',
@@ -1945,6 +1983,7 @@ function buildContractFormData(draft) {
   ].forEach((key) => {
     formData.append(key, draft[key] || '');
   });
+  formData.append('puntiFornitura', JSON.stringify(draft.puntiFornitura));
 
   draft.tipoOperazione.forEach((operation) => {
     formData.append('tipoOperazione', operation);
@@ -2209,8 +2248,10 @@ function updateConditionalFields() {
   toggleField('gas-payment-field', isDual);
   toggleField('light-status-field', isDual, { required: false });
   toggleField('gas-status-field', isDual, { required: false });
-  toggleField('committed-power-field', showPod, { required: false });
-  toggleField('available-power-field', showPod, { required: false });
+  toggleField('available-power-field', showPod && !multipod, { required: false });
+  toggleField('committed-power-field', showPod && !multipod, { required: false });
+  toggleField('light-consumption-field', showPod, { required: false });
+  toggleField('gas-consumption-field', showPdr, { required: false });
   toggleField('iban-field', showIban);
   toggleElementVisibility('customer-extra-fields', showExtraFields);
   toggleField('amministratore-field', showAmministratore);
@@ -2308,6 +2349,7 @@ function addMultipodRow(kind, values = {}) {
   const rowId = `multipod-${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   row.className = 'multipod-row';
   row.dataset.multipodKind = kind;
+  row.dataset.supplyId = values.id || '';
   const label = kind === 'pod' ? 'POD' : 'PDR';
   const placeholder = kind === 'pod' ? 'IT001E...' : 'Numero PDR';
   row.innerHTML = `
@@ -2324,6 +2366,18 @@ function addMultipodRow(kind, values = {}) {
         Indirizzo fornitura
         <input id="${rowId}-address" data-multipod-address type="text" data-uppercase="true" placeholder="Indirizzo di fornitura" value="${escapeHtml(values.address || '')}" />
       </label>
+      ${
+        kind === 'pod'
+          ? `<label>
+        Potenza impegnata (kW)
+        <input data-multipod-committed-power type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(values.committedPower ?? '')}" />
+      </label>
+      <label>
+        Potenza disponibile (kW)
+        <input data-multipod-available-power type="number" step="0.01" readonly aria-readonly="true" value="${escapeHtml(values.availablePower ?? '')}" />
+      </label>`
+          : ''
+      }
     </div>
   `;
   row.querySelector('[data-multipod-remove]').addEventListener('click', () => {
@@ -2331,6 +2385,19 @@ function addMultipodRow(kind, values = {}) {
     renumberMultipodRows(kind);
   });
   list.appendChild(row);
+  const committedInput = row.querySelector('[data-multipod-committed-power]');
+  if (committedInput) {
+    const updatePower = () => {
+      const committed = Number(committedInput.value);
+      const availableInput = row.querySelector('[data-multipod-available-power]');
+      availableInput.value =
+        committedInput.value !== '' && Number.isFinite(committed) && committed >= 0
+          ? String(Number((committed * 1.1).toFixed(2)))
+          : '';
+    };
+    committedInput.addEventListener('input', updatePower);
+    updatePower();
+  }
   setupAddressAutocomplete(`${rowId}-address`);
   renumberMultipodRows(kind);
 }
@@ -2355,8 +2422,11 @@ function collectMultipodRowsByKind(kind) {
   const list = document.getElementById(`multipod-${kind}-list`);
   if (!list) return [];
   return Array.from(list.querySelectorAll('.multipod-row')).map((row) => ({
+    id: Number(row.dataset.supplyId) || null,
     code: row.querySelector('[data-multipod-code]')?.value.trim() || '',
     address: row.querySelector('[data-multipod-address]')?.value.trim() || '',
+    committedPower: row.querySelector('[data-multipod-committed-power]')?.value.trim() || '',
+    availablePower: row.querySelector('[data-multipod-available-power]')?.value.trim() || '',
   }));
 }
 
@@ -2393,6 +2463,28 @@ function setMultipodRows(rowsByKind) {
 }
 
 function parseMultipodRowsFromContract(contract) {
+  const supplies = Array.isArray(contract?.forniture) ? contract.forniture : [];
+  const lightSupplies = supplies.filter((supply) => supply.tipoFornitura === 'luce');
+  const gasSupplies = supplies.filter((supply) => supply.tipoFornitura === 'gas');
+  const labeledPodCount = countLabeledSupplyRows(contract?.pod, 'pod');
+  const labeledPdrCount = countLabeledSupplyRows(contract?.pdr, 'pdr');
+  const suppliesRepresentEveryPoint =
+    supplies.length > 0 &&
+    lightSupplies.length === labeledPodCount &&
+    gasSupplies.length === labeledPdrCount;
+  if (lightSupplies.length > 1 || gasSupplies.length > 1 || suppliesRepresentEveryPoint) {
+    const toRow = (supply, kind) => ({
+      id: supply.id,
+      code: kind === 'pod' ? supply.pod : supply.pdr,
+      address: supply.indirizzoFornitura || '',
+      committedPower: kind === 'pod' ? supply.potenzaImpegnata : '',
+      availablePower: kind === 'pod' ? supply.potenzaDisponibile : '',
+    });
+    return {
+      pod: lightSupplies.map((supply) => toRow(supply, 'pod')),
+      pdr: gasSupplies.map((supply) => toRow(supply, 'pdr')),
+    };
+  }
   const addresses = parseMultipodAddressLines(contract?.indirizzoFornitura || '');
   return {
     pod: parseMultipodCodeLines('pod', contract?.pod || '', addresses),
@@ -3802,6 +3894,9 @@ function contractMatchesAnyOperationFilter(contract, selectedOperations) {
 }
 
 function contractUnitCount(contract) {
+  if (Array.isArray(contract?.forniture) && contract.forniture.length) {
+    return contract.forniture.length;
+  }
   const multipodUnits = multipodUnitCount(contract);
   if (multipodUnits > 0) {
     return multipodUnits;
@@ -3821,15 +3916,10 @@ function contractUnitCount(contract) {
 
 function contractSupplyUnits(contract) {
   if (Array.isArray(contract?.forniture) && contract.forniture.length) {
-    return contract.forniture.flatMap((supply) => {
-      const type = String(supply.tipoFornitura || '').toLowerCase();
-      const value = type === 'luce' ? contract.pod : contract.pdr;
-      const pointCount = countLabeledSupplyRows(value, type === 'luce' ? 'pod' : 'pdr') || 1;
-      return Array.from({ length: pointCount }, () => ({
-        stato: supply.stato || contract.statoContratto,
-        cb: Number(contract.cbUnitariaSnapshot || contract.cbMaturata || 0),
-      }));
-    });
+    return contract.forniture.map((supply) => ({
+      stato: supply.stato || contract.statoContratto,
+      cb: Number(contract.cbUnitariaSnapshot || contract.cbMaturata || 0),
+    }));
   }
   return Array.from({ length: contractUnitCount(contract) }, () => ({
     stato: contract.statoContratto,

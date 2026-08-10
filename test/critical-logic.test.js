@@ -831,6 +831,41 @@ describe('helper coverage', () => {
     assert.equal(normalized.fileContratto[0].visibleName, 'Doc.pdf');
   });
 
+  it('normalizeContract espone ogni punto e recepisce il K.O. impostato sul padre', () => {
+    const normalized = normalizeContract(
+      {
+        id: 77,
+        ragione_sociale: 'ROSSI SRL',
+        tipo_fornitura: { value: 'luce' },
+        stato_contratto: { value: 'K.O.' },
+        cb_unitaria_snapshot: 80,
+      },
+      [
+        {
+          id: 701,
+          tipo_fornitura: { value: 'luce' },
+          stato: { value: 'Caricato' },
+          pod: 'IT001',
+          indirizzo_fornitura: 'VIA UNO',
+        },
+        {
+          id: 702,
+          tipo_fornitura: { value: 'luce' },
+          stato: { value: 'Caricato' },
+          pod: 'IT002',
+          indirizzo_fornitura: 'VIA DUE',
+        },
+      ]
+    );
+
+    assert.equal(normalized.statoContratto, 'K.O.');
+    assert.equal(normalized.statoLuce, 'K.O.');
+    assert.equal(normalized.unitCount, 2);
+    assert.equal(normalized.commissionValue, 0);
+    assert.equal(normalized.forniture.length, 2);
+    assert.equal(normalized.pod, 'POD 1: IT001\nPOD 2: IT002');
+  });
+
   it('normalizeClient include la PEC del cliente esistente', () => {
     const normalized = normalizeClient({
       id: 12,

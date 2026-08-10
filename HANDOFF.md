@@ -1,6 +1,6 @@
 # Handoff — CRM Fede Energia
 
-> Stato al 2026-07-08. Da leggere prima di iniziare qualsiasi modifica al progetto.
+> Stato al 2026-08-10. Da leggere prima di iniziare qualsiasi modifica al progetto.
 
 ---
 
@@ -81,20 +81,24 @@ La tabella `Contratti` usa come campo principale `codice_crm`, formula
 
 1. Impostare nel servizio di produzione `BASEROW_TABLE_FORNITURE_ID=1117525`.
 2. Eseguire `npm ci`, `npm test`, `npm run lint`, `npm run build` e `npm audit --omit=dev`.
-3. Eseguire `npm run baserow:migrate-forniture`: il risultato atteso dopo la migrazione e
-   `alreadyComplete: 211`, `contractsToMigrate: 0`, `supplyRowsToCreate: 0`.
-4. Dopo il deploy, verificare con un contratto Dual controllato la creazione delle righe Luce e
-   Gas e i relativi stati/pagamenti.
-5. Accedere con un utente `spettatore` e verificare viste Admin disponibili, assenza di `Nuovo
+3. Eseguire `npm run baserow:migrate-multipoint` e controllare il report in `migration-reports/`.
+4. Applicare solo con il conteggio esatto del dry-run: `npm run baserow:migrate-multipoint -- --apply --confirm=N`.
+5. Ripetere il dry-run: il risultato atteso e `operations: 0`.
+6. Dopo il deploy, verificare un Dual standard e un multipunto con almeno 2 POD e 1 PDR.
+7. Accedere con un utente `spettatore` e verificare viste Admin disponibili, assenza di `Nuovo
 Contratto` e risposta `403 READ_ONLY_ROLE` a ogni tentativo di scrittura.
 
 ## Modello Contratti e Forniture
 
 - `Contratti` contiene una sola riga per pratica e conserva cliente, agente, competenza, documenti e dati commerciali comuni.
-- `Forniture` contiene una riga per ogni utenza collegata: una per Luce, una per Gas. Un Dual ha quindi un contratto padre e due forniture figlie.
+- `Forniture` contiene una riga per ogni punto fisico. Un Dual standard ha due figlie; un multipunto con 5 POD e 1 PDR ne ha 6.
+- Ogni figlia mantiene `contratto`, `cliente`, `intestatario`, codice POD/PDR e indirizzo; i POD hanno anche potenza impegnata e disponibile.
 - Stato e metodo di pagamento sono autorevoli sulla singola fornitura. I campi omonimi presenti in `Contratti` restano come compatibilità per lo storico.
+- `consumo_annuo` e interpretato per vettore: kWh sulle righe Luce, Smc sulle righe Gas. Nel CRM i campi sono separati e compaiono solo per le forniture selezionate.
 - I contratti storici senza righe in `Forniture` continuano a essere letti dai campi legacy; la migrazione può essere eseguita senza interrompere il CRM.
 - Creazione, modifica ed eliminazione di un contratto devono mantenere sincronizzate tutte le forniture collegate.
+
+Migrazione produzione eseguita il 2026-08-10: 47 contratti multipunto convertiti in 165 righe fisiche. Verifica successiva: 573 forniture totali, nessun duplicato, nessun collegamento o indirizzo mancante e dry-run finale con `operations: 0`. I report locali, inclusi snapshot e checkpoint, sono in `migration-reports/` e non sono versionati.
 
 ---
 
@@ -111,7 +115,7 @@ Al riavvio del server le sessioni non vengono perse, ma quelle scadute vengono r
 - Notifiche email: `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `NOTIFY_EMAIL`. Se mancano, la notifica viene semplicemente saltata.
 - Cache letture API: `API_CACHE_TTL_MS`, default 15 secondi.
 - Setup schema Forniture: `BASEROW_JWT_TOKEN=... npm run baserow:setup-forniture`.
-- Migrazione chirurgica dei soli Dual storici: `npm run baserow:migrate-forniture` crea un report senza scrivere; l'applicazione richiede anche il conteggio esatto mostrato dal dry-run, ad esempio `npm run baserow:migrate-forniture -- --apply --confirm=211`.
+- Migrazione multipunto storica: `npm run baserow:migrate-multipoint` crea un report senza scrivere. L'applicazione richiede il conteggio esatto mostrato dal dry-run; il report include snapshot precedenti, ID creati e checkpoint progressivi.
 
 ---
 
@@ -134,7 +138,7 @@ Il form supporta due modalità di salvataggio:
 
 ### Multipunto POD/PDR
 
-Il checkbox "Multipunto" permette di inserire più POD/PDR. Il conteggio unità usa le righe etichettate `POD 1: ...`, `PDR 1: ...`; in assenza di righe multipunto, un contratto `dual` vale 2 unità, una fornitura singola vale 1.
+Il checkbox "Multipunto" permette di aggiungere piu POD/PDR. Ogni riga del form diventa una riga autonoma in `Forniture`; ogni POD espone codice, indirizzo e potenza impegnata, mentre la disponibile e calcolata al +10%. In modifica vengono riutilizzati gli ID delle figlie, cosi pagamenti e dati non si duplicano. Il conteggio unita usa direttamente il numero di righe figlie.
 
 ### Anagrafica integrata nel contratto (pagina Anagrafiche eliminata)
 

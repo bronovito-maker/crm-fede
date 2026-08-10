@@ -12,6 +12,7 @@ const filesToCheck = [
   'scripts/fix-competence-month.js',
   'scripts/setup-baserow-forniture.js',
   'scripts/migrate-contract-supplies.js',
+  'scripts/migrate-multipoint-supplies.js',
 ];
 
 let hasErrors = false;

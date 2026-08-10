@@ -302,11 +302,14 @@ Una riga rappresenta una pratica commerciale, anche quando il contratto è Dual.
 | --------------------- | ------------- | ------------------------------------------------------------ |
 | `nome`                | Testo         | Etichetta leggibile della fornitura                          |
 | `contratto`           | Link to table | Contratto padre; obbligatorio                                |
+| `cliente`             | Link to table | Intestatario in `Clienti`; una sola relazione                |
+| `intestatario`        | Testo         | Nome/ragione sociale duplicato per ricerca e filtri          |
 | `tipo_fornitura`      | Single select | `luce` oppure `gas`                                          |
 | `stato`               | Single select | `Bozza`, `Caricato`, `Inviato`, `OK`, `K.O.`, `Switch - Out` |
 | `metodo_pagamento`    | Single select | `bollettino`, `rid`; indipendente per Luce e Gas             |
 | `pod`                 | Testo         | Valorizzato per la fornitura Luce                            |
 | `pdr`                 | Testo         | Valorizzato per la fornitura Gas                             |
+| `indirizzo_fornitura` | Testo         | Indirizzo specifico del singolo POD/PDR                      |
 | `metodo_inserimento`  | Single select | `AppAround`, `Cartaceo`; richiesto per Hera                  |
 | `potenza_impegnata`   | Numero        | Potenza inserita manualmente, pertinente alla Luce           |
 | `potenza_disponibile` | Numero        | Calcolata dal CRM come `potenza_impegnata * 1,10`            |
@@ -314,7 +317,7 @@ Una riga rappresenta una pratica commerciale, anche quando il contratto è Dual.
 | `created_at`          | Created on    | Audit                                                        |
 | `updated_at`          | Last modified | Audit                                                        |
 
-Per un contratto Dual il CRM crea due righe collegate nella stessa operazione applicativa. Se la creazione di una fornitura fallisce, il server elimina le righe già create e il contratto padre, evitando pratiche parziali. Per luce o gas viene creata una sola fornitura figlia.
+Il CRM crea una riga figlia per ogni punto fisico. Un Dual standard genera due righe; un multipunto con 5 POD e 1 PDR ne genera 6, tutte legate allo stesso contratto e cliente. Ogni POD conserva indirizzo e potenze proprie. Se una scrittura fallisce, le operazioni gia eseguite vengono compensate per evitare pratiche parziali.
 
 ### Tabella `Clienti`
 
@@ -384,6 +387,7 @@ npm run build           Controllo build/statico
 npm run hash-password   Genera hash bcrypt
 npm run baserow:setup-forniture    Crea/aggiorna lo schema con BASEROW_JWT_TOKEN
 npm run baserow:migrate-forniture  Anteprima migrazione Contratti -> Forniture
+npm run baserow:migrate-multipoint Anteprima migrazione chirurgica multipunto
 ```
 
 ## Regole operative
@@ -393,7 +397,9 @@ npm run baserow:migrate-forniture  Anteprima migrazione Contratti -> Forniture
 - I contratti `K.O.` e `Switch - Out` valgono `0`.
 - Il target si misura sui contratti `OK`, non sugli inseriti.
 - Le statistiche e i target usano il conteggio unità: multipunto se presente, altrimenti `dual` vale 2 e luce/gas valgono 1.
-- `Contratti` resta una sola pratica; `Forniture` contiene le singole utenze Luce/Gas usate per stati e pagamenti indipendenti.
+- `Contratti` resta una sola pratica; `Forniture` contiene una riga per ogni POD/PDR, con stato e pagamento per vettore.
+- `consumo_annuo` sulla riga Luce rappresenta il consumo luce in kWh; sulla riga Gas rappresenta il consumo gas in Smc.
+- Lo stato padre modificato direttamente in Baserow viene recepito dal CRM quando le righe figlie hanno ancora uno stato uniforme; gli stati misti restano indipendenti.
 - L'agente vede solo i propri contratti.
 - Validazione: lo stato `OK/K.O./Switch - Out` dovrebbe essere gestito da admin o backoffice, non dall'agente standard.
 

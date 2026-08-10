@@ -54,6 +54,59 @@ describe('persistenza transazionale forniture', () => {
     );
   });
 
+  it('crea una riga distinta per ogni punto multipunto', async () => {
+    const payloads = [];
+    global.fetch = async (_url, options = {}) => {
+      const payload = JSON.parse(options.body);
+      payloads.push(payload);
+      return response({ id: 800 + payloads.length, ...payload });
+    };
+
+    const created = await createContractSupplies(
+      {
+        ragioneSociale: 'TEST MULTIPUNTO',
+        tipoFornitura: 'dual',
+        puntiFornitura: [
+          {
+            tipoFornitura: 'luce',
+            codice: 'IT001',
+            indirizzoFornitura: 'VIA UNO',
+            potenzaImpegnata: 3,
+          },
+          {
+            tipoFornitura: 'luce',
+            codice: 'IT002',
+            indirizzoFornitura: 'VIA DUE',
+            potenzaImpegnata: 6,
+          },
+          { tipoFornitura: 'gas', codice: '000123', indirizzoFornitura: 'VIA TRE' },
+        ],
+        metodoPagamentoLuce: 'rid',
+        metodoPagamentoGas: 'bollettino',
+        consumoAnnuoLuce: 4200,
+        consumoAnnuoGas: 900,
+        statoLuce: 'OK',
+        statoGas: 'Caricato',
+      },
+      42,
+      'Caricato',
+      91
+    );
+
+    assert.equal(created.length, 3);
+    assert.deepEqual(
+      payloads.map((payload) => payload.pod || payload.pdr),
+      ['IT001', 'IT002', '000123']
+    );
+    assert.deepEqual(
+      payloads.map((payload) => payload.cliente),
+      [[91], [91], [91]]
+    );
+    assert.equal(payloads[0].potenza_disponibile, 3.3);
+    assert.equal(payloads[1].potenza_disponibile, 6.6);
+    assert.equal(payloads[2].consumo_annuo, 900);
+  });
+
   it('ripristina la fornitura Luce se l aggiornamento Gas fallisce', async () => {
     const patches = [];
     const rows = [

@@ -159,6 +159,46 @@ describe('sanitizeContractInput', () => {
       assert.equal(result.consumoAnnuo, 4200);
     });
 
+    it('normalizza piu POD e PDR con consumi separati', () => {
+      const result = sanitizeContractInput({
+        ...validContract,
+        tipoFornitura: 'dual',
+        pod: 'POD 1: it001\nPOD 2: it002',
+        pdr: 'PDR 1: 000123',
+        indirizzoFornitura: 'POD 1: Via Uno\nPOD 2: Via Due\nPDR 1: Via Tre',
+        consumoAnnuoLuce: '4200',
+        consumoAnnuoGas: '900',
+        puntiFornitura: JSON.stringify([
+          {
+            id: 71,
+            tipoFornitura: 'luce',
+            codice: 'it001',
+            indirizzoFornitura: 'Via Uno',
+            potenzaImpegnata: '3',
+          },
+          {
+            tipoFornitura: 'luce',
+            codice: 'it002',
+            indirizzoFornitura: 'Via Due',
+            potenzaImpegnata: '6',
+          },
+          { tipoFornitura: 'gas', codice: '000123', indirizzoFornitura: 'Via Tre' },
+        ]),
+      });
+
+      assert.equal(result.puntiFornitura.length, 3);
+      assert.deepEqual(result.puntiFornitura[0], {
+        id: 71,
+        tipoFornitura: 'luce',
+        codice: 'IT001',
+        indirizzoFornitura: 'VIA UNO',
+        potenzaImpegnata: 3,
+        potenzaDisponibile: 3.3,
+      });
+      assert.equal(result.consumoAnnuoLuce, 4200);
+      assert.equal(result.consumoAnnuoGas, 900);
+    });
+
     it('accetta una bozza con dati parziali se allowDraft=true', () => {
       const result = sanitizeContractInput(
         {
@@ -201,6 +241,53 @@ describe('sanitizeContractInput', () => {
   });
 
   describe('campi obbligatori', () => {
+    it('rifiuta punti duplicati o incompleti', () => {
+      throwsWithCode(
+        () =>
+          sanitizeContractInput({
+            ...validContract,
+            pod: 'POD 1: IT001\nPOD 2: IT001',
+            puntiFornitura: JSON.stringify([
+              { tipoFornitura: 'luce', codice: 'IT001', indirizzoFornitura: 'Via Uno' },
+              { tipoFornitura: 'luce', codice: 'IT001', indirizzoFornitura: 'Via Due' },
+            ]),
+          }),
+        'SUPPLY_POINT_DUPLICATE'
+      );
+      throwsWithCode(
+        () =>
+          sanitizeContractInput({
+            ...validContract,
+            puntiFornitura: JSON.stringify([
+              { tipoFornitura: 'luce', codice: 'IT001', indirizzoFornitura: '' },
+            ]),
+          }),
+        'SUPPLY_POINT_INCOMPLETE'
+      );
+      throwsWithCode(
+        () =>
+          sanitizeContractInput({
+            ...validContract,
+            pod: 'POD 1: IT001\nPOD 2: IT002',
+            puntiFornitura: JSON.stringify([
+              {
+                id: 71,
+                tipoFornitura: 'luce',
+                codice: 'IT001',
+                indirizzoFornitura: 'Via Uno',
+              },
+              {
+                id: 71,
+                tipoFornitura: 'luce',
+                codice: 'IT002',
+                indirizzoFornitura: 'Via Due',
+              },
+            ]),
+          }),
+        'SUPPLY_POINT_ID_DUPLICATE'
+      );
+    });
+
     it('lancia DRAFT_TOO_EMPTY se una bozza e completamente vuota', () => {
       throwsWithCode(
         () =>
