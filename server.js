@@ -248,7 +248,7 @@ app.post('/api/integrations/baserow/supply-status', async (req, res) => {
 
     const supplyIds = extractBaserowWebhookRowIds(req.body);
     if (!supplyIds.length) {
-      if (isBaserowWebhookTest(req.body)) {
+      if (isBaserowWebhookNoop(req.body)) {
         res.json({ ok: true, test: true, processed: [] });
         return;
       }
@@ -286,7 +286,7 @@ app.post('/api/integrations/baserow/contract-status', async (req, res) => {
     requireBaserowWebhookSecret(req);
     const contractIds = extractBaserowWebhookRowIds(req.body);
     if (!contractIds.length) {
-      if (isBaserowWebhookTest(req.body)) {
+      if (isBaserowWebhookNoop(req.body)) {
         res.json({ ok: true, test: true, processed: [] });
         return;
       }
@@ -1107,6 +1107,7 @@ module.exports = {
   invalidateAdminStatsCache,
   invalidateContractsCache,
   invalidateSwitchOpportunitiesCache,
+  isBaserowWebhookNoop,
   isBaserowWebhookTest,
   isCurrentAgentContract,
   isAllowedContractFile,
@@ -3373,6 +3374,15 @@ function isBaserowWebhookTest(body) {
       ? body.data.items
       : [];
   return items.some((item) => Number(item?.id) === 0);
+}
+
+function isBaserowWebhookNoop(body) {
+  const items = Array.isArray(body?.items)
+    ? body.items
+    : Array.isArray(body?.data?.items)
+      ? body.data.items
+      : null;
+  return isBaserowWebhookTest(body) || (Array.isArray(items) && items.length === 0);
 }
 
 function normalizeContractSaveMode(value) {

@@ -29,6 +29,7 @@ const {
   getCachedWithStore,
   handleApiError,
   integerValue,
+  isBaserowWebhookNoop,
   isBaserowWebhookTest,
   invalidateAdminStatsCache,
   invalidateContractsCache,
@@ -1000,6 +1001,13 @@ describe('helper coverage', () => {
     assert.equal(isBaserowWebhookTest({ items: [{ id: 0 }] }), true);
     assert.equal(isBaserowWebhookTest({ data: { items: [{ id: 0 }] } }), true);
     assert.equal(isBaserowWebhookTest({ items: [{ id: 11 }] }), false);
+  });
+
+  it('accetta gli eventi tecnici Baserow senza righe come no-op', () => {
+    assert.equal(isBaserowWebhookNoop({ total_count: 0, items: [] }), true);
+    assert.equal(isBaserowWebhookNoop({ data: { items: [] } }), true);
+    assert.equal(isBaserowWebhookNoop({ items: [{ id: 11 }] }), false);
+    assert.equal(isBaserowWebhookNoop({}), false);
   });
 
   it('todayIsoDate restituisce una data ISO yyyy-mm-dd', () => {
