@@ -17,6 +17,7 @@ const {
   SqliteSessionStore,
   buildAdminStats,
   canViewAdminData,
+  commonSupplyStatus,
   computeCompetenceMonthFromCutoff,
   contractCommissionValue,
   contractStatusUnitCount,
@@ -30,6 +31,7 @@ const {
   integerValue,
   invalidateAdminStatsCache,
   invalidateContractsCache,
+  invalidateSwitchOpportunitiesCache,
   isCurrentAgentContract,
   isAllowedContractFile,
   isValidVatOrFiscalCode,
@@ -987,6 +989,12 @@ describe('helper coverage', () => {
     assert.equal(normalizeStatus('qualcosa'), 'Caricato');
   });
 
+  it('commonSupplyStatus riallinea il padre solo con stati figlio uniformi', () => {
+    assert.equal(commonSupplyStatus([{ stato: { value: 'OK' } }, { stato: 'OK' }]), 'OK');
+    assert.equal(commonSupplyStatus([{ stato: 'OK' }, { stato: 'K.O.' }]), null);
+    assert.equal(commonSupplyStatus([]), null);
+  });
+
   it('todayIsoDate restituisce una data ISO yyyy-mm-dd', () => {
     assert.match(todayIsoDate(), /^\d{4}-\d{2}-\d{2}$/);
   });
@@ -1062,6 +1070,7 @@ describe('HTTP routes', () => {
     invalidateContractsCache(2);
     invalidateContractsCache(7);
     invalidateAdminStatsCache();
+    invalidateSwitchOpportunitiesCache();
   });
 
   it('GET /api/contracts restituisce solo i contratti dell agente loggato', async () => {
@@ -1244,6 +1253,97 @@ describe('HTTP routes', () => {
     assert.equal(response.body.agents[0].targetMensileDone, 2);
     assert.equal(response.body.agents[1].caricati, 1);
     assert.equal(response.body.agents[1].targetMensileDone, 1);
+  });
+
+  it('GET /api/switch-opportunities applica lo scope agente lato backend', async () => {
+    const agentId = 7;
+    const agentTableId = process.env.BASEROW_TABLE_AGENTI_ID;
+    const contractTableId = process.env.BASEROW_TABLE_CONTRATTI_ID;
+    const supplierTableId = process.env.BASEROW_TABLE_FORNITORI_ID;
+    const clientTableId = process.env.BASEROW_TABLE_CLIENTI_ID;
+
+    global.fetch = async (url) => {
+      const pathname = new URL(url).pathname;
+      if (pathname === `/api/database/rows/table/${agentTableId}/${agentId}/`) {
+        return mockJsonResponse({
+          id: agentId,
+          nome: 'Agente Sette',
+          email: 'sette@example.it',
+          ruolo: { value: 'agente' },
+          attivo: true,
+        });
+      }
+      if (pathname === `/api/database/rows/table/${agentTableId}/`) {
+        return mockJsonResponse({
+          count: 2,
+          next: null,
+          results: [
+            { id: 7, nome: 'Agente Sette', ruolo: { value: 'agente' }, attivo: true },
+            { id: 8, nome: 'Agente Otto', ruolo: { value: 'agente' }, attivo: true },
+          ],
+        });
+      }
+      if (pathname === `/api/database/rows/table/${supplierTableId}/`) {
+        return mockJsonResponse({
+          count: 1,
+          next: null,
+          results: [{ id: 20, nome: 'Estra', attivo: true, mesi_storno_switch: 0 }],
+        });
+      }
+      if (pathname === `/api/database/rows/table/${clientTableId}/`) {
+        return mockJsonResponse({
+          count: 2,
+          next: null,
+          results: [
+            { id: 70, 'Ragione Sociale': 'Cliente Sette', agente: [{ id: 7 }] },
+            { id: 80, 'Ragione Sociale': 'Cliente Otto', agente: [{ id: 8 }] },
+          ],
+        });
+      }
+      if (pathname === `/api/database/rows/table/${contractTableId}/`) {
+        return mockJsonResponse({
+          count: 2,
+          next: null,
+          results: [
+            {
+              id: 701,
+              agente: [{ id: 7, value: 'Agente Sette' }],
+              cliente: [{ id: 70 }],
+              ragione_sociale: 'Cliente Sette',
+              data_inserimento: '2025-01-10',
+              fornitore: 'Estra',
+              tipo_operazione: [{ value: 'switch' }],
+              tipo_fornitura: { value: 'luce' },
+              pod: 'IT007',
+              stato_contratto: { value: 'OK' },
+            },
+            {
+              id: 801,
+              agente: [{ id: 8, value: 'Agente Otto' }],
+              cliente: [{ id: 80 }],
+              ragione_sociale: 'Cliente Otto',
+              data_inserimento: '2025-01-10',
+              fornitore: 'Estra',
+              tipo_operazione: [{ value: 'switch' }],
+              tipo_fornitura: { value: 'luce' },
+              pod: 'IT008',
+              stato_contratto: { value: 'OK' },
+            },
+          ],
+        });
+      }
+      return mockJsonResponse({ detail: 'not found' }, { status: 404 });
+    };
+
+    const response = await invokeRouteJson(app, '/api/switch-opportunities', 'get', {
+      session: { agentId },
+      query: {},
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.opportunities.length, 1);
+    assert.equal(response.body.opportunities[0].code, 'IT007');
+    assert.equal(response.body.opportunities[0].agentId, 7);
   });
 
   it('GET /api/config richiede una sessione autenticata', async () => {

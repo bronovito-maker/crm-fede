@@ -8,6 +8,7 @@ const suppliesTableId = Number(process.env.BASEROW_TABLE_FORNITURE_ID || 1117525
 const contractsTableId = Number(process.env.BASEROW_TABLE_CONTRATTI_ID || 925638);
 const agentsTableId = Number(process.env.BASEROW_TABLE_AGENTI_ID || 925635);
 const clientsTableId = Number(process.env.BASEROW_TABLE_CLIENTI_ID || 931646);
+const suppliersTableId = Number(process.env.BASEROW_TABLE_FORNITORI_ID || 930259);
 
 async function api(method, pathname, body) {
   const response = await fetch(`${baseUrl}${pathname}`, {
@@ -131,6 +132,40 @@ async function run() {
     number_decimal_places: 2,
     number_negative: false,
   });
+  await ensureField(fields, {
+    name: 'data_switch_ok',
+    type: 'date',
+    date_format: 'EU',
+    date_include_time: false,
+  });
+
+  const clientFields = await api('GET', `/api/database/fields/table/${clientsTableId}/`);
+  await ensureField(clientFields, { name: 'pec', type: 'email' }, clientsTableId);
+  await ensureField(
+    clientFields,
+    {
+      name: 'metodo_pagamento',
+      type: 'single_select',
+      select_options: [
+        { value: 'bollettino', color: 'light-orange' },
+        { value: 'rid', color: 'light-green' },
+      ],
+    },
+    clientsTableId
+  );
+  await ensureField(clientFields, { name: 'iban', type: 'text' }, clientsTableId);
+
+  const supplierFields = await api('GET', `/api/database/fields/table/${suppliersTableId}/`);
+  await ensureField(
+    supplierFields,
+    {
+      name: 'mesi_storno_switch',
+      type: 'number',
+      number_decimal_places: 0,
+      number_negative: false,
+    },
+    suppliersTableId
+  );
 
   const agentFields = await api('GET', `/api/database/fields/table/${agentsTableId}/`);
   const roleField = agentFields.find((field) => field.name === 'ruolo');

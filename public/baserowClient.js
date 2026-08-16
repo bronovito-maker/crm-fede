@@ -41,6 +41,10 @@ const baserowClient = {
     return fetchJson('/api/suppliers');
   },
 
+  async listSwitchOpportunities() {
+    return fetchJson('/api/switch-opportunities');
+  },
+
   async createContract(contract) {
     return fetchJson('/api/contracts', {
       method: 'POST',
@@ -111,6 +115,17 @@ const baserowClient = {
     return fetchJson('/api/admin/supplier-cutoffs', {
       method: 'PUT',
       body: JSON.stringify(payload),
+    });
+  },
+
+  async getAdminSwitchDelays() {
+    return fetchJson('/api/admin/switch-delays');
+  },
+
+  async saveAdminSwitchDelay(supplierId, months) {
+    return fetchJson(`/api/admin/switch-delays/${supplierId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ months }),
     });
   },
 

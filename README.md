@@ -10,6 +10,7 @@ CRM interno per inserimento e gestione di contratti energia, clienti, forniture 
 - Ogni POD o PDR occupa una riga autonoma nella tabella Baserow `Forniture`.
 - Un Dual standard genera due forniture; un multipunto con 5 POD e 1 PDR ne genera 6.
 - I ruoli disponibili sono `agente`, `admin` e `spettatore`.
+- La sezione `Switch disponibili` deriva una sola opportunita per POD/PDR dallo storico reale.
 - La migrazione multipunto storica e stata completata il 10 agosto 2026.
 
 La configurazione e lo stato di produzione sono descritti in [HANDOFF.md](./HANDOFF.md). Le scelte tecniche e lo schema dati sono descritti in [ARCHITETTURA-MVP.md](./ARCHITETTURA-MVP.md).
@@ -52,6 +53,8 @@ Non committare mai `.env`, JWT temporanei, token Baserow o credenziali R2/Resend
 | `npm run hash-password -- password`  | Genera un hash bcrypt per un account             |
 | `npm run baserow:setup-forniture`    | Completa lo schema con un JWT Baserow temporaneo |
 | `npm run baserow:migrate-multipoint` | Esegue il dry-run della migrazione multipunto    |
+| `npm run baserow:backfill-switch-ok` | Dry-run delle date storiche di passaggio a OK    |
+| `npm run baserow:backfill-clienti`   | Dry-run dei campi mancanti sulle anagrafiche     |
 
 `baserow:migrate-forniture` e lo script legacy usato per il primo passaggio Dual. Non va applicato sul modello multipunto gia migrato.
 

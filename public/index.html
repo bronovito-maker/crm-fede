@@ -173,6 +173,10 @@
               ><span class="nav-icon" aria-hidden="true">📄</span>Pratiche</span
             ><span class="nav-full">Contratti</span>
           </button>
+          <button class="nav-item" type="button" data-page="switch-opportunities">
+            <span class="nav-short"><span class="nav-icon" aria-hidden="true">↻</span>Switch</span
+            ><span class="nav-full">Switch disponibili</span>
+          </button>
           <button class="nav-item" type="button" data-page="cb">
             <span class="nav-short"><span class="nav-icon" aria-hidden="true">€</span>CB</span
             ><span class="nav-full">CB</span>
@@ -896,6 +900,76 @@
           </div>
         </section>
 
+        <section class="page" id="switch-opportunities">
+          <div class="switch-hero">
+            <div>
+              <p class="eyebrow">Opportunità ricorrenti</p>
+              <h2>Utenze nuovamente lavorabili</h2>
+              <p>
+                Una sola situazione corrente per ogni POD o PDR, calcolata automaticamente dallo
+                storico reale dei contratti.
+              </p>
+            </div>
+            <div class="switch-summary" id="switch-summary" aria-live="polite"></div>
+          </div>
+          <div class="filters switch-filters">
+            <input
+              id="switch-search"
+              type="search"
+              placeholder="Cerca cliente, POD o PDR"
+              aria-label="Cerca cliente, POD o PDR"
+            />
+            <select id="switch-agent-filter" class="admin-only" aria-label="Filtra per agente">
+              <option value="all">Agente: tutti</option>
+            </select>
+            <select id="switch-supplier-filter" aria-label="Filtra per fornitore">
+              <option value="all">Fornitore: tutti</option>
+            </select>
+            <select id="switch-status-filter" aria-label="Filtra per stato">
+              <option value="all">Stato: tutti</option>
+              <option value="DISPONIBILE">Disponibile</option>
+              <option value="CARICATO">Caricato</option>
+            </select>
+            <select id="switch-type-filter" aria-label="Filtra per tipo fornitura">
+              <option value="all">Luce/Gas: tutti</option>
+              <option value="luce">Luce</option>
+              <option value="gas">Gas</option>
+            </select>
+            <select id="switch-month-filter" aria-label="Filtra per mese di switchabilità">
+              <option value="all">Mese: tutti</option>
+            </select>
+            <select id="switch-year-filter" aria-label="Filtra per anno">
+              <option value="all">Anno: tutti</option>
+            </select>
+          </div>
+          <p id="switch-feedback" role="status" aria-live="polite"></p>
+          <div class="table-wrap switch-table-wrap">
+            <table>
+              <caption class="sr-only">
+                Switch disponibili per utenza
+              </caption>
+              <thead>
+                <tr>
+                  <th>Cliente / Agente</th>
+                  <th>POD/PDR</th>
+                  <th>Tipo</th>
+                  <th>Ultimo fornitore</th>
+                  <th>Ultimo switch OK</th>
+                  <th>Operazione</th>
+                  <th>Switchabile da</th>
+                  <th>Disponibile dal</th>
+                  <th>Stato</th>
+                </tr>
+              </thead>
+              <tbody id="switch-table"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="switch-empty" hidden>
+            <strong>Nessuno switch disponibile</strong>
+            <p>Le utenze compariranno automaticamente dal giorno 15 del mese previsto.</p>
+          </div>
+        </section>
+
         <section class="page" id="cb">
           <div class="filters">
             <select id="cb-month-filter" aria-label="Seleziona mese client base"></select>
@@ -1025,6 +1099,18 @@
                 id="admin-supplier-cutoff-list"
                 aria-live="polite"
               ></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <h2>Periodi di storno switch</h2>
+              </div>
+              <p class="admin-form-copy">
+                Configura dopo quanti mesi ogni fornitore rende nuovamente switchabile un’utenza. Il
+                giorno effettivo è sempre il 15 del mese risultante.
+              </p>
+              <div id="admin-switch-delays" class="switch-delay-grid" aria-live="polite"></div>
+              <p id="admin-switch-delay-feedback" role="status"></p>
             </article>
 
             <article class="panel">

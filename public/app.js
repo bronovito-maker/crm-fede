@@ -229,6 +229,19 @@ const adminState = {
   agentRole: 'all',
   agentState: 'all',
 };
+const switchState = {
+  rows: [],
+  diagnostics: { missingSupplierConfigs: [] },
+  loaded: false,
+  loading: null,
+  search: '',
+  agent: 'all',
+  supplier: 'all',
+  status: 'all',
+  type: 'all',
+  month: 'all',
+  year: 'all',
+};
 let cbCategoryFilters = [];
 let cbOperationFilters = [];
 let cbSupplierFilter = 'all';
@@ -247,6 +260,7 @@ const pages = {
   dashboard: 'Dashboard',
   'new-contract': 'Nuovo contratto',
   contracts: 'Contratti',
+  'switch-opportunities': 'Switch disponibili',
   cb: 'Client Base',
   'switch ricorrente': 'Switch ricorrente',
   admin: 'Admin',
@@ -449,6 +463,18 @@ document.getElementById('cb-operation-filter').addEventListener('change', () => 
   renderCbPage();
 });
 
+[
+  ['switch-search', 'input'],
+  ['switch-agent-filter', 'change'],
+  ['switch-supplier-filter', 'change'],
+  ['switch-status-filter', 'change'],
+  ['switch-type-filter', 'change'],
+  ['switch-month-filter', 'change'],
+  ['switch-year-filter', 'change'],
+].forEach(([id, eventName]) => {
+  document.getElementById(id)?.addEventListener(eventName, handleSwitchFilterChange);
+});
+
 // Setup autocomplete clienti
 setupContractClientAutocomplete();
 
@@ -565,6 +591,7 @@ document.addEventListener('keydown', (event) => {
 setInterval(() => {
   if (document.visibilityState === 'visible') {
     loadAndRenderContracts({ silent: true });
+    if (activePage === 'switch-opportunities') loadSwitchOpportunities({ force: true });
   }
 }, 60_000);
 
@@ -831,6 +858,11 @@ function setActivePage(pageId) {
 
   if (pageId === 'admin') {
     renderAdminPage();
+    loadAdminSwitchDelays();
+  }
+
+  if (pageId === 'switch-opportunities') {
+    loadSwitchOpportunities({ force: previousPage !== 'switch-opportunities' });
   }
 }
 
@@ -1567,6 +1599,7 @@ function renderAll() {
   renderDashboard();
   renderContractsTable();
   renderCbPage();
+  if (switchState.loaded) renderSwitchOpportunities();
   updateAdminVisibility();
   syncContractEditorUi();
   updateMonthNavigationUi();
@@ -2615,6 +2648,9 @@ function resetUserDataState() {
   clientsRefreshPromise = null;
   contracts = [];
   clients = [];
+  switchState.rows = [];
+  switchState.loaded = false;
+  switchState.loading = null;
   selectedClientFromLookup = null;
   selectedContractFiles = [];
   existingContractFiles = [];
@@ -2789,6 +2825,164 @@ async function ensureAdminAgentsReady({ force = false } = {}) {
 
   adminAgentsRefreshPromise = refreshPromise;
   return refreshPromise;
+}
+
+async function loadSwitchOpportunities({ force = false } = {}) {
+  if (!force && switchState.loaded) {
+    renderSwitchOpportunities();
+    return;
+  }
+  if (switchState.loading) return switchState.loading;
+  const feedback = document.getElementById('switch-feedback');
+  if (feedback) feedback.textContent = 'Aggiornamento delle opportunità in corso...';
+  const requestVersion = userDataVersion;
+  const request = baserowClient
+    .listSwitchOpportunities()
+    .then((result) => {
+      if (requestVersion !== userDataVersion) return;
+      switchState.rows = Array.isArray(result.opportunities) ? result.opportunities : [];
+      switchState.diagnostics = result.diagnostics || { missingSupplierConfigs: [] };
+      switchState.loaded = true;
+      populateSwitchFilters();
+      renderSwitchOpportunities();
+    })
+    .catch((error) => {
+      if (feedback) feedback.textContent = error.message || 'Switch disponibili non caricati.';
+      console.error(error);
+    })
+    .finally(() => {
+      if (switchState.loading === request) switchState.loading = null;
+    });
+  switchState.loading = request;
+  return request;
+}
+
+function handleSwitchFilterChange() {
+  switchState.search = document.getElementById('switch-search').value.trim();
+  switchState.agent = document.getElementById('switch-agent-filter').value;
+  switchState.supplier = document.getElementById('switch-supplier-filter').value;
+  switchState.status = document.getElementById('switch-status-filter').value;
+  switchState.type = document.getElementById('switch-type-filter').value;
+  switchState.month = document.getElementById('switch-month-filter').value;
+  switchState.year = document.getElementById('switch-year-filter').value;
+  renderSwitchOpportunities();
+}
+
+function populateSwitchFilters() {
+  populateSimpleFilter(
+    'switch-agent-filter',
+    switchState.rows.map((row) => [String(row.agentId), row.agentName]),
+    'Agente: tutti',
+    switchState.agent
+  );
+  populateSimpleFilter(
+    'switch-supplier-filter',
+    switchState.rows.map((row) => [row.lastSupplier, row.lastSupplier]),
+    'Fornitore: tutti',
+    switchState.supplier
+  );
+  populateSimpleFilter(
+    'switch-month-filter',
+    switchState.rows.map((row) => [row.switchableMonth, switchMonthLabel(row.switchableMonth)]),
+    'Mese: tutti',
+    switchState.month
+  );
+  populateSimpleFilter(
+    'switch-year-filter',
+    switchState.rows.map((row) => [
+      row.switchableMonth.slice(0, 4),
+      row.switchableMonth.slice(0, 4),
+    ]),
+    'Anno: tutti',
+    switchState.year
+  );
+}
+
+function populateSimpleFilter(id, entries, allLabel, selected) {
+  const select = document.getElementById(id);
+  if (!select) return;
+  const unique = new Map(entries.filter(([value]) => value));
+  const sorted = [...unique.entries()].sort((left, right) => left[1].localeCompare(right[1], 'it'));
+  select.innerHTML = [
+    `<option value="all">${escapeHtml(allLabel)}</option>`,
+    ...sorted.map(
+      ([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`
+    ),
+  ].join('');
+  select.value = [...select.options].some((option) => option.value === selected) ? selected : 'all';
+}
+
+function filteredSwitchOpportunities() {
+  return switchState.rows.filter((row) => {
+    if (
+      switchState.search &&
+      !matchesSmartSearch(
+        [row.clientName, row.agentName, row.code, row.lastSupplier],
+        switchState.search
+      )
+    )
+      return false;
+    if (switchState.agent !== 'all' && String(row.agentId) !== switchState.agent) return false;
+    if (switchState.supplier !== 'all' && row.lastSupplier !== switchState.supplier) return false;
+    if (switchState.status !== 'all' && row.status !== switchState.status) return false;
+    if (switchState.type !== 'all' && row.type !== switchState.type) return false;
+    if (switchState.month !== 'all' && row.switchableMonth !== switchState.month) return false;
+    if (switchState.year !== 'all' && !row.switchableMonth.startsWith(switchState.year))
+      return false;
+    return true;
+  });
+}
+
+function renderSwitchOpportunities() {
+  const table = document.getElementById('switch-table');
+  if (!table) return;
+  const rows = filteredSwitchOpportunities();
+  const available = switchState.rows.filter((row) => row.status === 'DISPONIBILE').length;
+  const pending = switchState.rows.filter((row) => row.status === 'CARICATO').length;
+  document.getElementById('switch-summary').innerHTML = `
+    <span><strong>${switchState.rows.length}</strong> totali</span>
+    <span><strong>${available}</strong> disponibili</span>
+    <span><strong>${pending}</strong> caricati</span>`;
+  table.innerHTML = rows
+    .map(
+      (row) => `<tr>
+        <td data-label="Cliente / Agente">
+          <strong>${escapeHtml(row.clientName || 'Cliente non indicato')}</strong>
+          <small>${escapeHtml(row.agentName || 'Agente non assegnato')}</small>
+        </td>
+        <td data-label="POD/PDR"><code>${escapeHtml(row.code)}</code></td>
+        <td data-label="Tipo"><span class="supply-chip ${escapeHtml(row.type)}">${escapeHtml(titleCase(row.type))}</span></td>
+        <td data-label="Ultimo fornitore">${escapeHtml(row.lastSupplier)}</td>
+        <td data-label="Ultimo switch OK">${formatSwitchDate(row.lastOkDate)}</td>
+        <td data-label="Operazione">${escapeHtml(row.lastOperation)}</td>
+        <td data-label="Switchabile da">${escapeHtml(switchMonthLabel(row.switchableMonth))}</td>
+        <td data-label="Disponibile dal"><strong>${formatSwitchDate(row.availableDate)}</strong></td>
+        <td data-label="Stato">
+          <span class="switch-status ${row.status.toLowerCase()}">${escapeHtml(row.status)}</span>
+          ${row.pendingAgentName ? `<small>Lavorato da ${escapeHtml(row.pendingAgentName)}</small>` : ''}
+        </td>
+      </tr>`
+    )
+    .join('');
+  document.getElementById('switch-empty').hidden = rows.length > 0;
+  document.querySelector('.switch-table-wrap').hidden = rows.length === 0;
+  const missing = switchState.diagnostics.missingSupplierConfigs || [];
+  const feedback = document.getElementById('switch-feedback');
+  feedback.textContent =
+    missing.length && isAdminViewer()
+      ? `Configurazione mesi mancante: ${missing.join(', ')}. Queste utenze non sono incluse.`
+      : `${rows.length} utenze mostrate, ordinate dalla disponibilità più vecchia.`;
+}
+
+function switchMonthLabel(value) {
+  if (!/^\d{4}-\d{2}$/.test(String(value || ''))) return '';
+  return capitalize(formatMonth.format(dateFromMonthKey(value)));
+}
+
+function formatSwitchDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))
+    ? formatDate.format(new Date(`${value}T12:00:00`))
+    : 'Non disponibile';
 }
 
 async function renderAdminPage({ force = false, month = selectedViewMonth } = {}) {
@@ -3540,6 +3734,75 @@ function renderAdminSupplierCutoffList(cutoffs) {
       </table>
     </div>
   `;
+}
+
+async function loadAdminSwitchDelays() {
+  if (!isAdminViewer()) return;
+  const container = document.getElementById('admin-switch-delays');
+  const feedback = document.getElementById('admin-switch-delay-feedback');
+  container.innerHTML = '<p>Caricamento configurazione...</p>';
+  try {
+    const result = await baserowClient.getAdminSwitchDelays();
+    renderAdminSwitchDelays(result.suppliers || []);
+    feedback.textContent = '';
+  } catch (error) {
+    container.innerHTML = '';
+    feedback.textContent = error.message || 'Periodi di storno non caricati.';
+  }
+}
+
+function renderAdminSwitchDelays(suppliers) {
+  const container = document.getElementById('admin-switch-delays');
+  if (!suppliers.length) {
+    container.innerHTML = '<p>Nessun fornitore configurato.</p>';
+    return;
+  }
+  container.innerHTML = suppliers
+    .map(
+      (supplier) => `<form class="switch-delay-row" data-switch-delay-form="${supplier.id}">
+        <label>
+          <strong>${escapeHtml(supplier.name)}</strong>
+          <span>Mesi prima della nuova disponibilità</span>
+        </label>
+        <input
+          name="months"
+          type="number"
+          min="0"
+          max="120"
+          step="1"
+          value="${supplier.switchDelayMonths ?? ''}"
+          placeholder="Non impostato"
+          ${isReadOnlyUser() ? 'disabled' : 'required'}
+        />
+        ${isReadOnlyUser() ? '' : '<button class="secondary-button compact-button" type="submit">Salva</button>'}
+      </form>`
+    )
+    .join('');
+  container.querySelectorAll('[data-switch-delay-form]').forEach((form) => {
+    form.addEventListener('submit', handleAdminSwitchDelaySubmit);
+  });
+}
+
+async function handleAdminSwitchDelaySubmit(event) {
+  event.preventDefault();
+  if (isReadOnlyUser()) return;
+  const form = event.currentTarget;
+  const supplierId = Number(form.dataset.switchDelayForm);
+  const months = Number(new FormData(form).get('months'));
+  const button = form.querySelector('button');
+  const feedback = document.getElementById('admin-switch-delay-feedback');
+  button.disabled = true;
+  feedback.textContent = 'Salvataggio periodo di storno...';
+  try {
+    await baserowClient.saveAdminSwitchDelay(supplierId, months);
+    switchState.loaded = false;
+    await loadAdminSwitchDelays();
+    feedback.textContent = 'Periodo di storno salvato.';
+  } catch (error) {
+    feedback.textContent = error.message || 'Periodo di storno non salvato.';
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function loadAdminSupplierCutoffs({ silent = false } = {}) {

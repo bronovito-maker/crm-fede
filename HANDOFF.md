@@ -1,6 +1,6 @@
 # Handoff CRM Fede Energia
 
-> Stato verificato all'11 agosto 2026. Leggere questo documento prima di modificare codice, schema Baserow o dati storici.
+> Stato codice e schema aggiornato al 17 agosto 2026. Backfill e mesi di storno sono stati applicati e verificati live; il webhook resta da configurare dopo il deploy.
 
 ## Sintesi
 
@@ -13,8 +13,9 @@ Il modello Contratti/Forniture e attivo:
 - pagamenti, stati e consumi separati per vettore;
 - ruolo `spettatore` in sola lettura;
 - `codice_crm` automatico come identificativo tecnico del contratto.
+- vista dinamica `Switch disponibili` per singolo POD/PDR, inclusi Dual e multipunto.
 
-La migrazione Baserow multipunto e stata eseguita con successo. Il repository e stato testato e pubblicato su `main`, ma lo stato del deploy Render successivo non e verificato da questo documento.
+La migrazione Baserow multipunto e stata eseguita con successo. Il repository e stato testato; il deploy Render della sezione Switch disponibili deve essere eseguito e verificato.
 
 ## Stato produzione Baserow
 
@@ -25,10 +26,10 @@ Verifica live dell'11 agosto 2026:
 | `Agenti`           |  925635 | Ruoli inclusi `agente`, `admin`, `spettatore`                     |
 | `Contratti`        |  925638 | Primary `codice_crm` formula; link a Clienti e Forniture presenti |
 | `Competenze`       |  928679 | Tabella legacy; non usata dal salvataggio corrente                |
-| `Fornitori`        |  930259 | Elenco fornitori                                                  |
+| `Fornitori`        |  930259 | Elenco fornitori; `mesi_storno_switch` presente                   |
 | `Cutoff_fornitori` |  930260 | Cut-off per fornitore/mese                                        |
-| `Clienti`          |  931646 | Collegata a Agenti e Forniture; schema da completare              |
-| `Forniture`        | 1117525 | Schema multipunto completo                                        |
+| `Clienti`          |  931646 | `pec`, `metodo_pagamento` e `iban` presenti                       |
+| `Forniture`        | 1117525 | Schema multipunto completo; `data_switch_ok` presente             |
 
 Esito migrazione del 10 agosto 2026:
 
@@ -45,26 +46,39 @@ Esito migrazione del 10 agosto 2026:
 
 I report con snapshot, checkpoint e ID creati sono in `migration-reports/`, directory ignorata da Git.
 
-## Blocco da risolvere prima del prossimo rilascio
+## Allineamento schema e backfill completati
 
-La tabella live `Clienti` non contiene ancora:
+Il 16 agosto 2026 sono stati creati nella tabella live `Clienti`:
 
 - `pec`;
 - `metodo_pagamento`;
 - `iban`.
 
-Il backend usa questi campi in `normalizeClient`, `syncClientFromContract` e in parte negli aggiornamenti cliente. Finche lo schema non viene allineato, la sincronizzazione automatica del cliente puo fallire e restituire `null`, anche se il contratto viene salvato.
+Sono stati inoltre creati `Forniture.data_switch_ok` come Date e `Fornitori.mesi_storno_switch` come Number intero non negativo.
 
-Procedura consigliata:
+Backfill applicati con conferma numerica e dry-run finale:
 
-1. Creare in `Clienti` `pec` come Email o Text.
-2. Creare `metodo_pagamento` come Single select con `bollettino` e `rid`.
-3. Creare `iban` come Text.
-4. Verificare un nuovo contratto con P.IVA e controllare il link `cliente` su padre e figlie.
-5. Verificare la modifica di PEC, pagamento e IBAN senza errori Baserow.
-6. Eseguire nuovamente l'intera suite prima del deploy.
+1. 444 forniture `OK` valorizzate con la `data_inserimento` storica come approssimazione dichiarata.
+2. 333 clienti integrati senza sovrascrivere campi esistenti: 333 pagamenti, 230 IBAN e 33 PEC.
+3. Dry-run finale `data_switch_ok`: 0 modifiche, 0 anomalie.
+4. Dry-run finale Clienti: 0 modifiche.
 
-Non aggiungere colonne omonime con maiuscole o spazi: il backend usa esattamente i nomi sopra.
+Non aggiungere colonne omonime con maiuscole o spazi: il backend usa esattamente i nomi sopra. Lo script `baserow:setup-forniture` ora crea questi campi.
+
+Configurazione mesi verificata live il 17 agosto 2026:
+
+| Fornitore | Mesi dopo ingresso in fornitura | Stato regola |
+| --------- | ------------------------------: | ------------ |
+| Hera      |                               2 | confermata   |
+| Estra     |                               4 | confermata   |
+| Duferco   |                               6 | provvisoria  |
+| Sev Iren  |                               4 | provvisoria  |
+| Sorgenia  |                               4 | provvisoria  |
+| Eni       |                               4 | provvisoria  |
+
+I valori restano modificabili dalla configurazione Admin senza deploy. Prima del rilascio restano da configurare i webhook Baserow sulle tabelle `Forniture` e `Contratti`, necessari per mantenere allineati stati e `data_switch_ok` anche dopo modifiche dirette.
+
+Il periodo di storno decorre da `data_inizio_fornitura` dell'ultimo switch `OK`. Solo per gli storici senza tale data il motore usa `data_switch_ok` e poi `data_inserimento` come fallback.
 
 ## Configurazione Render
 
@@ -80,6 +94,9 @@ BASEROW_TABLE_FORNITORI_ID=930259
 BASEROW_TABLE_CUTOFF_FORNITORI_ID=930260
 BASEROW_TABLE_CLIENTI_ID=931646
 BASEROW_TABLE_FORNITURE_ID=1117525
+BASEROW_FIELD_FORNITORI_MESI_STORNO=mesi_storno_switch
+BASEROW_FIELD_FORNITURE_DATA_SWITCH_OK=data_switch_ok
+BASEROW_WEBHOOK_SECRET=...
 ```
 
 I nomi campo configurabili e i servizi opzionali sono elencati in [.env.example](./.env.example).
@@ -201,6 +218,24 @@ BASEROW_JWT_TOKEN=... npm run baserow:setup-forniture
 
 Lo script aggiunge solo campi mancanti per Contratti/Forniture e l'opzione `spettatore`. Non completa attualmente i tre campi mancanti di `Clienti`; crearli manualmente o estendere lo script in una modifica dedicata.
 
+### Migrazione date switch e Clienti
+
+Eseguire prima i dry-run:
+
+```bash
+npm run baserow:backfill-switch-ok
+npm run baserow:backfill-clienti
+```
+
+Solo dopo il controllo puntuale dell'output:
+
+```bash
+npm run baserow:backfill-switch-ok -- --apply --confirm=N
+npm run baserow:backfill-clienti -- --apply --confirm=N
+```
+
+Il primo usa `data_inserimento` come approssimazione per gli `OK` storici. Il secondo non sovrascrive mai PEC, pagamento o IBAN gia presenti.
+
 ### Migrazione multipunto
 
 Dry-run:
@@ -253,6 +288,10 @@ Checklist manuale:
 8. Modifica padre a `K.O.` in Baserow, attesa TTL e refresh CRM.
 9. Login Spettatore: dati visibili, `Nuovo contratto` assente, scritture bloccate.
 10. Upload reale su R2 e ricezione notifica Resend, se configurata.
+11. Verifica della configurazione mesi di storno per tutti i fornitori.
+12. Verifica Switch disponibili il 14 e il 15 del mese utile.
+13. Sequenza `OK -> CARICATO -> K.O. -> CARICATO -> OK` sullo stesso POD/PDR.
+14. Modifica diretta dello stato sia in `Forniture` sia in `Contratti` e verifica automatica di stato e `data_switch_ok` via webhook.
 
 ## Test attuali
 
@@ -266,10 +305,14 @@ La suite copre:
 - autorizzazioni Spettatore;
 - route principali con fetch mockato;
 - sessioni SQLite.
+- motore switch per giorno 15, retry, Cambio listino, subentro e multipunto.
 
 ## Attivita aperte
 
-- [ ] Allineare lo schema live `Clienti` con `pec`, `metodo_pagamento`, `iban`.
+- [x] Applicare e verificare lo schema live per Clienti, `data_switch_ok` e mesi di storno.
+- [x] Eseguire i due backfill dopo aver controllato i dry-run.
+- [x] Inserire e verificare i mesi di storno per tutti i fornitori.
+- [ ] Configurare e provare i webhook Baserow di `Forniture` e `Contratti`.
 - [ ] Eseguire uno smoke test completo sul deploy Render successivo al commit multipunto.
 - [ ] Verificare persistenza `SESSION_DB_PATH` su Render.
 - [ ] Verificare upload R2 con file reale e URL pubblico.

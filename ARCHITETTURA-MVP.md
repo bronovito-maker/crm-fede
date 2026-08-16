@@ -1,6 +1,6 @@
 # Architettura CRM Fede Energia
 
-> Documento tecnico aggiornato all'11 agosto 2026. Lo schema descritto come "live" e stato verificato direttamente su Baserow.
+> Documento tecnico aggiornato al 17 agosto 2026. Colonne, backfill e mesi fornitori sono stati verificati live; resta da configurare il webhook dopo il deploy.
 
 ## Obiettivo
 
@@ -35,8 +35,11 @@ public/index.html                 struttura della SPA
 public/app.js                     stato, rendering e interazioni frontend
 public/styles.css                 layout responsive e componenti visuali
 public/baserowClient.js           client HTTP verso /api/*
+switch-opportunities.js           motore puro della disponibilita per POD/PDR
 scripts/setup-baserow-forniture.js setup schema con JWT temporaneo
 scripts/migrate-multipoint-supplies.js migrazione chirurgica multipunto
+scripts/backfill-switch-ok-dates.js backfill dry-run delle date OK
+scripts/backfill-client-fields.js  backfill dry-run dei campi Clienti
 test/                             test di logica, route, validazione e transazioni
 ```
 
@@ -72,6 +75,7 @@ Il server applica:
 | Creare/modificare/eliminare contratti        | Si, nel proprio ambito | Si    | No         |
 | Gestire agenti e cut-off                     | No                     | Si    | No         |
 | Vedere `Nuovo contratto`                     | Si                     | Si    | No         |
+| Vedere gli switch disponibili                | Solo i propri          | Tutti | Tutti      |
 
 Le viste amministrative usano `requireAdminViewer`, valido per `admin` e `spettatore`. Le scritture amministrative usano `requireAdmin`, valido solo per `admin`. Le altre scritture chiamano `assertCanWrite`, che risponde `403 READ_ONLY_ROLE` allo Spettatore.
 
@@ -150,6 +154,7 @@ I campi POD/PDR/stato/pagamento sul padre restano per compatibilita e riepilogo.
 | `potenza_impegnata`   | Number                | Solo POD                                      |
 | `potenza_disponibile` | Number                | `potenza_impegnata * 1,10`, calcolata dal CRM |
 | `consumo_annuo`       | Number                | kWh su Luce, Smc su Gas                       |
+| `data_switch_ok`      | Date                  | Data effettiva dell'ultimo ingresso in `OK`   |
 
 La modifica CRM riutilizza l'ID della riga figlia quando disponibile. In alternativa il backend effettua un match conservativo per tipo e codice. Le righe non piu presenti nel form vengono eliminate solo dopo aver salvato quelle desiderate; in caso di errore vengono eseguite compensazioni.
 
@@ -165,14 +170,17 @@ La modifica CRM riutilizza l'ID della riga figlia quando disponibile. In alterna
 | `agente`                 | Link row -> Agenti |
 | `tipo_cliente`           | Single select      |
 | `categoria_cliente`      | Single select      |
+| `pec`                    | Email              |
+| `metodo_pagamento`       | Single select      |
+| `iban`                   | Text               |
 | `Forniture`              | Link row inverso   |
 
-Attenzione: al controllo dell'11 agosto 2026 lo schema live non include `pec`, `metodo_pagamento` e `iban`, ma il backend li legge o li invia durante alcune sincronizzazioni cliente. Questo disallineamento deve essere risolto e verificato prima del prossimo rilascio applicativo.
+I campi `pec`, `metodo_pagamento` e `iban` sono stati creati e verificati live il 16 agosto 2026. Il backfill ha integrato 333 clienti senza sovrascritture e il dry-run finale ha restituito zero modifiche.
 
 ### Tabelle di supporto
 
 - `Competenze`: tabella legacy ancora configurabile, ma non usata dal salvataggio corrente.
-- `Fornitori`: elenco fornitori disponibile nel form e nei filtri.
+- `Fornitori`: elenco fornitori e campo intero `mesi_storno_switch`.
 - `Cutoff_fornitori`: cut-off specifico per coppia fornitore/mese.
 
 ## Flusso contratto
@@ -238,6 +246,27 @@ La competenza e calcolata dal server, non dal browser. Se il mese viene scelto e
 
 Il server salva `mese_riferimento`, `trimestre_riferimento` e `anno_riferimento`. Il calcolo corrente consulta `Cutoff_fornitori`; non usa la vecchia tabella `Competenze` come fallback.
 
+## Switch disponibili
+
+La schermata non usa una tabella di appoggio. `switch-opportunities.js` espande ogni pratica in eventi per singola fornitura, raggruppati tramite `luce:POD` o `gas:PDR`. Per i contratti storici senza figlie usa i codici del padre.
+
+Regole applicate:
+
+- operazioni ammesse: `switch`, `switch + voltura`, `subentro`, mostrato come `Subentro + Switch`;
+- `cambio listino` viene escluso prima del raggruppamento;
+- solo `OK` sostituisce l'ultimo switch valido;
+- `Caricato`, `Inviato` e il legacy `In avanzamento` producono lo stato UI `CARICATO`;
+- `K.O.` e `Switch - Out` non cambiano il riferimento e ripristinano `DISPONIBILE`;
+- la disponibilita e il giorno 15 del mese ottenuto aggiungendo `mesi_storno_switch` a `data_inizio_fornitura` dell'ultimo switch `OK`;
+- se `data_inizio_fornitura` manca su uno storico, il fallback e `data_switch_ok`, quindi `data_inserimento`;
+- una volta disponibile, l'utenza rimane in lista finche un nuovo tentativo diventa `OK`;
+- Dual e multipunto vengono valutati per singola riga `Forniture`;
+- l'endpoint filtra lato server le opportunita degli agenti normali usando il proprietario in `Clienti.agente`, con fallback sull'agente dell'ultimo OK.
+
+Le transizioni effettuate dal CRM valorizzano o puliscono `data_switch_ok` insieme allo stato. Per le modifiche dirette in Baserow vanno configurati due webhook, entrambi protetti da `BASEROW_WEBHOOK_SECRET`: `Forniture` verso `POST /api/integrations/baserow/supply-status` e `Contratti` verso `POST /api/integrations/baserow/contract-status`. Il primo riallinea il padre quando tutte le figlie hanno lo stesso stato; il secondo propaga lo stato del padre a ogni figlia.
+
+Valori live iniziali: Hera 2 mesi, Estra 4, Duferco 6, Sev Iren 4, Sorgenia 4 ed Eni 4. I valori di Duferco, Sev Iren, Sorgenia ed Eni sono provvisori e possono essere aggiornati dalla configurazione Admin; non sono costanti nel codice.
+
 ## Conteggi, target e CB
 
 - Ogni riga `Forniture` vale una unita.
@@ -251,32 +280,37 @@ Il server salva `mese_riferimento`, `trimestre_riferimento` e `anno_riferimento`
 
 ## API
 
-| Metodo e percorso                     | Accesso                       | Scopo                          |
-| ------------------------------------- | ----------------------------- | ------------------------------ |
-| `GET /api/health`                     | Pubblico                      | Stato configurazione minima    |
-| `GET /api/config`                     | Autenticato                   | Config frontend non sensibile  |
-| `GET /api/session`                    | Pubblico con cookie opzionale | Stato sessione                 |
-| `POST /api/login`                     | Pubblico, limitato            | Login                          |
-| `POST /api/logout`                    | Sessione opzionale            | Logout                         |
-| `GET /api/agent`                      | Autenticato                   | Profilo corrente               |
-| `GET /api/contracts`                  | Autenticato                   | Contratti nello scope utente   |
-| `POST /api/contracts`                 | Agente/Admin                  | Crea contratto e forniture     |
-| `PATCH /api/contracts/:id`            | Proprietario/Admin            | Modifica contratto e forniture |
-| `DELETE /api/contracts/:id`           | Proprietario/Admin            | Elimina contratto e forniture  |
-| `PATCH /api/contracts/:id/status`     | Proprietario/Admin            | Aggiorna stato padre e figlie  |
-| `GET /api/competence/current`         | Autenticato                   | Competenza corrente            |
-| `GET /api/competenze`                 | Autenticato                   | Configurazioni competenza      |
-| `GET /api/suppliers`                  | Autenticato                   | Fornitori                      |
-| `GET /api/clients`                    | Autenticato                   | Clienti filtrati o globali     |
-| `PATCH /api/clients/:id`              | Proprietario/Admin            | Aggiorna e propaga anagrafica  |
-| `GET /api/admin/agents`               | Admin/Spettatore              | Lista agenti                   |
-| `POST /api/admin/agents`              | Admin                         | Crea account                   |
-| `PATCH /api/admin/agents/:id`         | Admin                         | Modifica account               |
-| `GET /api/admin/contracts`            | Admin/Spettatore              | Contratti globali              |
-| `PATCH /api/admin/contracts/:id/sent` | Admin                         | Segna inviato/non inviato      |
-| `GET /api/admin/stats`                | Admin/Spettatore              | Statistiche globali            |
-| `GET /api/admin/supplier-cutoffs`     | Admin/Spettatore              | Legge cut-off                  |
-| `PUT /api/admin/supplier-cutoffs`     | Admin                         | Salva cut-off                  |
+| Metodo e percorso                                | Accesso                       | Scopo                          |
+| ------------------------------------------------ | ----------------------------- | ------------------------------ |
+| `GET /api/health`                                | Pubblico                      | Stato configurazione minima    |
+| `GET /api/config`                                | Autenticato                   | Config frontend non sensibile  |
+| `GET /api/session`                               | Pubblico con cookie opzionale | Stato sessione                 |
+| `POST /api/login`                                | Pubblico, limitato            | Login                          |
+| `POST /api/logout`                               | Sessione opzionale            | Logout                         |
+| `GET /api/agent`                                 | Autenticato                   | Profilo corrente               |
+| `GET /api/contracts`                             | Autenticato                   | Contratti nello scope utente   |
+| `POST /api/contracts`                            | Agente/Admin                  | Crea contratto e forniture     |
+| `PATCH /api/contracts/:id`                       | Proprietario/Admin            | Modifica contratto e forniture |
+| `DELETE /api/contracts/:id`                      | Proprietario/Admin            | Elimina contratto e forniture  |
+| `PATCH /api/contracts/:id/status`                | Proprietario/Admin            | Aggiorna stato padre e figlie  |
+| `GET /api/competence/current`                    | Autenticato                   | Competenza corrente            |
+| `GET /api/competenze`                            | Autenticato                   | Configurazioni competenza      |
+| `GET /api/suppliers`                             | Autenticato                   | Fornitori                      |
+| `GET /api/switch-opportunities`                  | Autenticato                   | Vista dinamica per POD/PDR     |
+| `GET /api/clients`                               | Autenticato                   | Clienti filtrati o globali     |
+| `PATCH /api/clients/:id`                         | Proprietario/Admin            | Aggiorna e propaga anagrafica  |
+| `GET /api/admin/agents`                          | Admin/Spettatore              | Lista agenti                   |
+| `POST /api/admin/agents`                         | Admin                         | Crea account                   |
+| `PATCH /api/admin/agents/:id`                    | Admin                         | Modifica account               |
+| `GET /api/admin/contracts`                       | Admin/Spettatore              | Contratti globali              |
+| `PATCH /api/admin/contracts/:id/sent`            | Admin                         | Segna inviato/non inviato      |
+| `GET /api/admin/stats`                           | Admin/Spettatore              | Statistiche globali            |
+| `GET /api/admin/supplier-cutoffs`                | Admin/Spettatore              | Legge cut-off                  |
+| `PUT /api/admin/supplier-cutoffs`                | Admin                         | Salva cut-off                  |
+| `GET /api/admin/switch-delays`                   | Admin/Spettatore              | Legge mesi di storno           |
+| `PUT /api/admin/switch-delays/:id`               | Admin                         | Salva mesi di storno           |
+| `POST /api/integrations/baserow/supply-status`   | Segreto webhook               | Sincronizza `data_switch_ok`   |
+| `POST /api/integrations/baserow/contract-status` | Segreto webhook               | Propaga lo stato alle figlie   |
 
 ## Cache e invalidazione
 
@@ -299,6 +333,15 @@ Le letture principali usano una cache in memoria con TTL predefinito di 15 secon
 
 Lo script `migrate-contract-supplies.js` e legacy e non deve essere applicato dopo la migrazione multipunto.
 
+I nuovi backfill partono sempre in dry-run:
+
+```bash
+npm run baserow:backfill-switch-ok
+npm run baserow:backfill-clienti
+```
+
+Dopo il controllo dell'elenco previsto si applicano con `-- --apply --confirm=N`, usando il numero esatto mostrato dal dry-run. Il backfill switch usa `data_inserimento` come approssimazione dichiarata per gli `OK` storici; quello Clienti valorizza solo campi vuoti prendendo il contratto collegato piu recente.
+
 ## Variabili ambiente
 
 La lista completa, con valori vuoti e commenti, e in [.env.example](./.env.example). In produzione le variabili vanno configurate sul servizio Render; `.env` resta solo locale ed e ignorato da Git.
@@ -313,6 +356,7 @@ Necessarie per il modello completo:
 
 - `BASEROW_TABLE_FORNITURE_ID`
 - `BASEROW_TABLE_CLIENTI_ID`
+- `BASEROW_WEBHOOK_SECRET`
 - ID tabelle fornitori e cut-off
 - configurazione R2 per allegati
 
@@ -347,7 +391,7 @@ Per le verifiche manuali usare almeno:
 
 ## Limiti noti
 
-- Lo schema `Clienti` live e incompleto rispetto ai campi usati dal backend; vedere HANDOFF.
+- I valori di storno di Duferco, Sev Iren, Sorgenia ed Eni sono provvisori e devono essere confermati dal committente.
 - Le transazioni tra Baserow, R2 e SQLite sono applicative, non ACID distribuite.
-- Le modifiche dirette in Baserow non generano eventi push; il CRM le vede al refresh/scadenza cache.
+- Le modifiche dirette in Baserow richiedono i webhook `Forniture` e `Contratti`; senza webhook la sincronizzazione padre/figlie e la data di transizione non sono garantite.
 - I report di migrazione sono locali e ignorati da Git: vanno conservati in un backup operativo sicuro se necessari per audit.

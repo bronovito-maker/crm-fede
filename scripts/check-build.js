@@ -4,6 +4,7 @@ const path = require('path');
 
 const filesToCheck = [
   'server.js',
+  'switch-opportunities.js',
   'public/app.js',
   'public/config.js',
   'public/baserowClient.js',
@@ -13,6 +14,8 @@ const filesToCheck = [
   'scripts/setup-baserow-forniture.js',
   'scripts/migrate-contract-supplies.js',
   'scripts/migrate-multipoint-supplies.js',
+  'scripts/backfill-switch-ok-dates.js',
+  'scripts/backfill-client-fields.js',
 ];
 
 let hasErrors = false;

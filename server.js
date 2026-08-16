@@ -12,6 +12,7 @@ const morgan = require('morgan');
 const Database = require('better-sqlite3');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const sharp = require('sharp');
+const { buildSwitchOpportunities } = require('./switch-opportunities');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,6 +27,8 @@ const CONFIG = {
   competenzeCutoffField: process.env.BASEROW_FIELD_COMPETENZE_CUTOFF || 'data_cutoff',
   fornitoriTableId: process.env.BASEROW_TABLE_FORNITORI_ID || '',
   fornitoriNameField: process.env.BASEROW_FIELD_FORNITORI_NOME || 'nome',
+  fornitoriSwitchDelayField:
+    process.env.BASEROW_FIELD_FORNITORI_MESI_STORNO || 'mesi_storno_switch',
   cutoffFornitoriTableId: process.env.BASEROW_TABLE_CUTOFF_FORNITORI_ID || '',
   cutoffFornitoreField: process.env.BASEROW_FIELD_CUTOFF_FORNITORE || 'fornitore',
   cutoffFornitoriMonthField: process.env.BASEROW_FIELD_CUTOFF_MESE || 'mese_competenza',
@@ -34,6 +37,8 @@ const CONFIG = {
   contrattiAgenteField: process.env.BASEROW_FIELD_CONTRATTI_AGENTE || 'agente',
   clientiTableId: process.env.BASEROW_TABLE_CLIENTI_ID || '',
   fornitureTableId: process.env.BASEROW_TABLE_FORNITURE_ID || '',
+  suppliesSwitchOkDateField: process.env.BASEROW_FIELD_FORNITURE_DATA_SWITCH_OK || 'data_switch_ok',
+  baserowWebhookSecret: process.env.BASEROW_WEBHOOK_SECRET || '',
   sessionTtlMs: Number(process.env.SESSION_TTL_HOURS || 12) * 60 * 60 * 1000,
   cookieSecure: process.env.NODE_ENV === 'production',
   resendApiKey: process.env.RESEND_API_KEY || '',
@@ -234,6 +239,67 @@ app.get('/api/health', (req, res) => {
     ok: isConfigured(),
     service: 'crm-energia',
   });
+});
+
+app.post('/api/integrations/baserow/supply-status', async (req, res) => {
+  try {
+    ensureConfigured();
+    requireBaserowWebhookSecret(req);
+
+    const supplyIds = extractBaserowWebhookRowIds(req.body);
+    if (!supplyIds.length) {
+      throw publicError(400, 'WEBHOOK_ROW_INVALID', 'Riga fornitura non valida.');
+    }
+    const processed = [];
+    const contractIds = new Set();
+    for (const supplyId of supplyIds) {
+      const row = await getBaserowSupply(supplyId);
+      const contractId = Number(linkedAgentId(row.contratto));
+      if (contractId) contractIds.add(contractId);
+      const status = normalizeStatus(selectValue(row.stato));
+      const currentDate = normalizeIsoDate(row[CONFIG.suppliesSwitchOkDateField]);
+      const expectedDate = status === 'OK' ? currentDate || todayIsoDate() : '';
+      if (currentDate !== expectedDate) {
+        await updateBaserowSupply(supplyId, {
+          [CONFIG.suppliesSwitchOkDateField]: expectedDate || null,
+        });
+      }
+      processed.push({ supplyId, status, dataSwitchOk: expectedDate });
+    }
+    for (const contractId of contractIds) {
+      await syncParentStatusFromSupplies(contractId);
+    }
+    invalidateSwitchOpportunitiesCache();
+    res.json({ ok: true, processed });
+  } catch (error) {
+    handleApiError(res, error, 'BASEROW_WEBHOOK_FAILED', 'Webhook Baserow non elaborato.');
+  }
+});
+
+app.post('/api/integrations/baserow/contract-status', async (req, res) => {
+  try {
+    ensureConfigured();
+    requireBaserowWebhookSecret(req);
+    const contractIds = extractBaserowWebhookRowIds(req.body);
+    if (!contractIds.length) {
+      throw publicError(400, 'WEBHOOK_ROW_INVALID', 'Riga contratto non valida.');
+    }
+
+    const processed = [];
+    for (const contractId of contractIds) {
+      const contract = await getBaserowContract(contractId);
+      const status = normalizeStatus(selectValue(contract.stato_contratto));
+      const supplies = await listBaserowSuppliesForContract(contractId);
+      await updateSupplyStatuses(supplies, status);
+      processed.push({ contractId, status, supplies: supplies.length });
+    }
+    invalidateContractsCache();
+    invalidateAdminStatsCache();
+    invalidateSwitchOpportunitiesCache();
+    res.json({ ok: true, processed });
+  } catch (error) {
+    handleApiError(res, error, 'BASEROW_WEBHOOK_FAILED', 'Webhook Baserow non elaborato.');
+  }
 });
 
 app.get('/api/config', requireAuth, (req, res) => {
@@ -462,6 +528,7 @@ app.post(
       invalidateContractsCache(assignedAgent.id);
       invalidateAdminStatsCache();
       invalidateClientsCache(assignedAgent.id);
+      invalidateSwitchOpportunitiesCache();
       sendContractNotification(assignedAgent.nome, contract, saveMode).catch(() => {});
       res
         .status(201)
@@ -601,6 +668,7 @@ app.patch(
       invalidateAdminStatsCache();
       invalidateClientsCache(existingAgentId);
       invalidateClientsCache(assignedAgentId);
+      invalidateSwitchOpportunitiesCache();
 
       res.json(normalizeContractForAssignedAgent(updated, assignedAgent, updatedSupplies));
     } catch (error) {
@@ -643,6 +711,7 @@ app.delete('/api/contracts/:id', requireAuth, async (req, res) => {
     }
     invalidateContractsCache(existingAgentId);
     invalidateAdminStatsCache();
+    invalidateSwitchOpportunitiesCache();
     res.json({ ok: true });
   } catch (error) {
     handleApiError(res, error, 'CONTRACT_NOT_DELETED', 'Contratto non eliminato.');
@@ -685,6 +754,7 @@ app.patch('/api/contracts/:id/status', requireAuth, async (req, res) => {
     }
     invalidateContractsCache(req.session.agentId);
     invalidateAdminStatsCache();
+    invalidateSwitchOpportunitiesCache();
     res.json(normalizeContract(updated, updatedSupplies));
   } catch (error) {
     handleApiError(res, error, 'CONTRACT_STATUS_NOT_UPDATED', 'Stato contratto non aggiornato.');
@@ -759,12 +829,21 @@ app.patch('/api/admin/contracts/:id/sent', requireAdmin, async (req, res) => {
       stato_contratto: sent ? 'Inviato' : 'Caricato',
     });
     const supplyRows = await listBaserowSuppliesForContract(contractId);
+    const nextStatus = sent ? 'Inviato' : 'Caricato';
     const updatedSupplies = await Promise.all(
       supplyRows.map((supply) =>
-        updateBaserowSupply(supply.id, { stato: sent ? 'Inviato' : 'Caricato' })
+        updateBaserowSupply(supply.id, {
+          stato: nextStatus,
+          [CONFIG.suppliesSwitchOkDateField]: switchOkDateForTransition(
+            selectValue(supply.stato),
+            supply[CONFIG.suppliesSwitchOkDateField],
+            nextStatus
+          ),
+        })
       )
     );
     invalidateAdminStatsCache();
+    invalidateSwitchOpportunitiesCache();
     res.json(normalizeContract(updated, updatedSupplies));
   } catch (error) {
     handleApiError(res, error, 'ADMIN_CONTRACT_NOT_UPDATED', 'Stato contratto non aggiornato.');
@@ -814,6 +893,72 @@ app.get('/api/suppliers', apiReadLimiter, requireAuth, async (_req, res) => {
     res.json(suppliers);
   } catch (error) {
     handleApiError(res, error, 'SUPPLIERS_LOAD_FAILED', 'Fornitori non disponibili.');
+  }
+});
+
+app.get('/api/switch-opportunities', apiReadLimiter, requireAuth, async (req, res) => {
+  try {
+    ensureConfigured();
+    const currentUser = await getCurrentAgent(req.session.agentId);
+    const result = await getCached('switch:opportunities', async () => {
+      const [contracts, suppliers, clients, agents] = await Promise.all([
+        listAllContracts(),
+        listSuppliers(),
+        listAllClients(),
+        listAgents(),
+      ]);
+      return buildSwitchOpportunities(contracts, suppliers, {
+        clientsById: clients,
+        agentsById: agents,
+      });
+    });
+    const opportunities = canViewAdminData(currentUser)
+      ? result.opportunities
+      : result.opportunities.filter(
+          (opportunity) => Number(opportunity.agentId) === Number(req.session.agentId)
+        );
+    res.json({
+      ...result,
+      opportunities,
+      diagnostics: canViewAdminData(currentUser)
+        ? result.diagnostics
+        : { ...result.diagnostics, missingSupplierConfigs: [] },
+    });
+  } catch (error) {
+    handleApiError(
+      res,
+      error,
+      'SWITCH_OPPORTUNITIES_LOAD_FAILED',
+      'Switch disponibili non caricati.'
+    );
+  }
+});
+
+app.get('/api/admin/switch-delays', apiReadLimiter, requireAdminViewer, async (_req, res) => {
+  try {
+    ensureConfigured();
+    res.json({ suppliers: await listSuppliers() });
+  } catch (error) {
+    handleApiError(res, error, 'SWITCH_DELAYS_LOAD_FAILED', 'Periodi di storno non disponibili.');
+  }
+});
+
+app.put('/api/admin/switch-delays/:supplierId', requireAdmin, async (req, res) => {
+  try {
+    ensureConfigured();
+    const supplierId = integerValue(req.params.supplierId);
+    const months = Number(req.body.months);
+    if (!supplierId) throw publicError(400, 'SUPPLIER_INVALID', 'Fornitore non valido.');
+    if (!Number.isInteger(months) || months < 0 || months > 120) {
+      throw publicError(400, 'SWITCH_DELAY_INVALID', 'Inserisci un numero di mesi tra 0 e 120.');
+    }
+    const updated = await updateBaserowSupplier(supplierId, {
+      [CONFIG.fornitoriSwitchDelayField]: months,
+    });
+    invalidateSwitchOpportunitiesCache();
+    res.json(normalizeSupplier(updated));
+  } catch (error) {
+    handleApiError(res, error, 'SWITCH_DELAY_NOT_SAVED', 'Periodo di storno non salvato.');
   }
 });
 
@@ -902,6 +1047,7 @@ app.patch('/api/clients/:id', requireAuth, async (req, res) => {
     invalidateClientsCache(agentId);
     invalidateAdminStatsCache();
     invalidateCacheByPrefix('contracts:'); // invalida contratti di tutti gli agenti
+    invalidateSwitchOpportunitiesCache();
     res.json(normalizeClient(updated));
   } catch (error) {
     handleApiError(res, error, 'CLIENT_NOT_UPDATED', 'Impossibile aggiornare il cliente.');
@@ -936,6 +1082,7 @@ module.exports = {
   createContractSupplies,
   canViewAdminData,
   cleanText,
+  commonSupplyStatus,
   computeCompetenceMonthFromCutoff,
   contractCommissionValue,
   contractStatusUnitCount,
@@ -951,6 +1098,7 @@ module.exports = {
   integerValue,
   invalidateAdminStatsCache,
   invalidateContractsCache,
+  invalidateSwitchOpportunitiesCache,
   isCurrentAgentContract,
   isAllowedContractFile,
   isValidVatOrFiscalCode,
@@ -1164,6 +1312,10 @@ function invalidateAdminStatsCache() {
 
 function invalidateSupplierCutoffCache() {
   apiCache.delete(supplierCutoffCacheKey());
+}
+
+function invalidateSwitchOpportunitiesCache() {
+  apiCache.delete('switch:opportunities');
 }
 
 async function baserowFetch(pathname, options = {}) {
@@ -1380,11 +1532,36 @@ async function listSupplierRowsById() {
 }
 
 async function listSuppliers() {
-  const supplierMap = await listSupplierRowsById();
-  return [...supplierMap.entries()]
-    .map(([id, name]) => ({ id: Number(id), name: cleanText(name) }))
+  ensureSupplierTableEnabled();
+  const rows = await fetchAllBaserowRows(
+    CONFIG.fornitoriTableId,
+    new URLSearchParams({ user_field_names: 'true' }),
+    'lista fornitori'
+  );
+  return rows
+    .map(normalizeSupplier)
     .filter((row) => row.id > 0 && row.name)
     .sort((left, right) => left.name.localeCompare(right.name, 'it'));
+}
+
+function normalizeSupplier(row) {
+  const rawMonths = row?.[CONFIG.fornitoriSwitchDelayField];
+  const parsedMonths =
+    rawMonths === '' || rawMonths === null || rawMonths === undefined ? null : Number(rawMonths);
+  return {
+    id: Number(row?.id) || 0,
+    name: cleanText(row?.[CONFIG.fornitoriNameField]),
+    active: row?.attivo === undefined ? true : Boolean(row.attivo),
+    switchDelayMonths: Number.isInteger(parsedMonths) && parsedMonths >= 0 ? parsedMonths : null,
+  };
+}
+
+async function updateBaserowSupplier(supplierId, payload) {
+  ensureSupplierTableEnabled();
+  return baserowFetch(
+    `/api/database/rows/table/${CONFIG.fornitoriTableId}/${supplierId}/?user_field_names=true`,
+    { method: 'PATCH', body: JSON.stringify(payload) }
+  );
 }
 
 function normalizeSupplierKey(value) {
@@ -1671,6 +1848,13 @@ async function createBaserowSupply(payload) {
   );
 }
 
+async function getBaserowSupply(supplyId) {
+  ensureSuppliesConfigured();
+  return baserowFetch(
+    `/api/database/rows/table/${CONFIG.fornitureTableId}/${supplyId}/?user_field_names=true`
+  );
+}
+
 async function updateBaserowSupply(supplyId, payload) {
   ensureSuppliesConfigured();
   return baserowFetch(
@@ -1730,6 +1914,7 @@ function contractClientData(contract, agentId) {
     ragioneSociale: contract.ragioneSociale,
     piva: contract.piva,
     email: contract.email,
+    pec: contract.pec,
     cellulare: contract.cellulare,
     indirizzoFatturazione: contract.indirizzoFatturazione,
     tipoCliente: contract.tipoCliente,
@@ -1763,7 +1948,16 @@ function buildSupplyPayload(contract, contractId, point, status, clientId = null
     potenza_impegnata: committedPower,
     potenza_disponibile: committedPower === null ? null : Number((committedPower * 1.1).toFixed(2)),
     consumo_annuo: type === 'luce' ? contract.consumoAnnuoLuce : contract.consumoAnnuoGas,
+    [CONFIG.suppliesSwitchOkDateField]: status === 'OK' ? todayIsoDate() : null,
   };
+}
+
+function switchOkDateForTransition(previousStatus, previousDate, nextStatus) {
+  const oldStatus = normalizeStatus(previousStatus);
+  const newStatus = normalizeStatus(nextStatus);
+  if (newStatus !== 'OK') return null;
+  if (oldStatus === 'OK' && normalizeIsoDate(previousDate)) return normalizeIsoDate(previousDate);
+  return todayIsoDate();
 }
 
 function writableBaserowValue(value) {
@@ -1801,6 +1995,7 @@ function supplyPayloadFromRow(row) {
     'potenza_impegnata',
     'potenza_disponibile',
     'consumo_annuo',
+    CONFIG.suppliesSwitchOkDateField,
   ]);
 }
 
@@ -1883,6 +2078,11 @@ async function syncContractSupplies(contract, contractId, fallbackStatus, client
             : contract.statoGas || existingStatus || fallbackStatus;
       const payload = buildSupplyPayload(contract, contractId, point, status, clientId);
       if (existing) {
+        payload[CONFIG.suppliesSwitchOkDateField] = switchOkDateForTransition(
+          selectValue(existing.stato),
+          existing[CONFIG.suppliesSwitchOkDateField],
+          status
+        );
         retainedIds.add(Number(existing.id));
         saved.push(await updateBaserowSupply(existing.id, payload));
         compensations.unshift(() =>
@@ -1913,9 +2113,22 @@ async function updateSupplyStatuses(supplyRows, status) {
   const compensations = [];
   try {
     for (const supply of supplyRows) {
-      updated.push(await updateBaserowSupply(supply.id, { stato: status }));
+      updated.push(
+        await updateBaserowSupply(supply.id, {
+          stato: status,
+          [CONFIG.suppliesSwitchOkDateField]: switchOkDateForTransition(
+            selectValue(supply.stato),
+            supply[CONFIG.suppliesSwitchOkDateField],
+            status
+          ),
+        })
+      );
       compensations.unshift(() =>
-        updateBaserowSupply(supply.id, { stato: selectValue(supply.stato) || 'Caricato' })
+        updateBaserowSupply(supply.id, {
+          stato: selectValue(supply.stato) || 'Caricato',
+          [CONFIG.suppliesSwitchOkDateField]:
+            normalizeIsoDate(supply[CONFIG.suppliesSwitchOkDateField]) || null,
+        })
       );
     }
     return updated;
@@ -1923,6 +2136,27 @@ async function updateSupplyStatuses(supplyRows, status) {
     await runCompensations(compensations, 'aggiornamento stati');
     throw error;
   }
+}
+
+async function syncParentStatusFromSupplies(contractId) {
+  const supplies = await listBaserowSuppliesForContract(contractId);
+  const status = commonSupplyStatus(supplies);
+  if (!status) return null;
+
+  const contract = await getBaserowContract(contractId);
+  const currentStatus = normalizeStatus(selectValue(contract.stato_contratto));
+  if (currentStatus === status) return currentStatus;
+  await updateBaserowContract(contractId, { stato_contratto: status });
+  invalidateContractsCache();
+  invalidateAdminStatsCache();
+  return status;
+}
+
+function commonSupplyStatus(supplyRows) {
+  const statuses = [
+    ...new Set((supplyRows || []).map((row) => normalizeStatus(selectValue(row.stato)))),
+  ];
+  return statuses.length === 1 ? statuses[0] : null;
 }
 
 async function createBaserowAgent(payload) {
@@ -1956,6 +2190,16 @@ async function updateBaserowClient(clientId, payload) {
       body: JSON.stringify(payload),
     }
   );
+}
+
+async function listAllClients() {
+  if (!CONFIG.clientiTableId) return [];
+  const rows = await fetchAllBaserowRows(
+    CONFIG.clientiTableId,
+    new URLSearchParams({ user_field_names: 'true' }),
+    'lista clienti switch'
+  );
+  return rows.map(normalizeClient).filter(Boolean);
 }
 
 async function findClientByPiva(piva) {
@@ -2010,6 +2254,7 @@ async function syncClientFromContract(clientData) {
       'Ragione Sociale': clientData.ragioneSociale,
       piva: clientData.piva,
       email: clientData.email,
+      pec: clientData.pec,
       cellulare: clientData.cellulare,
       indirizzo_fatturazione: clientData.indirizzoFatturazione,
       tipo_cliente: clientData.tipoCliente,
@@ -2511,6 +2756,7 @@ function normalizeSupply(row) {
       row.consumo_annuo === null || row.consumo_annuo === ''
         ? null
         : numberValue(row.consumo_annuo),
+    dataSwitchOk: normalizeIsoDate(row[CONFIG.suppliesSwitchOkDateField]),
   };
 }
 
@@ -3081,6 +3327,34 @@ function normalizeStatus(value) {
     scartato: 'K.O.',
   };
   return map[status.toLowerCase()] || 'Caricato';
+}
+
+function requireBaserowWebhookSecret(req) {
+  if (!CONFIG.baserowWebhookSecret) {
+    throw publicError(503, 'BASEROW_WEBHOOK_NOT_CONFIGURED', 'Webhook Baserow non configurato.');
+  }
+  const suppliedSecret = cleanText(req.get('x-webhook-secret') || req.query.secret);
+  const expected = Buffer.from(CONFIG.baserowWebhookSecret);
+  const received = Buffer.from(suppliedSecret);
+  if (expected.length !== received.length || !crypto.timingSafeEqual(expected, received)) {
+    throw publicError(401, 'WEBHOOK_UNAUTHORIZED', 'Webhook non autorizzato.');
+  }
+}
+
+function extractBaserowWebhookRowIds(body) {
+  const candidates = [
+    body?.row_id,
+    body?.rowId,
+    body?.id,
+    body?.row?.id,
+    body?.data?.row_id,
+    body?.data?.row?.id,
+    ...(Array.isArray(body?.items) ? body.items.map((item) => item?.id) : []),
+    ...(Array.isArray(body?.data?.items) ? body.data.items.map((item) => item?.id) : []),
+  ];
+  return [...new Set(candidates.map((candidate) => Number.parseInt(candidate, 10)))].filter(
+    (id) => Number.isInteger(id) && id > 0
+  );
 }
 
 function normalizeContractSaveMode(value) {
