@@ -248,6 +248,10 @@ app.post('/api/integrations/baserow/supply-status', async (req, res) => {
 
     const supplyIds = extractBaserowWebhookRowIds(req.body);
     if (!supplyIds.length) {
+      if (isBaserowWebhookTest(req.body)) {
+        res.json({ ok: true, test: true, processed: [] });
+        return;
+      }
       throw publicError(400, 'WEBHOOK_ROW_INVALID', 'Riga fornitura non valida.');
     }
     const processed = [];
@@ -282,6 +286,10 @@ app.post('/api/integrations/baserow/contract-status', async (req, res) => {
     requireBaserowWebhookSecret(req);
     const contractIds = extractBaserowWebhookRowIds(req.body);
     if (!contractIds.length) {
+      if (isBaserowWebhookTest(req.body)) {
+        res.json({ ok: true, test: true, processed: [] });
+        return;
+      }
       throw publicError(400, 'WEBHOOK_ROW_INVALID', 'Riga contratto non valida.');
     }
 
@@ -1099,6 +1107,7 @@ module.exports = {
   invalidateAdminStatsCache,
   invalidateContractsCache,
   invalidateSwitchOpportunitiesCache,
+  isBaserowWebhookTest,
   isCurrentAgentContract,
   isAllowedContractFile,
   isValidVatOrFiscalCode,
@@ -3355,6 +3364,15 @@ function extractBaserowWebhookRowIds(body) {
   return [...new Set(candidates.map((candidate) => Number.parseInt(candidate, 10)))].filter(
     (id) => Number.isInteger(id) && id > 0
   );
+}
+
+function isBaserowWebhookTest(body) {
+  const items = Array.isArray(body?.items)
+    ? body.items
+    : Array.isArray(body?.data?.items)
+      ? body.data.items
+      : [];
+  return items.some((item) => Number(item?.id) === 0);
 }
 
 function normalizeContractSaveMode(value) {

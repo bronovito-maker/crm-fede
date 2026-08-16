@@ -29,6 +29,7 @@ const {
   getCachedWithStore,
   handleApiError,
   integerValue,
+  isBaserowWebhookTest,
   invalidateAdminStatsCache,
   invalidateContractsCache,
   invalidateSwitchOpportunitiesCache,
@@ -993,6 +994,12 @@ describe('helper coverage', () => {
     assert.equal(commonSupplyStatus([{ stato: { value: 'OK' } }, { stato: 'OK' }]), 'OK');
     assert.equal(commonSupplyStatus([{ stato: 'OK' }, { stato: 'K.O.' }]), null);
     assert.equal(commonSupplyStatus([]), null);
+  });
+
+  it('riconosce il payload di prova dei webhook Baserow', () => {
+    assert.equal(isBaserowWebhookTest({ items: [{ id: 0 }] }), true);
+    assert.equal(isBaserowWebhookTest({ data: { items: [{ id: 0 }] } }), true);
+    assert.equal(isBaserowWebhookTest({ items: [{ id: 11 }] }), false);
   });
 
   it('todayIsoDate restituisce una data ISO yyyy-mm-dd', () => {
