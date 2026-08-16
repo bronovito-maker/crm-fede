@@ -1,6 +1,6 @@
 # Architettura CRM Fede Energia
 
-> Documento tecnico aggiornato al 17 agosto 2026. Colonne, backfill e mesi fornitori sono stati verificati live; resta da configurare il webhook dopo il deploy.
+> Documento tecnico aggiornato al 17 agosto 2026. Colonne, backfill, mesi fornitori e webhook sono stati verificati live.
 
 ## Obiettivo
 
@@ -263,7 +263,7 @@ Regole applicate:
 - Dual e multipunto vengono valutati per singola riga `Forniture`;
 - l'endpoint filtra lato server le opportunita degli agenti normali usando il proprietario in `Clienti.agente`, con fallback sull'agente dell'ultimo OK.
 
-Le transizioni effettuate dal CRM valorizzano o puliscono `data_switch_ok` insieme allo stato. Per le modifiche dirette in Baserow vanno configurati due webhook, entrambi protetti da `BASEROW_WEBHOOK_SECRET`: `Forniture` verso `POST /api/integrations/baserow/supply-status` e `Contratti` verso `POST /api/integrations/baserow/contract-status`. Il primo riallinea il padre quando tutte le figlie hanno lo stesso stato; il secondo propaga lo stato del padre a ogni figlia.
+Le transizioni effettuate dal CRM valorizzano o puliscono `data_switch_ok` insieme allo stato. Per le modifiche dirette in Baserow sono attivi due webhook, entrambi protetti da `BASEROW_WEBHOOK_SECRET`: `Forniture` verso `POST /api/integrations/baserow/supply-status` e `Contratti` verso `POST /api/integrations/baserow/contract-status`. Il primo riallinea il padre quando tutte le figlie hanno lo stesso stato; il secondo propaga lo stato del padre a ogni figlia. I payload di prova con `id=0` e gli eventi tecnici senza righe vengono accettati come no-op autenticati per evitare disattivazioni automatiche di Baserow.
 
 Valori live iniziali: Hera 2 mesi, Estra 4, Duferco 6, Sev Iren 4, Sorgenia 4 ed Eni 4. I valori di Duferco, Sev Iren, Sorgenia ed Eni sono provvisori e possono essere aggiornati dalla configurazione Admin; non sono costanti nel codice.
 
@@ -393,5 +393,5 @@ Per le verifiche manuali usare almeno:
 
 - I valori di storno di Duferco, Sev Iren, Sorgenia ed Eni sono provvisori e devono essere confermati dal committente.
 - Le transazioni tra Baserow, R2 e SQLite sono applicative, non ACID distribuite.
-- Le modifiche dirette in Baserow richiedono i webhook `Forniture` e `Contratti`; senza webhook la sincronizzazione padre/figlie e la data di transizione non sono garantite.
+- La sincronizzazione delle modifiche dirette dipende dai webhook `Forniture` e `Contratti`, attivi e verificati live; una loro futura disattivazione interromperebbe l'allineamento padre/figlie e delle date di transizione.
 - I report di migrazione sono locali e ignorati da Git: vanno conservati in un backup operativo sicuro se necessari per audit.

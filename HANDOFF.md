@@ -1,6 +1,6 @@
 # Handoff CRM Fede Energia
 
-> Stato codice e schema aggiornato al 17 agosto 2026. Backfill e mesi di storno sono stati applicati e verificati live; il webhook resta da configurare dopo il deploy.
+> Stato codice, schema, backfill, mesi di storno e webhook aggiornato e verificato live al 17 agosto 2026.
 
 ## Sintesi
 
@@ -76,7 +76,7 @@ Configurazione mesi verificata live il 17 agosto 2026:
 | Sorgenia  |                               4 | provvisoria  |
 | Eni       |                               4 | provvisoria  |
 
-I valori restano modificabili dalla configurazione Admin senza deploy. Prima del rilascio restano da configurare i webhook Baserow sulle tabelle `Forniture` e `Contratti`, necessari per mantenere allineati stati e `data_switch_ok` anche dopo modifiche dirette.
+I valori restano modificabili dalla configurazione Admin senza deploy. I webhook Baserow `Forniture` e `Contratti` sono attivi, protetti dal segreto Render e verificati con risposta `200 OK`. Il collaudo reversibile `K.O. -> Caricato -> K.O.` ha confermato la propagazione padre/figlie e il ripristino finale senza date spurie.
 
 Il periodo di storno decorre da `data_inizio_fornitura` dell'ultimo switch `OK`. Solo per gli storici senza tale data il motore usa `data_switch_ok` e poi `data_inserimento` come fallback.
 
@@ -312,7 +312,7 @@ La suite copre:
 - [x] Applicare e verificare lo schema live per Clienti, `data_switch_ok` e mesi di storno.
 - [x] Eseguire i due backfill dopo aver controllato i dry-run.
 - [x] Inserire e verificare i mesi di storno per tutti i fornitori.
-- [ ] Configurare e provare i webhook Baserow di `Forniture` e `Contratti`.
+- [x] Configurare e provare i webhook Baserow di `Forniture` e `Contratti`.
 - [ ] Eseguire uno smoke test completo sul deploy Render successivo al commit multipunto.
 - [ ] Verificare persistenza `SESSION_DB_PATH` su Render.
 - [ ] Verificare upload R2 con file reale e URL pubblico.
