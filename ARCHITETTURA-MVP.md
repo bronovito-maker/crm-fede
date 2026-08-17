@@ -257,7 +257,7 @@ Regole applicate:
 - solo `OK` sostituisce l'ultimo switch valido;
 - `Caricato`, `Inviato` e il legacy `In avanzamento` producono lo stato UI `CARICATO`;
 - `K.O.` e `Switch - Out` non cambiano il riferimento e ripristinano `DISPONIBILE`;
-- la disponibilita e il giorno 15 del mese ottenuto aggiungendo `mesi_storno_switch` a `data_inizio_fornitura` dell'ultimo switch `OK`;
+- la disponibilita e il giorno 15 del mese ottenuto aggiungendo `mesi_storno_switch` a `data_inizio_fornitura` dell'ultimo switch `OK`; il campo contiene mesi aggiuntivi post-ingresso, quindi Hera vale `0` per evitare di contare due volte i due mesi gia inclusi in `data_inizio_fornitura`;
 - se `data_inizio_fornitura` manca su uno storico, il fallback e `data_switch_ok`, quindi `data_inserimento`;
 - una volta disponibile, l'utenza rimane in lista finche un nuovo tentativo diventa `OK`;
 - Dual e multipunto vengono valutati per singola riga `Forniture`;

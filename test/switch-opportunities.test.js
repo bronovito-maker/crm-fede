@@ -12,6 +12,7 @@ const suppliers = [
   { id: 1, name: 'Estra', switchDelayMonths: 4 },
   { id: 2, name: 'Enel', switchDelayMonths: 3 },
   { id: 3, name: 'Eni', switchDelayMonths: 5 },
+  { id: 4, name: 'Hera', switchDelayMonths: 0 },
 ];
 
 describe('switch disponibili', () => {
@@ -29,6 +30,16 @@ describe('switch disponibili', () => {
     assert.equal(result.opportunities[0].lastOkDate, '2026-04-20');
     assert.equal(result.opportunities[0].availabilityReferenceDate, '2026-06-01');
     assert.equal(result.opportunities[0].availableDate, '2026-10-15');
+  });
+
+  it('non conta due volte i due mesi di ingresso in fornitura Hera', () => {
+    const row = contract(1, '2026-05-10', 'Hera', 'OK', {
+      okDate: '2026-07-01',
+      supplyStartDate: '2026-07-01',
+    });
+    const result = calculate([row], '2026-07-15');
+    assert.equal(result.opportunities[0].availabilityReferenceDate, '2026-07-01');
+    assert.equal(result.opportunities[0].availableDate, '2026-07-15');
   });
 
   it('normalizza gli stati pendenti storici', () => {

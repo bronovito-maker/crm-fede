@@ -69,7 +69,7 @@ Configurazione mesi verificata live il 17 agosto 2026:
 
 | Fornitore | Mesi dopo ingresso in fornitura | Stato regola |
 | --------- | ------------------------------: | ------------ |
-| Hera      |                               2 | confermata   |
+| Hera      |                               0 | confermata   |
 | Estra     |                               4 | confermata   |
 | Duferco   |                               6 | provvisoria  |
 | Sev Iren  |                               4 | provvisoria  |
@@ -78,7 +78,7 @@ Configurazione mesi verificata live il 17 agosto 2026:
 
 I valori restano modificabili dalla configurazione Admin senza deploy. I webhook Baserow `Forniture` e `Contratti` sono attivi, protetti dal segreto Render e verificati con risposta `200 OK`. Il collaudo reversibile `K.O. -> Caricato -> K.O.` ha confermato la propagazione padre/figlie e il ripristino finale senza date spurie.
 
-Il periodo di storno decorre da `data_inizio_fornitura` dell'ultimo switch `OK`. Solo per gli storici senza tale data il motore usa `data_switch_ok` e poi `data_inserimento` come fallback.
+Il periodo di storno decorre da `data_inizio_fornitura` dell'ultimo switch `OK`. I valori configurati sono quindi mesi aggiuntivi dopo l'ingresso in fornitura: Hera vale `0`, perche i due mesi di ingresso sono gia rappresentati da `data_inizio_fornitura`. Solo per gli storici senza tale data il motore usa `data_switch_ok` e poi `data_inserimento` come fallback.
 
 ## Configurazione Render
 
