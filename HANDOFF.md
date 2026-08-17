@@ -15,7 +15,7 @@ Il modello Contratti/Forniture e attivo:
 - `codice_crm` automatico come identificativo tecnico del contratto.
 - vista dinamica `Switch disponibili` per singolo POD/PDR, inclusi Dual e multipunto.
 
-La migrazione Baserow multipunto e stata eseguita con successo. Il repository e stato testato; il deploy Render della sezione Switch disponibili deve essere eseguito e verificato.
+La migrazione Baserow multipunto e stata eseguita con successo. La sezione Switch disponibili e attiva su Render e verificata.
 
 ## Stato produzione Baserow
 
@@ -79,6 +79,8 @@ Configurazione mesi verificata live il 17 agosto 2026:
 I valori restano modificabili dalla configurazione Admin senza deploy. I webhook Baserow `Forniture` e `Contratti` sono attivi, protetti dal segreto Render e verificati con risposta `200 OK`. Il collaudo reversibile `K.O. -> Caricato -> K.O.` ha confermato la propagazione padre/figlie e il ripristino finale senza date spurie.
 
 Il periodo di storno decorre da `data_inizio_fornitura` dell'ultimo switch `OK`. I valori configurati sono quindi mesi aggiuntivi dopo l'ingresso in fornitura: Hera vale `0`, perche i due mesi di ingresso sono gia rappresentati da `data_inizio_fornitura`. Solo per gli storici senza tale data il motore usa `data_switch_ok` e poi `data_inserimento` come fallback.
+
+Il filtro Agente di Switch disponibili usa per Admin e Spettatore l'elenco completo della tabella `Agenti`, anche quando un account nuovo non ha ancora opportunita. L'API non espone questo elenco globale agli agenti normali. Creazione e modifica di un agente invalidano immediatamente la cache della vista.
 
 ## Configurazione Render
 

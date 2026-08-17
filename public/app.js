@@ -231,6 +231,7 @@ const adminState = {
 };
 const switchState = {
   rows: [],
+  agents: [],
   diagnostics: { missingSupplierConfigs: [] },
   loaded: false,
   loading: null,
@@ -2621,6 +2622,7 @@ function resetUserDataState() {
   contracts = [];
   clients = [];
   switchState.rows = [];
+  switchState.agents = [];
   switchState.loaded = false;
   switchState.loading = null;
   selectedClientFromLookup = null;
@@ -2813,6 +2815,7 @@ async function loadSwitchOpportunities({ force = false } = {}) {
     .then((result) => {
       if (requestVersion !== userDataVersion) return;
       switchState.rows = Array.isArray(result.opportunities) ? result.opportunities : [];
+      switchState.agents = Array.isArray(result.agents) ? result.agents : [];
       switchState.diagnostics = result.diagnostics || { missingSupplierConfigs: [] };
       switchState.loaded = true;
       populateSwitchFilters();
@@ -2841,9 +2844,16 @@ function handleSwitchFilterChange() {
 }
 
 function populateSwitchFilters() {
+  const opportunityAgents = switchState.rows.map((row) => [String(row.agentId), row.agentName]);
+  const configuredAgents = isAdminViewer()
+    ? switchState.agents.map((agentRow) => [
+        String(agentRow.id),
+        `${agentRow.nome}${agentRow.attivo === false ? ' (disattivo)' : ''}`,
+      ])
+    : [];
   populateSimpleFilter(
     'switch-agent-filter',
-    switchState.rows.map((row) => [String(row.agentId), row.agentName]),
+    [...configuredAgents, ...opportunityAgents],
     'Agente: tutti',
     switchState.agent
   );

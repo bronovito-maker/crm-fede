@@ -800,6 +800,7 @@ app.post('/api/admin/agents', requireAdmin, async (req, res) => {
     const agent = sanitizeAgentInput(req.body, { requirePassword: true });
     const created = await createBaserowAgent(agentToBaserowPayload(agent));
     invalidateAdminStatsCache();
+    invalidateSwitchOpportunitiesCache();
     res.status(201).json(publicAgent(normalizeAgent(created)));
   } catch (error) {
     handleApiError(res, error, 'ADMIN_AGENT_NOT_CREATED', 'Agente non creato.');
@@ -817,6 +818,7 @@ app.patch('/api/admin/agents/:id', requireAdmin, async (req, res) => {
     const agent = sanitizeAgentInput(req.body, { requirePassword: false });
     const updated = await updateBaserowAgent(agentId, agentToBaserowPayload(agent));
     invalidateAdminStatsCache();
+    invalidateSwitchOpportunitiesCache();
     res.json(publicAgent(normalizeAgent(updated)));
   } catch (error) {
     handleApiError(res, error, 'ADMIN_AGENT_NOT_UPDATED', 'Agente non aggiornato.');
@@ -915,12 +917,14 @@ app.get('/api/switch-opportunities', apiReadLimiter, requireAuth, async (req, re
         listAllClients(),
         listAgents(),
       ]);
-      return buildSwitchOpportunities(contracts, suppliers, {
+      const opportunityResult = buildSwitchOpportunities(contracts, suppliers, {
         clientsById: clients,
         agentsById: agents,
       });
+      return { ...opportunityResult, agents };
     });
-    const opportunities = canViewAdminData(currentUser)
+    const canViewAll = canViewAdminData(currentUser);
+    const opportunities = canViewAll
       ? result.opportunities
       : result.opportunities.filter(
           (opportunity) => Number(opportunity.agentId) === Number(req.session.agentId)
@@ -928,7 +932,8 @@ app.get('/api/switch-opportunities', apiReadLimiter, requireAuth, async (req, re
     res.json({
       ...result,
       opportunities,
-      diagnostics: canViewAdminData(currentUser)
+      agents: canViewAll ? result.agents : [],
+      diagnostics: canViewAll
         ? result.diagnostics
         : { ...result.diagnostics, missingSupplierConfigs: [] },
     });

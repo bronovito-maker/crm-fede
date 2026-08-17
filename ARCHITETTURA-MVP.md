@@ -262,6 +262,7 @@ Regole applicate:
 - una volta disponibile, l'utenza rimane in lista finche un nuovo tentativo diventa `OK`;
 - Dual e multipunto vengono valutati per singola riga `Forniture`;
 - l'endpoint filtra lato server le opportunita degli agenti normali usando il proprietario in `Clienti.agente`, con fallback sull'agente dell'ultimo OK.
+- il filtro Agente della vista Admin/Spettatore usa l'elenco completo di `Agenti`, inclusi gli account nuovi senza opportunita correnti; agli agenti normali tale elenco non viene restituito dall'API.
 
 Le transizioni effettuate dal CRM valorizzano o puliscono `data_switch_ok` insieme allo stato. Per le modifiche dirette in Baserow sono attivi due webhook, entrambi protetti da `BASEROW_WEBHOOK_SECRET`: `Forniture` verso `POST /api/integrations/baserow/supply-status` e `Contratti` verso `POST /api/integrations/baserow/contract-status`. Il primo riallinea il padre quando tutte le figlie hanno lo stesso stato; il secondo propaga lo stato del padre a ogni figlia. I payload di prova con `id=0` e gli eventi tecnici senza righe vengono accettati come no-op autenticati per evitare disattivazioni automatiche di Baserow.
 

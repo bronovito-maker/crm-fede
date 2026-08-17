@@ -1272,6 +1272,7 @@ describe('HTTP routes', () => {
 
   it('GET /api/switch-opportunities applica lo scope agente lato backend', async () => {
     const agentId = 7;
+    let currentRole = 'agente';
     const agentTableId = process.env.BASEROW_TABLE_AGENTI_ID;
     const contractTableId = process.env.BASEROW_TABLE_CONTRATTI_ID;
     const supplierTableId = process.env.BASEROW_TABLE_FORNITORI_ID;
@@ -1284,7 +1285,7 @@ describe('HTTP routes', () => {
           id: agentId,
           nome: 'Agente Sette',
           email: 'sette@example.it',
-          ruolo: { value: 'agente' },
+          ruolo: { value: currentRole },
           attivo: true,
         });
       }
@@ -1359,6 +1360,19 @@ describe('HTTP routes', () => {
     assert.equal(response.body.opportunities.length, 1);
     assert.equal(response.body.opportunities[0].code, 'IT007');
     assert.equal(response.body.opportunities[0].agentId, 7);
+    assert.deepEqual(response.body.agents, []);
+
+    currentRole = 'admin';
+    const adminResponse = await invokeRouteJson(app, '/api/switch-opportunities', 'get', {
+      session: { agentId },
+      query: {},
+    });
+    assert.equal(adminResponse.status, 200);
+    assert.equal(adminResponse.body.opportunities.length, 2);
+    assert.deepEqual(
+      adminResponse.body.agents.map((agentRow) => agentRow.id),
+      [7, 8]
+    );
   });
 
   it('GET /api/config richiede una sessione autenticata', async () => {
