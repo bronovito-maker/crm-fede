@@ -72,17 +72,23 @@ describe('persistenza transazionale forniture', () => {
             codice: 'IT001',
             indirizzoFornitura: 'VIA UNO',
             potenzaImpegnata: 3,
+            consumoAnnuo: 3100,
           },
           {
             tipoFornitura: 'luce',
             codice: 'IT002',
             indirizzoFornitura: 'VIA DUE',
             potenzaImpegnata: 6,
+            consumoAnnuo: 5200,
           },
-          { tipoFornitura: 'gas', codice: '000123', indirizzoFornitura: 'VIA TRE' },
+          {
+            tipoFornitura: 'gas',
+            codice: '000123',
+            indirizzoFornitura: 'VIA TRE',
+            consumoAnnuo: 850,
+          },
         ],
-        metodoPagamentoLuce: 'rid',
-        metodoPagamentoGas: 'bollettino',
+        metodoPagamento: 'rid',
         consumoAnnuoLuce: 4200,
         consumoAnnuoGas: 900,
         statoLuce: 'OK',
@@ -104,7 +110,89 @@ describe('persistenza transazionale forniture', () => {
     );
     assert.equal(payloads[0].potenza_disponibile, 3.3);
     assert.equal(payloads[1].potenza_disponibile, 6.6);
-    assert.equal(payloads[2].consumo_annuo, 900);
+    assert.deepEqual(
+      payloads.map((payload) => payload.consumo_annuo),
+      [3100, 5200, 850]
+    );
+    assert.deepEqual(
+      payloads.map((payload) => payload.metodo_pagamento),
+      ['rid', 'rid', 'rid']
+    );
+  });
+
+  it('in modifica unifica il pagamento senza alterare gli stati delle forniture', async () => {
+    const patches = [];
+    const rows = [
+      supplyRow(701, 'luce', 'OK', 'bollettino'),
+      supplyRow(702, 'gas', 'K.O.', 'bollettino'),
+    ];
+
+    global.fetch = async (_url, options = {}) => {
+      const method = options.method || 'GET';
+      if (method === 'GET') return response({ count: 2, next: null, results: rows });
+      if (method === 'PATCH') {
+        const payload = JSON.parse(options.body);
+        patches.push(payload);
+        return response({ id: 700 + patches.length, ...payload });
+      }
+      return response({ detail: 'not found' }, 404);
+    };
+
+    await syncContractSupplies(
+      {
+        ragioneSociale: 'TEST DUAL',
+        tipoFornitura: 'dual',
+        puntiFornitura: [
+          { id: 701, tipoFornitura: 'luce', codice: 'IT001', indirizzoFornitura: 'VIA UNO' },
+          { id: 702, tipoFornitura: 'gas', codice: '123', indirizzoFornitura: 'VIA DUE' },
+        ],
+        metodoPagamento: 'rid',
+        hasExplicitSupplyStatuses: false,
+      },
+      42,
+      'Caricato'
+    );
+
+    assert.deepEqual(
+      patches.map((payload) => payload.stato),
+      ['OK', 'K.O.']
+    );
+    assert.deepEqual(
+      patches.map((payload) => payload.metodo_pagamento),
+      ['rid', 'rid']
+    );
+  });
+
+  it('porta le forniture da Bozza a Caricato al primo invio', async () => {
+    const patches = [];
+    const rows = [supplyRow(701, 'luce', 'Bozza', 'bollettino')];
+
+    global.fetch = async (_url, options = {}) => {
+      const method = options.method || 'GET';
+      if (method === 'GET') return response({ count: 1, next: null, results: rows });
+      if (method === 'PATCH') {
+        const payload = JSON.parse(options.body);
+        patches.push(payload);
+        return response({ id: 701, ...payload });
+      }
+      return response({ detail: 'not found' }, 404);
+    };
+
+    await syncContractSupplies(
+      {
+        ragioneSociale: 'TEST LUCE',
+        tipoFornitura: 'luce',
+        puntiFornitura: [
+          { id: 701, tipoFornitura: 'luce', codice: 'IT001', indirizzoFornitura: 'VIA UNO' },
+        ],
+        metodoPagamento: 'bollettino',
+        hasExplicitSupplyStatuses: false,
+      },
+      42,
+      'Caricato'
+    );
+
+    assert.equal(patches[0].stato, 'Caricato');
   });
 
   it('ripristina la fornitura Luce se l aggiornamento Gas fallisce', async () => {
@@ -131,6 +219,7 @@ describe('persistenza transazionale forniture', () => {
         {
           ragioneSociale: 'TEST DUAL',
           tipoFornitura: 'dual',
+          hasExplicitSupplyStatuses: true,
           pod: 'IT002',
           pdr: '456',
           metodoPagamentoLuce: 'bollettino',

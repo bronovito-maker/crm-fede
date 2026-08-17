@@ -1903,6 +1903,7 @@ function desiredSupplyPoints(contract) {
     codice: tipoFornitura === 'luce' ? contract.pod : contract.pdr,
     indirizzoFornitura: contract.indirizzoFornitura,
     potenzaImpegnata: tipoFornitura === 'luce' ? contract.potenzaImpegnata : null,
+    consumoAnnuo: tipoFornitura === 'luce' ? contract.consumoAnnuoLuce : contract.consumoAnnuoGas,
   }));
 }
 
@@ -1938,9 +1939,8 @@ function contractClientData(contract, agentId) {
 function buildSupplyPayload(contract, contractId, point, status, clientId = null) {
   const type = point.tipoFornitura;
   const payment =
-    type === 'luce'
-      ? contract.metodoPagamentoLuce || contract.metodoPagamento
-      : contract.metodoPagamentoGas || contract.metodoPagamento;
+    contract.metodoPagamento ||
+    (type === 'luce' ? contract.metodoPagamentoLuce : contract.metodoPagamentoGas);
   const committedPower = type === 'luce' ? point.potenzaImpegnata : null;
   const code = upperText(point.codice);
   return {
@@ -1957,7 +1957,9 @@ function buildSupplyPayload(contract, contractId, point, status, clientId = null
     metodo_inserimento: contract.metodoInserimento || null,
     potenza_impegnata: committedPower,
     potenza_disponibile: committedPower === null ? null : Number((committedPower * 1.1).toFixed(2)),
-    consumo_annuo: type === 'luce' ? contract.consumoAnnuoLuce : contract.consumoAnnuoGas,
+    consumo_annuo:
+      point.consumoAnnuo ??
+      (type === 'luce' ? contract.consumoAnnuoLuce : contract.consumoAnnuoGas),
     [CONFIG.suppliesSwitchOkDateField]: status === 'OK' ? todayIsoDate() : null,
   };
 }
@@ -2028,9 +2030,11 @@ async function createContractSupplies(contract, contractId, status, clientId = n
       const supplyStatus =
         status === 'Bozza'
           ? 'Bozza'
-          : type === 'luce'
-            ? contract.statoLuce || status
-            : contract.statoGas || status;
+          : contract.hasExplicitSupplyStatuses
+            ? type === 'luce'
+              ? contract.statoLuce || status
+              : contract.statoGas || status
+            : status;
       created.push(
         await createBaserowSupply(
           buildSupplyPayload(contract, contractId, point, supplyStatus, clientId)
@@ -2080,12 +2084,18 @@ async function syncContractSupplies(contract, contractId, fallbackStatus, client
           : null;
       const existing = existingById.get(pointId) || existingByKey.get(key) || singleTypeFallback;
       const existingStatus = existing ? selectValue(existing.stato) : '';
+      const preservedStatus =
+        existingStatus === 'Bozza' && fallbackStatus !== 'Bozza'
+          ? fallbackStatus
+          : existingStatus || fallbackStatus;
       const status =
         fallbackStatus === 'Bozza'
           ? 'Bozza'
-          : type === 'luce'
-            ? contract.statoLuce || existingStatus || fallbackStatus
-            : contract.statoGas || existingStatus || fallbackStatus;
+          : contract.hasExplicitSupplyStatuses
+            ? type === 'luce'
+              ? contract.statoLuce || existingStatus || fallbackStatus
+              : contract.statoGas || existingStatus || fallbackStatus
+            : preservedStatus;
       const payload = buildSupplyPayload(contract, contractId, point, status, clientId);
       if (existing) {
         payload[CONFIG.suppliesSwitchOkDateField] = switchOkDateForTransition(
@@ -2599,6 +2609,12 @@ function sanitizeSupplyPoints(value, { allowDraft = false } = {}) {
       tipoFornitura === 'luce'
         ? optionalNonNegativeNumber(point?.potenzaImpegnata, 'POWER_INVALID')
         : null;
+    const annualConsumption = optionalNonNegativeNumber(
+      point?.consumoAnnuo,
+      tipoFornitura === 'luce'
+        ? 'ANNUAL_LIGHT_CONSUMPTION_INVALID'
+        : 'ANNUAL_GAS_CONSUMPTION_INVALID'
+    );
     return {
       id: Number.isInteger(id) && id > 0 ? id : null,
       tipoFornitura,
@@ -2607,6 +2623,7 @@ function sanitizeSupplyPoints(value, { allowDraft = false } = {}) {
       potenzaImpegnata: committedPower,
       potenzaDisponibile:
         committedPower === null ? null : Number((committedPower * 1.1).toFixed(2)),
+      consumoAnnuo: annualConsumption,
     };
   });
   if (points.some((point) => !['luce', 'gas'].includes(point.tipoFornitura))) {

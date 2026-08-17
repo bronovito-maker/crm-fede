@@ -210,11 +210,11 @@ Le forniture vengono eliminate prima del contratto padre. Se il padre non puo es
 
 ## Dual, stati e pagamenti
 
-Per un Dual il CRM espone:
+Per un Dual il riepilogo e la gestione amministrativa espongono:
 
-- `Pagamento Luce` e `Pagamento Gas`;
+- un solo metodo di pagamento contrattuale, propagato a tutte le righe `Forniture`;
 - `Stato Luce` e `Stato Gas`;
-- `Consumo annuo luce` in kWh e `Consumo annuo gas` in Smc.
+- consumo annuo specifico per ogni riga multipunto, in kWh per POD e Smc per PDR.
 
 Uno stato uniforme sulle figlie viene riportato come stato complessivo. Stati diversi producono il valore UI `Misto`. Per compatibilita operativa, una modifica manuale allo stato padre in Baserow viene recepita dal CRM quando tutte le figlie hanno ancora lo stesso stato; stati figlio gia misti rimangono indipendenti.
 

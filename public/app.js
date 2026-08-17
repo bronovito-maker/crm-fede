@@ -422,10 +422,6 @@ document.getElementById('metodo-pagamento').addEventListener('change', () => {
   maybeAutofillIbanFromSelectedClient();
   updateConditionalFields();
 });
-document
-  .getElementById('metodo-pagamento-luce')
-  .addEventListener('change', updateConditionalFields);
-document.getElementById('metodo-pagamento-gas').addEventListener('change', updateConditionalFields);
 document.getElementById('potenza-impegnata').addEventListener('input', updateAvailablePower);
 document.getElementById('fornitore-input').addEventListener('change', () => {
   updateStartDatePrediction();
@@ -1322,12 +1318,7 @@ function openContractModal(contractLike) {
     detailItem('Conteggio target', contractUnitCount(contract)),
     detailItem('POD', contract.pod || 'Non inserito'),
     detailItem('PDR', contract.pdr || 'Non inserito'),
-    ...(String(contract.tipoFornitura).toLowerCase() === 'dual'
-      ? [
-          detailItem('Pagamento Luce', capitalize(contract.metodoPagamentoLuce || 'Non inserito')),
-          detailItem('Pagamento Gas', capitalize(contract.metodoPagamentoGas || 'Non inserito')),
-        ]
-      : [detailItem('Metodo pagamento', capitalize(contract.metodoPagamento || 'Non inserito'))]),
+    detailItem('Metodo pagamento', capitalize(contract.metodoPagamento || 'Non inserito')),
     ...(contract.metodoInserimento
       ? [detailItem('Metodo di inserimento', contract.metodoInserimento)]
       : []),
@@ -1680,12 +1671,6 @@ function populateContractForm(contract) {
   form.elements.pod.value = contract.pod || '';
   form.elements.pdr.value = contract.pdr || '';
   form.elements.metodoPagamento.value = contract.metodoPagamento || '';
-  form.elements.metodoPagamentoLuce.value =
-    contract.metodoPagamentoLuce || contract.metodoPagamento || '';
-  form.elements.metodoPagamentoGas.value =
-    contract.metodoPagamentoGas || contract.metodoPagamento || '';
-  form.elements.statoLuce.value = contract.statoLuce || contract.statoContratto || 'Caricato';
-  form.elements.statoGas.value = contract.statoGas || contract.statoContratto || 'Caricato';
   form.elements.metodoInserimento.value = contract.metodoInserimento || '';
   form.elements.potenzaImpegnata.value = contract.potenzaImpegnata ?? '';
   form.elements.potenzaDisponibile.value = contract.potenzaDisponibile ?? '';
@@ -1746,8 +1731,6 @@ function resetContractEditor({ keepFeedback = false } = {}) {
     ensureAdminAgentsReady();
   }
   form.elements.statoContratto.value = 'Caricato';
-  form.elements.statoLuce.value = 'Caricato';
-  form.elements.statoGas.value = 'Caricato';
   updateConditionalFields();
   syncContractEditorUi();
   if (!keepFeedback) {
@@ -1887,12 +1870,14 @@ function buildContractDraft(form, saveMode = 'submit') {
           codice: row.code,
           indirizzoFornitura: row.address,
           potenzaImpegnata: row.committedPower,
+          consumoAnnuo: row.annualConsumption,
         })),
         ...multipodRows.pdr.map((row) => ({
           id: row.id || null,
           tipoFornitura: 'gas',
           codice: row.code,
           indirizzoFornitura: row.address,
+          consumoAnnuo: row.annualConsumption,
         })),
       ]
     : [
@@ -1903,11 +1888,19 @@ function buildContractDraft(form, saveMode = 'submit') {
                 codice: pod,
                 indirizzoFornitura,
                 potenzaImpegnata: String(form.get('potenzaImpegnata')).trim(),
+                consumoAnnuo: String(form.get('consumoAnnuoLuce')).trim(),
               },
             ]
           : []),
         ...(tipoFornitura === 'gas' || tipoFornitura === 'dual'
-          ? [{ tipoFornitura: 'gas', codice: pdr, indirizzoFornitura }]
+          ? [
+              {
+                tipoFornitura: 'gas',
+                codice: pdr,
+                indirizzoFornitura,
+                consumoAnnuo: String(form.get('consumoAnnuoGas')).trim(),
+              },
+            ]
           : []),
       ];
   const assignedAgentId =
@@ -1948,14 +1941,7 @@ function buildContractDraft(form, saveMode = 'submit') {
     multipod: multipodEnabled,
     multipodRows,
     puntiFornitura,
-    metodoPagamento:
-      tipoFornitura === 'dual'
-        ? String(form.get('metodoPagamentoLuce')).trim()
-        : String(form.get('metodoPagamento')).trim(),
-    metodoPagamentoLuce: String(form.get('metodoPagamentoLuce')).trim(),
-    metodoPagamentoGas: String(form.get('metodoPagamentoGas')).trim(),
-    statoLuce: saveMode === 'draft' ? 'Bozza' : String(form.get('statoLuce') || 'Caricato'),
-    statoGas: saveMode === 'draft' ? 'Bozza' : String(form.get('statoGas') || 'Caricato'),
+    metodoPagamento: String(form.get('metodoPagamento')).trim(),
     metodoInserimento: String(form.get('metodoInserimento')).trim(),
     potenzaImpegnata: String(form.get('potenzaImpegnata')).trim(),
     potenzaDisponibile: String(form.get('potenzaDisponibile')).trim(),
@@ -1996,10 +1982,6 @@ function buildContractFormData(draft) {
     'pod',
     'pdr',
     'metodoPagamento',
-    'metodoPagamentoLuce',
-    'metodoPagamentoGas',
-    'statoLuce',
-    'statoGas',
     'metodoInserimento',
     'potenzaImpegnata',
     'potenzaDisponibile',
@@ -2107,18 +2089,11 @@ function validateContractDraft(draft, saveMode = 'submit') {
     return 'Inserisci il PDR.';
   }
 
-  if (draft.tipoFornitura === 'dual') {
-    if (!draft.metodoPagamentoLuce || !draft.metodoPagamentoGas) {
-      return 'Seleziona Pagamento Luce e Pagamento Gas.';
-    }
-  } else if (!draft.metodoPagamento) {
+  if (!draft.metodoPagamento) {
     return 'Seleziona il metodo di pagamento.';
   }
 
-  const requiresIban =
-    draft.metodoPagamento === 'rid' ||
-    draft.metodoPagamentoLuce === 'rid' ||
-    draft.metodoPagamentoGas === 'rid';
+  const requiresIban = draft.metodoPagamento === 'rid';
   if (requiresIban && !draft.iban) {
     return "Inserisci l'IBAN per il RID.";
   }
@@ -2259,16 +2234,11 @@ function updateConditionalFields() {
   const tipoFornitura = document.getElementById('tipo-fornitura').value;
   const tipoCliente = document.getElementById('tipo-cliente').value;
   const metodoPagamento = document.getElementById('metodo-pagamento').value;
-  const metodoPagamentoLuce = document.getElementById('metodo-pagamento-luce').value;
-  const metodoPagamentoGas = document.getElementById('metodo-pagamento-gas').value;
-  const isDual = tipoFornitura === 'dual';
   const isHera = normalizeSupplierKey(document.getElementById('fornitore-input').value) === 'hera';
   const multipod = isMultipodEnabled();
   const showPod = tipoFornitura === 'luce' || tipoFornitura === 'dual';
   const showPdr = tipoFornitura === 'gas' || tipoFornitura === 'dual';
-  const showIban = isDual
-    ? metodoPagamentoLuce === 'rid' || metodoPagamentoGas === 'rid'
-    : metodoPagamento === 'rid';
+  const showIban = metodoPagamento === 'rid';
   const showAmministratore = tipoCliente === 'Condominio';
   const showPec = tipoCliente === 'Business' || tipoCliente === 'Condominio';
   const showExtraFields = showAmministratore || showPec;
@@ -2276,15 +2246,11 @@ function updateConditionalFields() {
   toggleField('pod-field', showPod && !multipod);
   toggleField('pdr-field', showPdr && !multipod);
   toggleField('insertion-method-field', isHera);
-  toggleField('single-payment-field', !isDual);
-  toggleField('light-payment-field', isDual);
-  toggleField('gas-payment-field', isDual);
-  toggleField('light-status-field', isDual, { required: false });
-  toggleField('gas-status-field', isDual, { required: false });
+  toggleField('single-payment-field', Boolean(tipoFornitura));
   toggleField('available-power-field', showPod && !multipod, { required: false });
   toggleField('committed-power-field', showPod && !multipod, { required: false });
-  toggleField('light-consumption-field', showPod, { required: false });
-  toggleField('gas-consumption-field', showPdr, { required: false });
+  toggleField('light-consumption-field', showPod && !multipod, { required: false });
+  toggleField('gas-consumption-field', showPdr && !multipod, { required: false });
   toggleField('iban-field', showIban);
   toggleElementVisibility('customer-extra-fields', showExtraFields);
   toggleField('amministratore-field', showAmministratore);
@@ -2411,6 +2377,10 @@ function addMultipodRow(kind, values = {}) {
       </label>`
           : ''
       }
+      <label>
+        Consumo annuo (${kind === 'pod' ? 'kWh' : 'Smc'})
+        <input data-multipod-annual-consumption type="number" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(values.annualConsumption ?? '')}" />
+      </label>
     </div>
   `;
   row.querySelector('[data-multipod-remove]').addEventListener('click', () => {
@@ -2460,6 +2430,7 @@ function collectMultipodRowsByKind(kind) {
     address: row.querySelector('[data-multipod-address]')?.value.trim() || '',
     committedPower: row.querySelector('[data-multipod-committed-power]')?.value.trim() || '',
     availablePower: row.querySelector('[data-multipod-available-power]')?.value.trim() || '',
+    annualConsumption: row.querySelector('[data-multipod-annual-consumption]')?.value.trim() || '',
   }));
 }
 
@@ -2512,6 +2483,7 @@ function parseMultipodRowsFromContract(contract) {
       address: supply.indirizzoFornitura || '',
       committedPower: kind === 'pod' ? supply.potenzaImpegnata : '',
       availablePower: kind === 'pod' ? supply.potenzaDisponibile : '',
+      annualConsumption: supply.consumoAnnuo ?? '',
     });
     return {
       pod: lightSupplies.map((supply) => toRow(supply, 'pod')),

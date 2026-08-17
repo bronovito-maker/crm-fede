@@ -175,15 +175,16 @@ Per i Dual:
 
 - `statoLuce` aggiorna tutte le righe Luce;
 - `statoGas` aggiorna tutte le righe Gas;
-- `metodoPagamentoLuce` e `metodoPagamentoGas` restano separati;
+- il form usa un solo `metodoPagamento`, applicato a tutte le forniture Luce/Gas del contratto; i vecchi campi separati restano accettati soltanto per compatibilita API;
 - stati diversi vengono mostrati come `Misto` sul riepilogo.
 
 La route `PATCH /api/contracts/:id/status` aggiorna padre e tutte le figlie. Una modifica manuale del padre in Baserow viene recepita se le figlie hanno ancora uno stato uniforme. Considerare il TTL cache, predefinito 15 secondi.
 
 ## Consumi e potenze
 
-- `Consumo annuo luce` appare per Luce/Dual e viene salvato in kWh sulle righe Luce.
-- `Consumo annuo gas` appare per Gas/Dual e viene salvato in Smc sulle righe Gas.
+- Per un contratto non multipunto, `Consumo annuo luce` e `Consumo annuo gas` vengono salvati rispettivamente in kWh e Smc.
+- Nel multipunto ogni POD/PDR ha il proprio `consumoAnnuo`, salvato nella specifica riga `Forniture`.
+- Nel form di inserimento gli stati Luce/Gas non sono selezionabili: le nuove forniture partono automaticamente da `Caricato`; le modifiche preservano gli stati esistenti.
 - Per il multipunto ogni POD espone la propria potenza impegnata.
 - La potenza disponibile e read-only nel browser e ricalcolata dal server con `impegnata * 1,10`.
 

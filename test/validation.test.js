@@ -175,14 +175,21 @@ describe('sanitizeContractInput', () => {
             codice: 'it001',
             indirizzoFornitura: 'Via Uno',
             potenzaImpegnata: '3',
+            consumoAnnuo: '3100',
           },
           {
             tipoFornitura: 'luce',
             codice: 'it002',
             indirizzoFornitura: 'Via Due',
             potenzaImpegnata: '6',
+            consumoAnnuo: '5200',
           },
-          { tipoFornitura: 'gas', codice: '000123', indirizzoFornitura: 'Via Tre' },
+          {
+            tipoFornitura: 'gas',
+            codice: '000123',
+            indirizzoFornitura: 'Via Tre',
+            consumoAnnuo: '850',
+          },
         ]),
       });
 
@@ -194,7 +201,10 @@ describe('sanitizeContractInput', () => {
         indirizzoFornitura: 'VIA UNO',
         potenzaImpegnata: 3,
         potenzaDisponibile: 3.3,
+        consumoAnnuo: 3100,
       });
+      assert.equal(result.puntiFornitura[1].consumoAnnuo, 5200);
+      assert.equal(result.puntiFornitura[2].consumoAnnuo, 850);
       assert.equal(result.consumoAnnuoLuce, 4200);
       assert.equal(result.consumoAnnuoGas, 900);
     });
