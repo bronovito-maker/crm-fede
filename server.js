@@ -2794,7 +2794,7 @@ async function createMessage(senderId, recipientId, text) {
     tipo: 'messaggio',
     titolo: 'Nuovo messaggio',
     testo: text.slice(0, 140),
-    link: 'messages',
+    link: `messages:${senderId}`,
   });
   return normalizeMessage(row, senderId);
 }

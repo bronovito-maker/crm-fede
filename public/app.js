@@ -3962,6 +3962,7 @@ const communicationState = {
   initialized: false,
   notifications: [],
   recipients: [],
+  allMessages: [],
   messages: [],
   unreadMessages: 0,
   selectedRecipientId: '',
@@ -4032,7 +4033,19 @@ function renderNotifications() {
         item.letta = true;
         renderNotifications();
       }
-      if (item?.link === 'messages') setCommunicationPanel('messages');
+      if (item?.link?.startsWith('messages')) {
+        const linkedAgentId = Number(item.link.split(':')[1]) || 0;
+        if (linkedAgentId) communicationState.selectedRecipientId = String(linkedAgentId);
+        else {
+          const unread = communicationState.allMessages.find(
+            (message) => !message.letta && Number(message.destinatarioId) === Number(agent?.id)
+          );
+          if (unread) communicationState.selectedRecipientId = String(unread.mittenteId);
+        }
+        setCommunicationPanel('messages');
+        renderConversations();
+        loadMessages();
+      }
       else if (item?.link) setActivePage(item.link);
     });
   });
@@ -4040,25 +4053,58 @@ function renderNotifications() {
 }
 
 function renderRecipients() {
-  const select = communicationElement('message-recipient');
-  if (!select) return;
-  select.innerHTML = [
-    '<option value="">Seleziona un agente</option>',
-    ...communicationState.recipients.map(
-      (recipient) => `<option value="${recipient.id}">${escapeHtml(recipient.nome || 'Agente')}</option>`
-    ),
-  ].join('');
-  if (communicationState.selectedRecipientId) select.value = String(communicationState.selectedRecipientId);
+  renderConversations();
+}
+
+function renderConversations() {
+  const list = communicationElement('conversation-list');
+  if (!list) return;
+  if (!communicationState.recipients.length) {
+    list.innerHTML = '<div class="communication-empty">Nessun altro agente disponibile.</div>';
+    return;
+  }
+  list.innerHTML = communicationState.recipients
+    .map((recipient) => {
+      const recipientId = Number(recipient.id);
+      const conversation = communicationState.allMessages.filter(
+        (message) => Number(message.mittenteId) === recipientId || Number(message.destinatarioId) === recipientId
+      );
+      const last = [...conversation].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0];
+      const unread = conversation.filter(
+        (message) => !message.letta && Number(message.destinatarioId) === Number(agent?.id)
+      ).length;
+      return `<button class="conversation-item ${String(recipientId) === String(communicationState.selectedRecipientId) ? 'is-active' : ''}" type="button" data-recipient-id="${recipientId}">
+        <span class="conversation-avatar">${escapeHtml(String(recipient.nome || 'A').charAt(0).toUpperCase())}</span>
+        <span class="conversation-copy">
+          <span class="conversation-name">${escapeHtml(recipient.nome || 'Agente')}${unread ? `<b class="conversation-unread">${unread}</b>` : ''}</span>
+          <span class="conversation-preview">${escapeHtml(last?.testo || 'Nessun messaggio')}</span>
+        </span>
+      </button>`;
+    })
+    .join('');
+  list.querySelectorAll('[data-recipient-id]').forEach((button) => {
+    button.addEventListener('click', () => {
+      communicationState.selectedRecipientId = String(button.dataset.recipientId);
+      renderConversations();
+      loadMessages();
+    });
+  });
 }
 
 function renderMessages() {
   const list = communicationElement('messages-list');
+  const head = communicationElement('messenger-chat-head');
   if (!list) return;
   if (!communicationState.selectedRecipientId) {
+    if (head) head.textContent = 'Seleziona un agente';
     list.innerHTML = '<div class="communication-empty">Scegli un agente per vedere la conversazione.</div>';
     updateCommunicationBadges();
     return;
   }
+  const recipient = communicationState.recipients.find(
+    (item) => String(item.id) === String(communicationState.selectedRecipientId)
+  );
+  if (head) head.textContent = recipient?.nome || 'Conversazione';
   const items = [...communicationState.messages].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
   if (!items.length) {
     list.innerHTML = '<div class="communication-empty">Nessun messaggio in questa conversazione.</div>';
@@ -4098,9 +4144,11 @@ async function loadCommunicationData() {
     communicationState.recipients = Array.isArray(recipients) ? recipients : [];
     renderRecipients();
     const allMessages = await fetchJson('/api/messages');
+    communicationState.allMessages = Array.isArray(allMessages) ? allMessages : [];
     communicationState.unreadMessages = (Array.isArray(allMessages) ? allMessages : []).filter(
       (item) => !item.letta && Number(item.destinatarioId) === Number(agent?.id)
     ).length;
+    renderConversations();
     updateCommunicationBadges();
     if (communicationState.selectedRecipientId) await loadMessages();
   } catch (error) {
@@ -4117,10 +4165,13 @@ async function loadMessages() {
   try {
     const messages = await fetchJson(`/api/messages?with=${encodeURIComponent(communicationState.selectedRecipientId)}`);
     communicationState.messages = Array.isArray(messages) ? messages : [];
+    const allMessages = await fetchJson('/api/messages');
+    communicationState.allMessages = Array.isArray(allMessages) ? allMessages : communicationState.allMessages;
     communicationState.unreadMessages = communicationState.messages.filter(
       (item) => !item.letta && Number(item.destinatarioId) === Number(agent?.id)
     ).length;
     renderMessages();
+    renderConversations();
   } catch (error) {
     if (error?.status === 503 || error?.code === 'COMMUNICATION_TABLES_NOT_CONFIGURED') setCommunicationUnavailable();
   }
@@ -4182,10 +4233,6 @@ function initCommunicationCenter() {
     await fetchJson('/api/notifications/read-all', { method: 'POST' }).catch(() => {});
     communicationState.notifications.forEach((item) => { item.letta = true; });
     renderNotifications();
-  });
-  communicationElement('message-recipient')?.addEventListener('change', (event) => {
-    communicationState.selectedRecipientId = event.target.value;
-    loadMessages();
   });
   communicationElement('message-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();

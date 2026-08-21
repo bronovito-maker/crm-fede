@@ -329,15 +329,20 @@
             <div class="communication-list" id="notifications-list"></div>
           </section>
           <section class="communication-panel" id="messages-panel" role="tabpanel" hidden>
-            <label class="communication-recipient-label" for="message-recipient">Scrivi a</label>
-            <select class="communication-recipient" id="message-recipient">
-              <option value="">Seleziona un agente</option>
-            </select>
-            <div class="communication-list communication-messages-list" id="messages-list"></div>
-            <form class="communication-form" id="message-form">
-              <textarea id="message-text" maxlength="4000" rows="3" placeholder="Scrivi un messaggio..."></textarea>
-              <button class="primary-button" type="submit">Invia messaggio</button>
-            </form>
+            <div class="messenger-layout">
+              <div class="messenger-conversations">
+                <div class="messenger-section-title">Chat</div>
+                <div class="communication-list" id="conversation-list"></div>
+              </div>
+              <div class="messenger-chat">
+                <div class="messenger-chat-head" id="messenger-chat-head">Seleziona un agente</div>
+                <div class="communication-list communication-messages-list" id="messages-list"></div>
+                <form class="communication-form" id="message-form">
+                  <textarea id="message-text" maxlength="4000" rows="2" placeholder="Scrivi un messaggio..."></textarea>
+                  <button class="primary-button" type="submit">Invia</button>
+                </form>
+              </div>
+            </div>
           </section>
         </aside>
 
