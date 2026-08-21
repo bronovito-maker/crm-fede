@@ -510,6 +510,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     ok: isConfigured(),
     service: 'crm-energia',
+    communicationsConfigured: Boolean(CONFIG.notificheTableId && CONFIG.messaggiTableId),
   });
 });
 
