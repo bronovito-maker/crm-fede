@@ -37,11 +37,12 @@ const ANALYSIS_SCHEMA = {
     cte: { type: 'object', properties: {
       supplier: { type: 'string' }, commodity: { type: 'string' }, customerType: { type: 'string' },
       priceType: { type: 'string' }, complexity: { type: 'string' }, fixedUnitPrice: { type: ['number', 'null'] },
+      hasMonorariaOption: { type: 'boolean' }, monorariaUnitPrice: { type: ['number', 'null'] },
       spread: { type: ['number', 'null'] }, referenceIndex: { type: 'string' },
       networkLosses: { type: 'string' }, annualFixedFee: { type: ['number', 'null'] },
       formulaMultiplier: { type: ['number', 'null'] }, formulaAdditive: { type: ['number', 'null'] },
       hasExplicitFormula: { type: 'boolean' },
-    }, required: ['supplier', 'commodity', 'customerType', 'priceType', 'complexity', 'fixedUnitPrice', 'spread', 'referenceIndex', 'networkLosses', 'annualFixedFee', 'formulaMultiplier', 'formulaAdditive', 'hasExplicitFormula'], additionalProperties: false },
+    }, required: ['supplier', 'commodity', 'customerType', 'priceType', 'complexity', 'fixedUnitPrice', 'hasMonorariaOption', 'monorariaUnitPrice', 'spread', 'referenceIndex', 'networkLosses', 'annualFixedFee', 'formulaMultiplier', 'formulaAdditive', 'hasExplicitFormula'], additionalProperties: false },
   },
 };
 
@@ -51,7 +52,7 @@ la vendita della materia e la quota fissa del venditore: escludi rete, trasporto
 imposte, IVA e altre partite.
 
 Restituisci JSON conforme allo schema. Per invoice commodity usa luce, gas o unknown. Per cte priceType
-usa fisso, variabile, ibrido o unknown; complexity usa semplice, fasce, soglie o mista. Determina customerType
+usa fisso, variabile, ibrido o unknown; complexity usa semplice, fasce, soglie o mista. Se una CTE offre sia fasce sia un'opzione monoraria esplicita, imposta hasMonorariaOption=true e monorariaUnitPrice al valore F0/monorario; non considerarla un'offerta a fasce non accettabile. Determina customerType
 da destinazione/tipologia del contatore: altri usi, usi diversi e usi non domestici sono business; domestico
 residente/non residente e clienti non domestici sono domestico. Se non è chiaro usa unknown.
 Segnala ricalcoli o dati non confrontabili. referenceMonths deve usare YYYY-MM. billingMonths è la durata
