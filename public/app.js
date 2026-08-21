@@ -3982,6 +3982,32 @@ function communicationDate(value) {
   return date.toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' });
 }
 
+function communicationTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+}
+
+function communicationDayKey(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function communicationDayLabel(value) {
+  if (!value) return 'Data non disponibile';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Data non disponibile';
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (communicationDayKey(date) === communicationDayKey(today)) return 'Oggi';
+  if (communicationDayKey(date) === communicationDayKey(yesterday)) return 'Ieri';
+  return date.toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 function setCommunicationUnavailable(message = 'Comunicazioni non configurate') {
   communicationState.unavailable = true;
   const notifications = communicationElement('notifications-list');
@@ -4063,7 +4089,7 @@ function renderConversations() {
     list.innerHTML = '<div class="communication-empty">Nessun altro agente disponibile.</div>';
     return;
   }
-  list.innerHTML = communicationState.recipients
+  list.innerHTML = [...communicationState.recipients]
     .map((recipient) => {
       const recipientId = Number(recipient.id);
       const conversation = communicationState.allMessages.filter(
@@ -4073,14 +4099,19 @@ function renderConversations() {
       const unread = conversation.filter(
         (message) => !message.letta && Number(message.destinatarioId) === Number(agent?.id)
       ).length;
-      return `<button class="conversation-item ${String(recipientId) === String(communicationState.selectedRecipientId) ? 'is-active' : ''}" type="button" data-recipient-id="${recipientId}">
+      return { recipient, recipientId, last, unread };
+    })
+    .sort((a, b) => {
+      if (b.unread !== a.unread) return b.unread - a.unread;
+      return new Date(b.last?.createdAt || 0) - new Date(a.last?.createdAt || 0);
+    })
+    .map(({ recipient, recipientId, last, unread }) => `<button class="conversation-item ${String(recipientId) === String(communicationState.selectedRecipientId) ? 'is-active' : ''}" type="button" data-recipient-id="${recipientId}">
         <span class="conversation-avatar">${escapeHtml(String(recipient.nome || 'A').charAt(0).toUpperCase())}</span>
         <span class="conversation-copy">
           <span class="conversation-name">${escapeHtml(recipient.nome || 'Agente')}${unread ? `<b class="conversation-unread">${unread}</b>` : ''}</span>
           <span class="conversation-preview">${escapeHtml(last?.testo || 'Nessun messaggio')}</span>
         </span>
-      </button>`;
-    })
+      </button>`)
     .join('');
   list.querySelectorAll('[data-recipient-id]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -4111,14 +4142,20 @@ function renderMessages() {
     updateCommunicationBadges();
     return;
   }
+  let previousDay = '';
   list.innerHTML = items
-    .map(
-      (item) => `<div class="communication-item communication-message ${Number(item.mittenteId) === Number(agent?.id) ? 'is-sent' : ''} ${item.letta ? '' : 'is-unread'}">
+    .map((item) => {
+      const day = communicationDayKey(item.createdAt);
+      const separator = day && day !== previousDay
+        ? `<div class="messenger-date-divider">${escapeHtml(communicationDayLabel(item.createdAt))}</div>`
+        : '';
+      previousDay = day;
+      return `${separator}<div class="communication-item communication-message ${Number(item.mittenteId) === Number(agent?.id) ? 'is-sent' : ''} ${item.letta ? '' : 'is-unread'}">
         <span class="communication-item-title">${escapeHtml(Number(item.mittenteId) === Number(agent?.id) ? 'Tu' : item.mittenteNome || 'Agente')}</span>
         <span class="communication-item-text">${escapeHtml(item.testo || '')}</span>
-        <span class="communication-item-meta">${escapeHtml(communicationDate(item.createdAt))}</span>
-      </div>`
-    )
+        <span class="communication-item-meta">${escapeHtml(communicationTime(item.createdAt))}</span>
+      </div>`;
+    })
     .join('');
   const unread = items.filter((item) => !item.letta && Number(item.destinatarioId) === Number(agent?.id));
   Promise.all(unread.map((item) => fetchJson(`/api/messages/${item.id}/read`, { method: 'PATCH' }).catch(() => {}))).then(() => {
@@ -4218,6 +4255,7 @@ function initCommunicationCenter() {
   const messagesButton = communicationElement('messages-button');
   if (!drawer || !notificationsButton || !messagesButton) return;
   communicationState.initialized = true;
+  drawer.addEventListener('wheel', (event) => event.stopPropagation(), { passive: true });
   const open = (panel) => {
     drawer.hidden = false;
     notificationsButton.setAttribute('aria-expanded', String(panel === 'notifications'));

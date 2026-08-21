@@ -3662,12 +3662,15 @@ td[data-label='Cliente'] strong {
     top: 72px;
     right: 24px;
     width: min(720px, calc(100vw - 32px));
-    max-height: min(680px, calc(100vh - 96px));
-    overflow: auto;
+    height: min(680px, calc(100vh - 96px));
+    overflow: hidden;
+    overscroll-behavior: contain;
     border: 1px solid #e8ddd5;
     border-radius: 16px;
     background: #fff;
     box-shadow: 0 18px 50px rgba(40, 30, 24, 0.18);
+    display: flex;
+    flex-direction: column;
   }
 
   .communication-drawer-head,
@@ -3725,10 +3728,18 @@ td[data-label='Cliente'] strong {
     padding: 14px;
   }
 
+  #messages-panel {
+    flex: 1;
+    height: auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
   .messenger-layout {
     display: grid;
     grid-template-columns: 220px minmax(0, 1fr);
-    min-height: 430px;
+    height: 100%;
+    min-height: 0;
     overflow: hidden;
     border: 1px solid #f0e5dd;
     border-radius: 12px;
@@ -3736,6 +3747,7 @@ td[data-label='Cliente'] strong {
 
   .messenger-conversations {
     overflow: auto;
+    overscroll-behavior: contain;
     border-right: 1px solid #f0e5dd;
     background: #fffaf7;
   }
@@ -3821,6 +3833,7 @@ td[data-label='Cliente'] strong {
     min-width: 0;
     flex-direction: column;
     background: #fff;
+    overflow: hidden;
   }
 
   .messenger-chat-head {
@@ -3836,6 +3849,7 @@ td[data-label='Cliente'] strong {
     min-height: 275px;
     max-height: 330px;
     overflow: auto;
+    overscroll-behavior: contain;
     align-content: start;
     padding: 12px;
   }
@@ -3955,6 +3969,15 @@ td[data-label='Cliente'] strong {
   .communication-message.is-sent {
     justify-self: end;
     background: #fff2ea;
+  }
+
+  .messenger-date-divider {
+    grid-column: 1 / -1;
+    padding: 8px 0 2px;
+    color: #a09289;
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-align: center;
   }
 
   @media (max-width: 640px) {
