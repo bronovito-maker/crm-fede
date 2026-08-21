@@ -82,6 +82,8 @@ Il periodo di storno decorre da `data_inizio_fornitura` dell'ultimo switch `OK`.
 
 Il filtro Agente di Switch disponibili usa per Admin e Spettatore l'elenco completo della tabella `Agenti`, anche quando un account nuovo non ha ancora opportunita. L'API non espone questo elenco globale agli agenti normali. Creazione e modifica di un agente invalidano immediatamente la cache della vista.
 
+La Dashboard non mostra la metrica `CB maturata`; il dato storico resta disponibile nel modello per compatibilita e per i calcoli della sezione CB dedicata.
+
 ## Configurazione Render
 
 Variabili Baserow necessarie per il modello corrente:

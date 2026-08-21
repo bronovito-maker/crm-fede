@@ -948,7 +948,6 @@ function renderDashboard() {
     scartatiUnits:
       sumContractStatusUnits(dashboardMonthly, 'K.O.') +
       sumContractStatusUnits(dashboardMonthly, 'Switch - Out'),
-    cbValidata: sumContractStatusCommissions(dashboardMonthly, 'OK'),
     cbPotenziale: sumContractStatusCommissions(dashboardMonthly, ['OK', 'Caricato', 'Inviato']),
   };
   dashboardSummary.targetUnits = sumContractStatusUnits(targetOk, 'OK');
@@ -978,12 +977,6 @@ function renderDashboard() {
       value: dashboardSummary.scartatiUnits,
       accent: 'red',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>',
-    },
-    {
-      label: 'CB maturata',
-      value: formatCurrency(dashboardSummary.cbValidata),
-      accent: 'green',
-      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
     },
     {
       label: 'CB potenziale',
