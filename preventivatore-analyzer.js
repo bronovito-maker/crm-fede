@@ -58,6 +58,11 @@ Segnala ricalcoli o dati non confrontabili. referenceMonths deve usare YYYY-MM. 
 del periodo in mesi. Per luce indica networkLosses incluse o escluse; per gas non_applicabile.`;
 
 function outputText(payload) {
+  for (const item of payload.output || []) {
+    for (const part of item.content || []) {
+      if (typeof part?.text === 'string') return part.text;
+    }
+  }
   for (const candidate of payload.candidates || []) {
     for (const part of candidate.content?.parts || []) {
       if (typeof part?.text === 'string') return part.text;
