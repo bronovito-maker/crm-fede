@@ -190,6 +190,14 @@ const apiReadLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const preventivatorePublicLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { error: 'TOO_MANY_REQUESTS', message: 'Troppi confronti. Riprova più tardi.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -248,14 +256,15 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 app.use(express.json({ limit: '100kb' }));
-app.get(['/strumenti/preventivatore', '/strumenti/preventivatore/'], requireAuth, (req, res) => {
+app.get(['/strumenti/preventivatore', '/strumenti/preventivatore/'], attachSession, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'strumenti', 'preventivatore', 'index.html'));
 });
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.post(
   '/api/upload',
-  requireAuth,
+  preventivatorePublicLimiter,
+  attachSession,
   express.raw({ type: 'application/octet-stream', limit: '384kb' }),
   (req, res) => {
     const uploadId = String(req.get('X-Upload-Id') || '');
@@ -276,12 +285,13 @@ app.post(
       return;
     }
     const existing = preventivatoreUploads.get(uploadId);
-    if (existing && existing.agentId !== Number(req.session.agentId)) {
+    const agentId = Number(req.session?.agentId) || null;
+    if (existing && existing.agentId && existing.agentId !== agentId) {
       res.status(403).json({ message: 'Caricamento non autorizzato.' });
       return;
     }
     const state = existing || {
-      agentId: Number(req.session.agentId),
+      agentId,
       createdAt: Date.now(),
       documents: { cte: new Map(), invoice: new Map() },
       totals: { cte: total, invoice: total },
@@ -300,17 +310,19 @@ app.post(
   }
 );
 
-app.delete('/api/upload', requireAuth, (req, res) => {
+app.delete('/api/upload', preventivatorePublicLimiter, attachSession, (req, res) => {
   const uploadId = String(req.body?.uploadId || '');
   const state = preventivatoreUploads.get(uploadId);
-  if (!state || state.agentId === Number(req.session.agentId)) preventivatoreUploads.delete(uploadId);
+  const agentId = Number(req.session?.agentId) || null;
+  if (!state || !state.agentId || state.agentId === agentId) preventivatoreUploads.delete(uploadId);
   res.json({ ok: true });
 });
 
-app.post('/api/analyze', requireAuth, async (req, res) => {
+app.post('/api/analyze', preventivatorePublicLimiter, attachSession, async (req, res) => {
   const uploadId = String(req.body?.uploadId || '');
   const state = preventivatoreUploads.get(uploadId);
-  if (!state || state.agentId !== Number(req.session.agentId)) {
+  const agentId = Number(req.session?.agentId) || null;
+  if (!state || (state.agentId && state.agentId !== agentId)) {
     res.status(400).json({ message: 'Carica entrambi i documenti.' });
     return;
   }
@@ -332,14 +344,16 @@ app.post('/api/analyze', requireAuth, async (req, res) => {
   }
   try {
     const result = await analyzeDocuments(CONFIG.openaiApiKey, cte, invoice);
-    const persistence = await persistBillAnalysis({
-      agentId: Number(req.session.agentId),
-      cte,
-      invoice,
-      result,
-      cteFileName: 'cte.pdf',
-      invoiceFileName: 'bolletta.pdf',
-    });
+    const persistence = agentId
+      ? await persistBillAnalysis({
+        agentId,
+        cte,
+        invoice,
+        result,
+        cteFileName: 'cte.pdf',
+        invoiceFileName: 'bolletta.pdf',
+      })
+      : { saved: false, reason: 'PUBLIC_ANALYSIS_NOT_SAVED' };
     res.json({ ...result, persistence });
   } catch (error) {
     console.error('[preventivatore] analisi fallita', error);

@@ -2,18 +2,18 @@
 
 ## Obiettivo
 
-Il preventivatore è uno strumento interno del CRM, disponibile soltanto agli agenti autenticati. Serve a leggere una bolletta e una CTE/offerta, stimare il confronto economico sulla fattura e conservare l'analisi per un eventuale ricontatto commerciale.
+Il preventivatore è una pagina pubblica, non indicizzata, raggiungibile dal percorso `/strumenti/preventivatore`. Serve a leggere una bolletta e una CTE/offerta e stimare il confronto economico sulla fattura.
 
-Non è una landing pubblica e non sostituisce il processo di acquisizione di un contratto: l'agente decide esplicitamente quando trasformare un'analisi in cliente o pratica.
+È una pagina di servizio non indicizzata e non sostituisce il processo di acquisizione di un contratto: la trasformazione in cliente o pratica resta un'azione esplicita del commerciale.
 
 ## Flusso operativo
 
-1. L'agente apre `Strumenti > Confronta bolletta`.
+1. L'utente apre `/strumenti/preventivatore`, oppure l'agente usa il link `Strumenti > Confronta bolletta` dal CRM.
 2. Carica la bolletta e la CTE in PDF.
 3. Il CRM salva temporaneamente i file e li invia a OpenAI tramite il backend.
 4. OpenAI restituisce dati strutturati su cliente, fornitura, fattura e offerta.
-5. Il CRM salva file, dati estratti, risultato del confronto e agente proprietario.
-6. L'agente può lasciare l'analisi in follow-up, collegarla a un cliente esistente o creare un nuovo cliente.
+5. Se l'utente è autenticato nel CRM, il sistema può salvare file, dati estratti, risultato del confronto e agente proprietario.
+6. Gli utenti anonimi ricevono soltanto il risultato del confronto: i PDF non vengono salvati nello storico CRM.
 7. Solo dopo conferma dell'agente l'analisi può essere usata per precompilare un nuovo contratto.
 
 ## Dati estratti
@@ -68,7 +68,7 @@ I file e i dati personali non devono essere esposti con URL pubblici. Il downloa
 
 ## Regole di sicurezza e privacy
 
-- tutte le rotte del preventivatore richiedono una sessione CRM;
+- la pagina e l'analisi sono pubbliche, ma lo storico CRM e i download storici richiedono una sessione;
 - la chiave OpenAI è solo una variabile d'ambiente e non va committata;
 - i PDF non vengono inseriti nel browser storage;
 - un agente vede le proprie analisi, mentre admin e spettatori seguono le regole di visibilità amministrativa;
