@@ -2691,7 +2691,7 @@ async function listNotifications(agentId) {
   ensureCommunicationTables();
   const rows = await fetchAllBaserowRows(
     CONFIG.notificheTableId,
-    new URLSearchParams({ user_field_names: 'true', order_by: '-id', size: '100' }),
+    new URLSearchParams({ user_field_names: 'true', order_by: '-nome', size: '100' }),
     'notifiche agente'
   );
   return rows
@@ -2755,7 +2755,7 @@ async function listMessages(agentId, withAgentId = '') {
   ensureCommunicationTables();
   const rows = await fetchAllBaserowRows(
     CONFIG.messaggiTableId,
-    new URLSearchParams({ user_field_names: 'true', order_by: '-id', size: '200' }),
+    new URLSearchParams({ user_field_names: 'true', order_by: '-nome', size: '200' }),
     'messaggi agente'
   );
   const otherId = Number(withAgentId) || null;
