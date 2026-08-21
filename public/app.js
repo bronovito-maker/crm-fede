@@ -1,3 +1,5 @@
+/* global fetchJson */
+
 let agent = {
   id: 1,
   nome: 'Marco Bianchi',
@@ -3928,6 +3930,7 @@ async function handleLogin(event) {
     setConnectionStatus('online', 'Database connesso');
     setAuthLocked(false);
     initGoogleMapsAutocomplete();
+    initCommunicationCenter();
     event.currentTarget.reset();
     feedback.className = 'is-success';
     feedback.textContent = '';
@@ -3951,6 +3954,263 @@ async function handleLogout() {
   setActivePage('dashboard');
   setConnectionStatus('loading', 'Accesso richiesto');
   setAuthLocked(true);
+  stopCommunicationPolling();
+  closeCommunicationCenter();
+}
+
+const communicationState = {
+  initialized: false,
+  notifications: [],
+  recipients: [],
+  messages: [],
+  unreadMessages: 0,
+  selectedRecipientId: '',
+  activePanel: 'notifications',
+  pollTimer: null,
+  unavailable: false,
+};
+
+function communicationElement(id) {
+  return document.getElementById(id);
+}
+
+function communicationDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function setCommunicationUnavailable(message = 'Comunicazioni non configurate') {
+  communicationState.unavailable = true;
+  const notifications = communicationElement('notifications-list');
+  const messages = communicationElement('messages-list');
+  if (notifications) notifications.innerHTML = `<div class="communication-empty">${escapeHtml(message)}</div>`;
+  if (messages) messages.innerHTML = `<div class="communication-empty">${escapeHtml(message)}</div>`;
+  const send = communicationElement('message-form')?.querySelector('button[type="submit"]');
+  if (send) send.disabled = true;
+}
+
+function updateCommunicationBadges() {
+  const notificationsBadge = communicationElement('notifications-badge');
+  const messagesBadge = communicationElement('messages-badge');
+  const unreadNotifications = communicationState.notifications.filter((item) => !item.letta).length;
+  const unreadMessages = communicationState.unreadMessages;
+  [[notificationsBadge, unreadNotifications], [messagesBadge, unreadMessages]].forEach(([badge, count]) => {
+    if (!badge) return;
+    badge.textContent = String(count);
+    badge.hidden = count === 0;
+  });
+}
+
+function renderNotifications() {
+  const list = communicationElement('notifications-list');
+  const status = communicationElement('notifications-status');
+  if (!list) return;
+  const items = communicationState.notifications;
+  if (status) status.textContent = items.length ? `${items.filter((item) => !item.letta).length} non lette` : 'Nessuna notifica';
+  if (!items.length) {
+    list.innerHTML = '<div class="communication-empty">Non ci sono notifiche.</div>';
+    updateCommunicationBadges();
+    return;
+  }
+  list.innerHTML = items
+    .map(
+      (item) => `<button class="communication-item ${item.letta ? '' : 'is-unread'}" type="button" data-notification-id="${item.id}">
+        <span class="communication-item-title">${escapeHtml(item.titolo || 'Notifica')}</span>
+        <span class="communication-item-text">${escapeHtml(item.testo || '')}</span>
+        <span class="communication-item-meta">${escapeHtml(communicationDate(item.createdAt))}</span>
+      </button>`
+    )
+    .join('');
+  list.querySelectorAll('[data-notification-id]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const id = Number(button.dataset.notificationId);
+      const item = communicationState.notifications.find((notification) => notification.id === id);
+      if (item && !item.letta) {
+        await fetchJson(`/api/notifications/${id}/read`, { method: 'PATCH' }).catch(() => {});
+        item.letta = true;
+        renderNotifications();
+      }
+      if (item?.link === 'messages') setCommunicationPanel('messages');
+      else if (item?.link) setActivePage(item.link);
+    });
+  });
+  updateCommunicationBadges();
+}
+
+function renderRecipients() {
+  const select = communicationElement('message-recipient');
+  if (!select) return;
+  select.innerHTML = [
+    '<option value="">Seleziona un agente</option>',
+    ...communicationState.recipients.map(
+      (recipient) => `<option value="${recipient.id}">${escapeHtml(recipient.nome || 'Agente')}</option>`
+    ),
+  ].join('');
+  if (communicationState.selectedRecipientId) select.value = String(communicationState.selectedRecipientId);
+}
+
+function renderMessages() {
+  const list = communicationElement('messages-list');
+  if (!list) return;
+  if (!communicationState.selectedRecipientId) {
+    list.innerHTML = '<div class="communication-empty">Scegli un agente per vedere la conversazione.</div>';
+    updateCommunicationBadges();
+    return;
+  }
+  const items = [...communicationState.messages].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+  if (!items.length) {
+    list.innerHTML = '<div class="communication-empty">Nessun messaggio in questa conversazione.</div>';
+    updateCommunicationBadges();
+    return;
+  }
+  list.innerHTML = items
+    .map(
+      (item) => `<div class="communication-item communication-message ${Number(item.mittenteId) === Number(agent?.id) ? 'is-sent' : ''} ${item.letta ? '' : 'is-unread'}">
+        <span class="communication-item-title">${escapeHtml(Number(item.mittenteId) === Number(agent?.id) ? 'Tu' : item.mittenteNome || 'Agente')}</span>
+        <span class="communication-item-text">${escapeHtml(item.testo || '')}</span>
+        <span class="communication-item-meta">${escapeHtml(communicationDate(item.createdAt))}</span>
+      </div>`
+    )
+    .join('');
+  const unread = items.filter((item) => !item.letta && Number(item.destinatarioId) === Number(agent?.id));
+  Promise.all(unread.map((item) => fetchJson(`/api/messages/${item.id}/read`, { method: 'PATCH' }).catch(() => {}))).then(() => {
+    unread.forEach((item) => { item.letta = true; });
+    communicationState.unreadMessages = Math.max(0, communicationState.unreadMessages - unread.length);
+    updateCommunicationBadges();
+  });
+  updateCommunicationBadges();
+}
+
+async function loadCommunicationData() {
+  if (!agent?.id || typeof fetchJson !== 'function') return;
+  try {
+    const response = await fetchJson('/api/notifications');
+    communicationState.notifications = Array.isArray(response?.items) ? response.items : [];
+    communicationState.unavailable = false;
+    renderNotifications();
+  } catch (error) {
+    if (error?.status === 503 || error?.code === 'COMMUNICATION_TABLES_NOT_CONFIGURED') setCommunicationUnavailable();
+  }
+  try {
+    const recipients = await fetchJson('/api/message-recipients');
+    communicationState.recipients = Array.isArray(recipients) ? recipients : [];
+    renderRecipients();
+    const allMessages = await fetchJson('/api/messages');
+    communicationState.unreadMessages = (Array.isArray(allMessages) ? allMessages : []).filter(
+      (item) => !item.letta && Number(item.destinatarioId) === Number(agent?.id)
+    ).length;
+    updateCommunicationBadges();
+    if (communicationState.selectedRecipientId) await loadMessages();
+  } catch (error) {
+    if (error?.status === 503 || error?.code === 'COMMUNICATION_TABLES_NOT_CONFIGURED') setCommunicationUnavailable();
+  }
+}
+
+async function loadMessages() {
+  if (!communicationState.selectedRecipientId) {
+    communicationState.messages = [];
+    renderMessages();
+    return;
+  }
+  try {
+    const messages = await fetchJson(`/api/messages?with=${encodeURIComponent(communicationState.selectedRecipientId)}`);
+    communicationState.messages = Array.isArray(messages) ? messages : [];
+    communicationState.unreadMessages = communicationState.messages.filter(
+      (item) => !item.letta && Number(item.destinatarioId) === Number(agent?.id)
+    ).length;
+    renderMessages();
+  } catch (error) {
+    if (error?.status === 503 || error?.code === 'COMMUNICATION_TABLES_NOT_CONFIGURED') setCommunicationUnavailable();
+  }
+}
+
+function setCommunicationPanel(panel) {
+  communicationState.activePanel = panel === 'messages' ? 'messages' : 'notifications';
+  const notificationsPanel = communicationElement('notifications-panel');
+  const messagesPanel = communicationElement('messages-panel');
+  const notificationsTab = communicationElement('notifications-tab');
+  const messagesTab = communicationElement('messages-tab');
+  const notificationsActive = communicationState.activePanel === 'notifications';
+  if (notificationsPanel) notificationsPanel.hidden = !notificationsActive;
+  if (messagesPanel) messagesPanel.hidden = notificationsActive;
+  if (notificationsTab) {
+    notificationsTab.classList.toggle('is-active', notificationsActive);
+    notificationsTab.setAttribute('aria-selected', String(notificationsActive));
+  }
+  if (messagesTab) {
+    messagesTab.classList.toggle('is-active', !notificationsActive);
+    messagesTab.setAttribute('aria-selected', String(!notificationsActive));
+  }
+  if (!notificationsActive) loadMessages();
+}
+
+function closeCommunicationCenter() {
+  const drawer = communicationElement('communication-drawer');
+  if (drawer) drawer.hidden = true;
+  ['notifications-button', 'messages-button'].forEach((id) => communicationElement(id)?.setAttribute('aria-expanded', 'false'));
+}
+
+function stopCommunicationPolling() {
+  if (communicationState.pollTimer) window.clearInterval(communicationState.pollTimer);
+  communicationState.pollTimer = null;
+}
+
+function initCommunicationCenter() {
+  if (communicationState.initialized) {
+    loadCommunicationData();
+    return;
+  }
+  const drawer = communicationElement('communication-drawer');
+  const notificationsButton = communicationElement('notifications-button');
+  const messagesButton = communicationElement('messages-button');
+  if (!drawer || !notificationsButton || !messagesButton) return;
+  communicationState.initialized = true;
+  const open = (panel) => {
+    drawer.hidden = false;
+    notificationsButton.setAttribute('aria-expanded', String(panel === 'notifications'));
+    messagesButton.setAttribute('aria-expanded', String(panel === 'messages'));
+    setCommunicationPanel(panel);
+  };
+  notificationsButton.addEventListener('click', () => open('notifications'));
+  messagesButton.addEventListener('click', () => open('messages'));
+  communicationElement('communication-close')?.addEventListener('click', closeCommunicationCenter);
+  communicationElement('notifications-tab')?.addEventListener('click', () => setCommunicationPanel('notifications'));
+  communicationElement('messages-tab')?.addEventListener('click', () => setCommunicationPanel('messages'));
+  communicationElement('notifications-read-all')?.addEventListener('click', async () => {
+    await fetchJson('/api/notifications/read-all', { method: 'POST' }).catch(() => {});
+    communicationState.notifications.forEach((item) => { item.letta = true; });
+    renderNotifications();
+  });
+  communicationElement('message-recipient')?.addEventListener('change', (event) => {
+    communicationState.selectedRecipientId = event.target.value;
+    loadMessages();
+  });
+  communicationElement('message-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const text = communicationElement('message-text')?.value.trim();
+    if (!communicationState.selectedRecipientId || !text) return;
+    const button = event.currentTarget.querySelector('button[type="submit"]');
+    button.disabled = true;
+    try {
+      await fetchJson('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ destinatarioId: communicationState.selectedRecipientId, testo: text }),
+      });
+      communicationElement('message-text').value = '';
+      await loadMessages();
+      await loadCommunicationData();
+    } catch (error) {
+      window.alert(error.message || 'Messaggio non inviato.');
+    } finally {
+      button.disabled = false;
+    }
+  });
+  loadCommunicationData();
+  stopCommunicationPolling();
+  communicationState.pollTimer = window.setInterval(loadCommunicationData, 30000);
 }
 
 function monthKey(date) {
@@ -4453,6 +4713,7 @@ async function initApp() {
         setConnectionStatus('online', 'Database connesso');
         setAuthLocked(false);
         initGoogleMapsAutocomplete();
+        initCommunicationCenter();
       } catch (err) {
         console.error(err);
         agent = { ...agent, ruolo: undefined }; // revoca i permessi in caso di errore

@@ -11,6 +11,7 @@
     "coverage": "node --experimental-test-coverage --test",
     "hash-password": "node scripts/hash-password.js",
     "baserow:setup-forniture": "node scripts/setup-baserow-forniture.js",
+    "baserow:setup-comunicazioni": "node scripts/setup-baserow-comunicazioni.js",
     "baserow:migrate-forniture": "node scripts/migrate-contract-supplies.js",
     "baserow:migrate-multipoint": "node scripts/migrate-multipoint-supplies.js",
     "baserow:backfill-switch-ok": "node scripts/backfill-switch-ok-dates.js",

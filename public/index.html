@@ -288,15 +288,58 @@
               </svg>
               <span id="agent-name">Marco Bianchi</span>
             </div>
-            <button class="header-icon-button" type="button" aria-label="Notifiche">
-              ♧<span class="notification-badge">2</span>
+            <button
+              class="header-icon-button"
+              type="button"
+              id="notifications-button"
+              aria-label="Notifiche"
+              aria-expanded="false"
+            >
+              ♧<span class="notification-badge" id="notifications-badge" hidden>0</span>
             </button>
-            <button class="header-icon-button" type="button" aria-label="Messaggi">✉</button>
+            <button
+              class="header-icon-button"
+              type="button"
+              id="messages-button"
+              aria-label="Messaggi"
+              aria-expanded="false"
+            >
+              ✉<span class="notification-badge message-badge" id="messages-badge" hidden>0</span>
+            </button>
             <button class="secondary-button logout-button" type="button" id="topbar-logout-button">
               Esci
             </button>
           </div>
         </header>
+
+        <aside class="communication-drawer" id="communication-drawer" hidden aria-label="Comunicazioni">
+          <div class="communication-drawer-head">
+            <strong>Comunicazioni</strong>
+            <button class="communication-close" id="communication-close" type="button" aria-label="Chiudi">×</button>
+          </div>
+          <div class="communication-tabs" role="tablist" aria-label="Comunicazioni">
+            <button class="communication-tab is-active" id="notifications-tab" type="button" role="tab" aria-selected="true">Notifiche</button>
+            <button class="communication-tab" id="messages-tab" type="button" role="tab" aria-selected="false">Messaggi</button>
+          </div>
+          <section class="communication-panel" id="notifications-panel" role="tabpanel">
+            <div class="communication-panel-actions">
+              <span class="communication-muted" id="notifications-status">Nessuna notifica</span>
+              <button class="text-button" id="notifications-read-all" type="button">Segna tutto come letto</button>
+            </div>
+            <div class="communication-list" id="notifications-list"></div>
+          </section>
+          <section class="communication-panel" id="messages-panel" role="tabpanel" hidden>
+            <label class="communication-recipient-label" for="message-recipient">Scrivi a</label>
+            <select class="communication-recipient" id="message-recipient">
+              <option value="">Seleziona un agente</option>
+            </select>
+            <div class="communication-list communication-messages-list" id="messages-list"></div>
+            <form class="communication-form" id="message-form">
+              <textarea id="message-text" maxlength="4000" rows="3" placeholder="Scrivi un messaggio..."></textarea>
+              <button class="primary-button" type="submit">Invia messaggio</button>
+            </form>
+          </section>
+        </aside>
 
         <section class="loading-state" id="loading-state" aria-live="polite">
           <div>

@@ -38,6 +38,8 @@ const CONFIG = {
   contrattiAgenteField: process.env.BASEROW_FIELD_CONTRATTI_AGENTE || 'agente',
   clientiTableId: process.env.BASEROW_TABLE_CLIENTI_ID || '',
   analisiBolletteTableId: process.env.BASEROW_TABLE_ANALISI_BOLLETTE_ID || '',
+  notificheTableId: process.env.BASEROW_TABLE_NOTIFICHE_ID || '',
+  messaggiTableId: process.env.BASEROW_TABLE_MESSAGGI_ID || '',
   fornitureTableId: process.env.BASEROW_TABLE_FORNITURE_ID || '',
   suppliesSwitchOkDateField: process.env.BASEROW_FIELD_FORNITURE_DATA_SWITCH_OK || 'data_switch_ok',
   baserowWebhookSecret: process.env.BASEROW_WEBHOOK_SECRET || '',
@@ -436,6 +438,74 @@ app.get('/api/bill-analyses/:id/file/:kind', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/notifications', apiReadLimiter, requireAuth, async (req, res) => {
+  try {
+    const items = await listNotifications(req.session.agentId);
+    res.json({ items, unread: items.filter((item) => !item.letta).length });
+  } catch (error) {
+    handleApiError(res, error, 'NOTIFICATIONS_LOAD_FAILED', 'Impossibile caricare le notifiche.');
+  }
+});
+
+app.patch('/api/notifications/:id/read', requireAuth, async (req, res) => {
+  try {
+    const updated = await markNotificationRead(req.params.id, req.session.agentId);
+    res.json(updated);
+  } catch (error) {
+    handleApiError(res, error, 'NOTIFICATION_READ_FAILED', 'Impossibile aggiornare la notifica.');
+  }
+});
+
+app.post('/api/notifications/read-all', requireAuth, async (req, res) => {
+  try {
+    const count = await markAllNotificationsRead(req.session.agentId);
+    res.json({ ok: true, count });
+  } catch (error) {
+    handleApiError(res, error, 'NOTIFICATIONS_READ_FAILED', 'Impossibile aggiornare le notifiche.');
+  }
+});
+
+app.get('/api/message-recipients', apiReadLimiter, requireAuth, async (req, res) => {
+  try {
+    const agents = (await listAgents()).filter(
+      (item) => item.attivo && Number(item.id) !== Number(req.session.agentId)
+    );
+    res.json(agents);
+  } catch (error) {
+    handleApiError(res, error, 'MESSAGE_RECIPIENTS_LOAD_FAILED', 'Impossibile caricare gli agenti.');
+  }
+});
+
+app.get('/api/messages', apiReadLimiter, requireAuth, async (req, res) => {
+  try {
+    res.json(await listMessages(req.session.agentId, req.query.with));
+  } catch (error) {
+    handleApiError(res, error, 'MESSAGES_LOAD_FAILED', 'Impossibile caricare i messaggi.');
+  }
+});
+
+app.post('/api/messages', requireAuth, async (req, res) => {
+  try {
+    const recipientId = Number(req.body?.destinatarioId);
+    const text = cleanText(req.body?.testo);
+    if (!recipientId || !text || text.length > 4000) {
+      throw publicError(400, 'MESSAGE_INVALID', 'Inserisci un destinatario e un messaggio valido.');
+    }
+    const message = await createMessage(req.session.agentId, recipientId, text);
+    res.status(201).json(message);
+  } catch (error) {
+    handleApiError(res, error, 'MESSAGE_SEND_FAILED', 'Impossibile inviare il messaggio.');
+  }
+});
+
+app.patch('/api/messages/:id/read', requireAuth, async (req, res) => {
+  try {
+    res.json(await markMessageRead(req.params.id, req.session.agentId));
+  } catch (error) {
+    handleApiError(res, error, 'MESSAGE_READ_FAILED', 'Impossibile aggiornare il messaggio.');
+  }
+});
+
 app.get('/api/health', (req, res) => {
   res.json({
     ok: isConfigured(),
@@ -740,6 +810,15 @@ app.post(
       invalidateClientsCache(assignedAgent.id);
       invalidateSwitchOpportunitiesCache();
       sendContractNotification(assignedAgent.nome, contract, saveMode).catch(() => {});
+      if (Number(assignedAgent.id) !== Number(req.session.agentId)) {
+        createNotification({
+          destinatarioId: assignedAgent.id,
+          tipo: 'contratto',
+          titolo: 'Nuovo contratto assegnato',
+          testo: `${contract.ragioneSociale || 'Nuovo cliente'} · ${contract.tipoFornitura || 'fornitura'}`,
+          link: 'contracts',
+        }).catch((error) => console.error('[notification] contratto assegnato', error.message));
+      }
       res
         .status(201)
         .json(normalizeContractForAssignedAgent(created, assignedAgent, createdSupplies));
@@ -879,6 +958,16 @@ app.patch(
       invalidateClientsCache(existingAgentId);
       invalidateClientsCache(assignedAgentId);
       invalidateSwitchOpportunitiesCache();
+
+      if (Number(assignedAgent.id) !== Number(existingAgentId)) {
+        createNotification({
+          destinatarioId: assignedAgent.id,
+          tipo: 'contratto',
+          titolo: 'Contratto riassegnato',
+          testo: `${contract.ragioneSociale || 'Contratto'} è stato assegnato a te.`,
+          link: 'contracts',
+        }).catch((error) => console.error('[notification] contratto riassegnato', error.message));
+      }
 
       res.json(normalizeContractForAssignedAgent(updated, assignedAgent, updatedSupplies));
     } catch (error) {
@@ -2573,6 +2662,150 @@ async function listAllClients() {
     'lista clienti switch'
   );
   return rows.map(normalizeClient).filter(Boolean);
+}
+
+function ensureCommunicationTables() {
+  if (!CONFIG.notificheTableId || !CONFIG.messaggiTableId) {
+    throw publicError(
+      503,
+      'COMMUNICATION_TABLES_NOT_CONFIGURED',
+      'Tabelle notifiche e messaggi non configurate.'
+    );
+  }
+}
+
+function normalizeNotification(row) {
+  return {
+    id: Number(row.id),
+    tipo: cleanText(row.tipo) || 'sistema',
+    titolo: cleanText(row.titolo),
+    testo: cleanText(row.testo),
+    letta: Boolean(row.letta),
+    link: cleanText(row.link),
+    createdAt: row.created_on || row.created_at || null,
+  };
+}
+
+async function listNotifications(agentId) {
+  ensureCommunicationTables();
+  const rows = await fetchAllBaserowRows(
+    CONFIG.notificheTableId,
+    new URLSearchParams({ user_field_names: 'true', order_by: '-id', size: '100' }),
+    'notifiche agente'
+  );
+  return rows
+    .filter((row) => Number(linkedAgentId(row.destinatario)) === Number(agentId))
+    .map(normalizeNotification);
+}
+
+async function createNotification({ destinatarioId, tipo, titolo, testo, link = '' }) {
+  ensureCommunicationTables();
+  const row = await baserowFetch(
+    `/api/database/rows/table/${CONFIG.notificheTableId}/?user_field_names=true`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        nome: `${tipo}-${Date.now()}`,
+        destinatario: [Number(destinatarioId)],
+        tipo,
+        titolo,
+        testo,
+        letta: false,
+        link,
+      }),
+    }
+  );
+  return normalizeNotification(row);
+}
+
+async function markNotificationRead(notificationId, agentId) {
+  const row = (await listNotifications(agentId)).find((item) => item.id === Number(notificationId));
+  if (!row) throw publicError(404, 'NOTIFICATION_NOT_FOUND', 'Notifica non trovata.');
+  const updated = await baserowFetch(
+    `/api/database/rows/table/${CONFIG.notificheTableId}/${notificationId}/?user_field_names=true`,
+    { method: 'PATCH', body: JSON.stringify({ letta: true }) }
+  );
+  return normalizeNotification(updated);
+}
+
+async function markAllNotificationsRead(agentId) {
+  const rows = (await listNotifications(agentId)).filter((item) => !item.letta);
+  await Promise.all(rows.map((item) => markNotificationRead(item.id, agentId)));
+  return rows.length;
+}
+
+function normalizeMessage(row, agentId) {
+  const senderId = Number(linkedAgentId(row.mittente));
+  const recipientId = Number(linkedAgentId(row.destinatario));
+  return {
+    id: Number(row.id),
+    conversazione: cleanText(row.conversazione),
+    mittenteId: senderId,
+    destinatarioId: recipientId,
+    mittenteNome: row.mittente?.[0]?.value || '',
+    destinatarioNome: row.destinatario?.[0]?.value || '',
+    testo: cleanText(row.testo),
+    letta: Boolean(row.letta) || senderId === Number(agentId),
+    createdAt: row.created_on || row.created_at || null,
+  };
+}
+
+async function listMessages(agentId, withAgentId = '') {
+  ensureCommunicationTables();
+  const rows = await fetchAllBaserowRows(
+    CONFIG.messaggiTableId,
+    new URLSearchParams({ user_field_names: 'true', order_by: '-id', size: '200' }),
+    'messaggi agente'
+  );
+  const otherId = Number(withAgentId) || null;
+  return rows
+    .filter((row) => {
+      const senderId = Number(linkedAgentId(row.mittente));
+      const recipientId = Number(linkedAgentId(row.destinatario));
+      const belongs = senderId === Number(agentId) || recipientId === Number(agentId);
+      const matchesOther = !otherId || senderId === otherId || recipientId === otherId;
+      return belongs && matchesOther;
+    })
+    .map((row) => normalizeMessage(row, agentId));
+}
+
+async function createMessage(senderId, recipientId, text) {
+  ensureCommunicationTables();
+  const recipient = (await listAgents()).find((item) => Number(item.id) === Number(recipientId) && item.attivo);
+  if (!recipient) throw publicError(404, 'MESSAGE_RECIPIENT_NOT_FOUND', 'Destinatario non trovato.');
+  const conversation = [Number(senderId), Number(recipientId)].sort((a, b) => a - b).join('-');
+  const row = await baserowFetch(
+    `/api/database/rows/table/${CONFIG.messaggiTableId}/?user_field_names=true`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        nome: `msg-${Date.now()}`,
+        conversazione: conversation,
+        mittente: [Number(senderId)],
+        destinatario: [Number(recipientId)],
+        testo: text,
+        letta: false,
+      }),
+    }
+  );
+  await createNotification({
+    destinatarioId: recipientId,
+    tipo: 'messaggio',
+    titolo: 'Nuovo messaggio',
+    testo: text.slice(0, 140),
+    link: 'messages',
+  });
+  return normalizeMessage(row, senderId);
+}
+
+async function markMessageRead(messageId, agentId) {
+  const row = (await listMessages(agentId)).find((item) => item.id === Number(messageId));
+  if (!row) throw publicError(404, 'MESSAGE_NOT_FOUND', 'Messaggio non trovato.');
+  const updated = await baserowFetch(
+    `/api/database/rows/table/${CONFIG.messaggiTableId}/${messageId}/?user_field_names=true`,
+    { method: 'PATCH', body: JSON.stringify({ letta: true }) }
+  );
+  return normalizeMessage(updated, agentId);
 }
 
 function parseJsonField(value) {
