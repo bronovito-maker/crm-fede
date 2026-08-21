@@ -423,6 +423,11 @@ body.auth-locked .app-shell {
   text-overflow: ellipsis;
 }
 
+.nav-item-external {
+  display: block;
+  text-decoration: none;
+}
+
 .nav-item.active,
 .nav-item:hover {
   background: #eaf1ff;

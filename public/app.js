@@ -424,7 +424,7 @@ setAppLoading(true);
 setAuthLocked(true);
 updateConditionalFields();
 
-document.querySelectorAll('.nav-item').forEach((button) => {
+document.querySelectorAll('.nav-item[data-page]').forEach((button) => {
   button.addEventListener('click', () => setActivePage(button.dataset.page));
 });
 
