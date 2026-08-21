@@ -14,7 +14,7 @@ Il preventivatore è una pagina pubblica, non indicizzata, raggiungibile dal per
 4. OpenAI restituisce dati strutturati su cliente, fornitura, fattura e offerta.
 5. Se l'utente è autenticato nel CRM, il sistema può salvare file, dati estratti, risultato del confronto e agente proprietario.
 6. Gli utenti anonimi ricevono soltanto il risultato del confronto: i PDF non vengono salvati nello storico CRM.
-7. Solo dopo conferma dell'agente l'analisi può essere usata per precompilare un nuovo contratto.
+7. L'agente può aprire un nuovo contratto precompilato con i dati riconosciuti, sempre con controllo e conferma manuale prima del salvataggio.
 
 ## Dati estratti
 
@@ -104,6 +104,7 @@ Lo script stampa l'ID da inserire in `BASEROW_TABLE_ANALISI_BOLLETTE_ID`. Il JWT
 - [x] salvataggio permanente dei PDF, quando R2 e tabella sono configurati;
 - [x] endpoint storico delle analisi;
 - [x] endpoint per collegare/creare un cliente con conferma agente;
+- [x] comandi dal risultato per creare/aggiornare il cliente;
+- [x] apertura del nuovo contratto con precompilazione tramite sessione del browser;
 - [ ] interfaccia completa dello storico nel CRM;
-- [ ] precompilazione nuovo contratto;
 - [ ] eliminazione e retention dei documenti.

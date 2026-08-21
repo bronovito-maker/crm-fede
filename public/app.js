@@ -4375,6 +4375,43 @@ function updateStartDatePrediction() {
   infoBanner.hidden = false;
 }
 
+function applyPreventivatoreDraft() {
+  const raw = window.sessionStorage.getItem('preventivatoreContractDraft');
+  if (!raw) return false;
+  let draft;
+  try {
+    draft = JSON.parse(raw);
+  } catch {
+    window.sessionStorage.removeItem('preventivatoreContractDraft');
+    return false;
+  }
+  const form = document.getElementById('contract-form');
+  if (!form) return false;
+  const setValue = (name, value) => {
+    const field = form.elements[name];
+    if (!field || value === undefined || value === null) return;
+    if (field.options && value && !Array.from(field.options).some((option) => option.value === value)) {
+      field.add(new window.Option(value, value));
+    }
+    field.value = value;
+  };
+  Object.entries(draft).forEach(([name, value]) => {
+    if (name !== 'tipoOperazione') setValue(name, value);
+  });
+  if (draft.tipoOperazione) {
+    const operation = form.querySelector(`input[name="tipoOperazione"][value="${window.CSS.escape(draft.tipoOperazione)}"]`);
+    if (operation) operation.checked = true;
+  }
+  ['tipoCliente', 'tipoFornitura', 'fornitore', 'metodoPagamento'].forEach((name) => {
+    form.elements[name]?.dispatchEvent(new window.Event('change', { bubbles: true }));
+  });
+  syncContractEditorUi();
+  window.sessionStorage.removeItem('preventivatoreContractDraft');
+  setActivePage('new-contract');
+  setFormFeedback('success', 'Dati importati dal preventivatore. Controllali prima di salvare il contratto.');
+  return true;
+}
+
 async function initApp() {
   // Aggiungi listener per predizione data inizio fornitura nel form
   const infoBanner = document.getElementById('new-contract-summary');
@@ -4439,6 +4476,7 @@ async function initApp() {
       setAuthLocked(true);
     }
     renderAll();
+    applyPreventivatoreDraft();
   } finally {
     setAppLoading(false);
   }
