@@ -1,6 +1,12 @@
 module.exports = [
   {
-    ignores: ['node_modules/**', 'coverage/**', 'sessions.db', 'package-lock.json'],
+    ignores: [
+      'node_modules/**',
+      'coverage/**',
+      'sessions.db',
+      'package-lock.json',
+      'public/vendor/**',
+    ],
   },
   {
     files: ['server.js', 'scripts/**/*.js', 'test/**/*.js'],

@@ -10,9 +10,10 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
 const Database = require('better-sqlite3');
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { DeleteObjectCommand, GetObjectCommand, S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const sharp = require('sharp');
 const { buildSwitchOpportunities } = require('./switch-opportunities');
+const { analyzeDocuments } = require('./preventivatore-analyzer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -36,6 +37,7 @@ const CONFIG = {
   contrattiExFornitoreField: process.env.BASEROW_FIELD_EX_FORNITORE || '',
   contrattiAgenteField: process.env.BASEROW_FIELD_CONTRATTI_AGENTE || 'agente',
   clientiTableId: process.env.BASEROW_TABLE_CLIENTI_ID || '',
+  analisiBolletteTableId: process.env.BASEROW_TABLE_ANALISI_BOLLETTE_ID || '',
   fornitureTableId: process.env.BASEROW_TABLE_FORNITURE_ID || '',
   suppliesSwitchOkDateField: process.env.BASEROW_FIELD_FORNITURE_DATA_SWITCH_OK || 'data_switch_ok',
   baserowWebhookSecret: process.env.BASEROW_WEBHOOK_SECRET || '',
@@ -49,6 +51,7 @@ const CONFIG = {
   r2BucketName: process.env.R2_BUCKET_NAME || '',
   r2Endpoint: process.env.R2_ENDPOINT || '',
   r2PublicUrl: (process.env.R2_PUBLIC_URL || '').replace(/\/$/, ''),
+  openaiApiKey: process.env.OPENAI_API_KEY || '',
 };
 
 const r2Client = new S3Client({
@@ -195,6 +198,19 @@ const upload = multer({
   },
 });
 
+const preventivatoreUploads = new Map();
+const preventivatoreMaxFileSize = 18 * 1024 * 1024;
+const preventivatoreMaxChunks = 72;
+const preventivatoreUploadId = /^[a-f0-9-]{36}$/i;
+const preventivatoreAnalysisFileKinds = new Set(['bolletta', 'cte']);
+
+setInterval(() => {
+  const cutoff = Date.now() - 30 * 60 * 1000;
+  for (const [uploadId, uploadState] of preventivatoreUploads) {
+    if (uploadState.createdAt < cutoff) preventivatoreUploads.delete(uploadId);
+  }
+}, 5 * 60 * 1000).unref();
+
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -232,7 +248,175 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 app.use(express.json({ limit: '100kb' }));
+app.get(['/strumenti/preventivatore', '/strumenti/preventivatore/'], requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'strumenti', 'preventivatore', 'index.html'));
+});
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.post(
+  '/api/upload',
+  requireAuth,
+  express.raw({ type: 'application/octet-stream', limit: '384kb' }),
+  (req, res) => {
+    const uploadId = String(req.get('X-Upload-Id') || '');
+    const kind = String(req.get('X-Document-Kind') || '');
+    const index = Number(req.get('X-Chunk-Index'));
+    const total = Number(req.get('X-Total-Chunks'));
+    if (!preventivatoreUploadId.test(uploadId) || !['cte', 'invoice'].includes(kind)) {
+      res.status(400).json({ message: 'Caricamento non valido.' });
+      return;
+    }
+    if (!Number.isInteger(index) || !Number.isInteger(total) || index < 0 || total < 1 || total > preventivatoreMaxChunks || index >= total) {
+      res.status(400).json({ message: 'Caricamento non valido.' });
+      return;
+    }
+    const chunk = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    if (!chunk.length) {
+      res.status(400).json({ message: 'Blocco PDF vuoto.' });
+      return;
+    }
+    const existing = preventivatoreUploads.get(uploadId);
+    if (existing && existing.agentId !== Number(req.session.agentId)) {
+      res.status(403).json({ message: 'Caricamento non autorizzato.' });
+      return;
+    }
+    const state = existing || {
+      agentId: Number(req.session.agentId),
+      createdAt: Date.now(),
+      documents: { cte: new Map(), invoice: new Map() },
+      totals: { cte: total, invoice: total },
+    };
+    state.totals[kind] = total;
+    state.documents[kind].set(index, chunk);
+    const size = [...state.documents.cte.values(), ...state.documents.invoice.values()]
+      .reduce((sum, part) => sum + part.length, 0);
+    if (size > preventivatoreMaxFileSize * 2) {
+      preventivatoreUploads.delete(uploadId);
+      res.status(413).json({ message: 'I PDF superano la dimensione massima consentita.' });
+      return;
+    }
+    preventivatoreUploads.set(uploadId, state);
+    res.json({ ok: true });
+  }
+);
+
+app.delete('/api/upload', requireAuth, (req, res) => {
+  const uploadId = String(req.body?.uploadId || '');
+  const state = preventivatoreUploads.get(uploadId);
+  if (!state || state.agentId === Number(req.session.agentId)) preventivatoreUploads.delete(uploadId);
+  res.json({ ok: true });
+});
+
+app.post('/api/analyze', requireAuth, async (req, res) => {
+  const uploadId = String(req.body?.uploadId || '');
+  const state = preventivatoreUploads.get(uploadId);
+  if (!state || state.agentId !== Number(req.session.agentId)) {
+    res.status(400).json({ message: 'Carica entrambi i documenti.' });
+    return;
+  }
+  const cteChunks = Number(req.body?.cteChunks);
+  const invoiceChunks = Number(req.body?.invoiceChunks);
+  const isComplete = (kind, total) => Number.isInteger(total) && total > 0 && total <= preventivatoreMaxChunks && state.documents[kind].size === total;
+  if (!isComplete('cte', cteChunks) || !isComplete('invoice', invoiceChunks)) {
+    preventivatoreUploads.delete(uploadId);
+    res.status(400).json({ message: 'Il caricamento dei PDF non è completo. Riprova.' });
+    return;
+  }
+  const join = (kind, total) => Buffer.concat(Array.from({ length: total }, (_, index) => state.documents[kind].get(index)));
+  const cte = join('cte', cteChunks);
+  const invoice = join('invoice', invoiceChunks);
+  preventivatoreUploads.delete(uploadId);
+  if (cte.length > preventivatoreMaxFileSize || invoice.length > preventivatoreMaxFileSize) {
+    res.status(413).json({ message: 'Uno dei PDF supera 18 MB.' });
+    return;
+  }
+  try {
+    const result = await analyzeDocuments(CONFIG.openaiApiKey, cte, invoice);
+    const persistence = await persistBillAnalysis({
+      agentId: Number(req.session.agentId),
+      cte,
+      invoice,
+      result,
+      cteFileName: 'cte.pdf',
+      invoiceFileName: 'bolletta.pdf',
+    });
+    res.json({ ...result, persistence });
+  } catch (error) {
+    console.error('[preventivatore] analisi fallita', error);
+    const message = error.message === 'OPENAI_NOT_CONFIGURED'
+      ? 'Il servizio di analisi non è ancora configurato.'
+      : error.message?.startsWith('OPENAI_429')
+        ? 'Il servizio è momentaneamente occupato. Attendi un minuto e riprova.'
+        : 'Non riesco a leggere i documenti. Riprova.';
+    res.status(error.message === 'OPENAI_NOT_CONFIGURED' ? 503 : 502).json({ message });
+  }
+});
+
+app.get('/api/bill-analyses', requireAuth, async (req, res) => {
+  try {
+    const agent = await getCurrentAgent(req.session.agentId);
+    const rows = await listBillAnalyses(canViewAdminData(agent) ? null : Number(req.session.agentId));
+    res.json(rows.map(normalizeBillAnalysis));
+  } catch (error) {
+    handleApiError(res, error, 'BILL_ANALYSES_LOAD_FAILED', 'Impossibile caricare lo storico delle analisi.');
+  }
+});
+
+app.patch('/api/bill-analyses/:id', requireAuth, async (req, res) => {
+  try {
+    const analysis = await getBillAnalysis(req.params.id);
+    await ensureBillAnalysisAccess(analysis, req.session.agentId);
+    assertCanWrite(await getCurrentAgent(req.session.agentId));
+    const allowed = new Set(['stato', 'note', 'prossima_data_ricontatto']);
+    const payload = Object.fromEntries(
+      Object.entries(req.body || {}).filter(([key, value]) => allowed.has(key) && typeof value === 'string')
+    );
+    const updated = await updateBaserowBillAnalysis(req.params.id, payload);
+    res.json(normalizeBillAnalysis(updated));
+  } catch (error) {
+    handleApiError(res, error, 'BILL_ANALYSIS_UPDATE_FAILED', 'Impossibile aggiornare l’analisi.');
+  }
+});
+
+app.post('/api/bill-analyses/:id/create-client', requireAuth, async (req, res) => {
+  try {
+    const analysis = await getBillAnalysis(req.params.id);
+    await ensureBillAnalysisAccess(analysis, req.session.agentId);
+    assertCanWrite(await getCurrentAgent(req.session.agentId));
+    const extracted = parseJsonField(analysis.dati_estratti)?.invoice || {};
+    const client = await createClientFromBillAnalysis(extracted, Number(req.session.agentId));
+    await updateBaserowBillAnalysis(req.params.id, {
+      cliente: [client.id],
+      stato: 'Da ricontattare',
+    });
+    res.json({ client, analysisId: Number(req.params.id) });
+  } catch (error) {
+    handleApiError(res, error, 'BILL_ANALYSIS_CLIENT_FAILED', 'Impossibile creare il cliente dal documento.');
+  }
+});
+
+app.get('/api/bill-analyses/:id/file/:kind', requireAuth, async (req, res) => {
+  try {
+    if (!preventivatoreAnalysisFileKinds.has(req.params.kind)) {
+      res.status(404).json({ message: 'Documento non trovato.' });
+      return;
+    }
+    const analysis = await getBillAnalysis(req.params.id);
+    await ensureBillAnalysisAccess(analysis, req.session.agentId);
+    const key = req.params.kind === 'cte' ? analysis.file_cte : analysis.file_bolletta;
+    if (!key) {
+      res.status(404).json({ message: 'Documento non disponibile.' });
+      return;
+    }
+    const object = await r2Client.send(new GetObjectCommand({ Bucket: CONFIG.r2BucketName, Key: key }));
+    const bytes = await object.Body.transformToByteArray();
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${req.params.kind}.pdf"`);
+    res.send(Buffer.from(bytes));
+  } catch (error) {
+    handleApiError(res, error, 'BILL_ANALYSIS_FILE_FAILED', 'Impossibile scaricare il documento.');
+  }
+});
 
 app.get('/api/health', (req, res) => {
   res.json({
@@ -2217,6 +2401,152 @@ async function updateBaserowClient(clientId, payload) {
   );
 }
 
+function ensureBillAnalysisTableEnabled() {
+  if (!CONFIG.analisiBolletteTableId) {
+    throw publicError(
+      503,
+      'BILL_ANALYSIS_TABLE_NOT_CONFIGURED',
+      'Storico analisi non configurato. Imposta BASEROW_TABLE_ANALISI_BOLLETTE_ID.'
+    );
+  }
+}
+
+async function getBillAnalysis(analysisId) {
+  ensureBillAnalysisTableEnabled();
+  return baserowFetch(
+    `/api/database/rows/table/${CONFIG.analisiBolletteTableId}/${analysisId}/?user_field_names=true`
+  );
+}
+
+async function listBillAnalyses(agentId = null) {
+  ensureBillAnalysisTableEnabled();
+  const params = new URLSearchParams({
+    user_field_names: 'true',
+    order_by: '-id',
+    size: '200',
+  });
+  if (agentId) {
+    params.set('filters', JSON.stringify({
+      filter_type: 'AND',
+      filters: [{ field: 'agente', type: 'link_row_has', value: String(agentId) }],
+    }));
+  }
+  return fetchAllBaserowRows(CONFIG.analisiBolletteTableId, params, 'storico analisi bollette');
+}
+
+async function createBaserowBillAnalysis(payload) {
+  ensureBillAnalysisTableEnabled();
+  return baserowFetch(
+    `/api/database/rows/table/${CONFIG.analisiBolletteTableId}/?user_field_names=true`,
+    { method: 'POST', body: JSON.stringify(payload) }
+  );
+}
+
+async function updateBaserowBillAnalysis(analysisId, payload) {
+  ensureBillAnalysisTableEnabled();
+  return baserowFetch(
+    `/api/database/rows/table/${CONFIG.analisiBolletteTableId}/${analysisId}/?user_field_names=true`,
+    { method: 'PATCH', body: JSON.stringify(payload) }
+  );
+}
+
+function normalizeBillAnalysis(row) {
+  if (!row) return null;
+  const parseJson = (value) => {
+    try {
+      return typeof value === 'string' ? JSON.parse(value) : value || null;
+    } catch {
+      return null;
+    }
+  };
+  return {
+    id: Number(row.id),
+    nome: cleanText(row.nome),
+    stato: cleanText(row.stato) || 'Nuova',
+    agenteId: linkedAgentId(row.agente),
+    clienteId: Number(linkedRowIds(row.cliente)[0]) || null,
+    contrattoId: Number(linkedRowIds(row.contratto)[0]) || null,
+    fileBolletta: cleanText(row.file_bolletta),
+    fileCte: cleanText(row.file_cte),
+    fileBollettaNome: cleanText(row.file_bolletta_nome),
+    fileCteNome: cleanText(row.file_cte_nome),
+    datiEstratti: parseJson(row.dati_estratti),
+    confronto: parseJson(row.confronto),
+    note: cleanText(row.note),
+    prossimaDataRicontatto: cleanText(row.prossima_data_ricontatto),
+    createdAt: row.created_on || row.created_at || null,
+    updatedAt: row.updated_on || row.updated_at || null,
+  };
+}
+
+async function ensureBillAnalysisAccess(row, agentId) {
+  const agent = await getCurrentAgent(agentId);
+  if (canViewAdminData(agent)) return;
+  if (Number(linkedAgentId(row.agente)) !== Number(agentId)) {
+    throw publicError(403, 'BILL_ANALYSIS_FORBIDDEN', 'Accesso negato a questa analisi.');
+  }
+}
+
+function hasR2Storage() {
+  return Boolean(CONFIG.r2BucketName && CONFIG.r2Endpoint && CONFIG.r2AccessKeyId && CONFIG.r2SecretAccessKey);
+}
+
+async function persistBillAnalysis({ agentId, cte, invoice, result, cteFileName, invoiceFileName }) {
+  if (!CONFIG.analisiBolletteTableId) {
+    return { saved: false, reason: 'TABLE_NOT_CONFIGURED' };
+  }
+  if (!hasR2Storage()) {
+    return { saved: false, reason: 'STORAGE_NOT_CONFIGURED' };
+  }
+
+  const analysisId = crypto.randomUUID();
+  const baseKey = `preventivatore/${agentId}/${analysisId}`;
+  const bollettaKey = `${baseKey}/bolletta.pdf`;
+  const cteKey = `${baseKey}/cte.pdf`;
+  await Promise.all([
+    r2Client.send(new PutObjectCommand({
+      Bucket: CONFIG.r2BucketName,
+      Key: bollettaKey,
+      Body: invoice,
+      ContentType: 'application/pdf',
+    })),
+    r2Client.send(new PutObjectCommand({
+      Bucket: CONFIG.r2BucketName,
+      Key: cteKey,
+      Body: cte,
+      ContentType: 'application/pdf',
+    })),
+  ]);
+
+  try {
+    const row = await createBaserowBillAnalysis({
+      nome: `${result.invoice?.supplier || 'Cliente'} - ${new Date().toLocaleDateString('it-IT')}`,
+      stato: 'Nuova',
+      agente: [agentId],
+      file_bolletta: bollettaKey,
+      file_cte: cteKey,
+      file_bolletta_nome: invoiceFileName,
+      file_cte_nome: cteFileName,
+      dati_estratti: JSON.stringify(result),
+      confronto: JSON.stringify({
+        fornitore: result.invoice?.supplier || '',
+        commodity: result.invoice?.commodity || '',
+        consumo: result.invoice?.consumption ?? null,
+        periodo: result.invoice?.billingPeriod || '',
+        confidence: result.confidence ?? null,
+      }),
+    });
+    return { saved: true, id: Number(row.id), fileBolletta: bollettaKey, fileCte: cteKey };
+  } catch (error) {
+    console.error('[preventivatore] salvataggio analisi fallito', error.message);
+    await Promise.allSettled([
+      r2Client.send(new DeleteObjectCommand({ Bucket: CONFIG.r2BucketName, Key: bollettaKey })),
+      r2Client.send(new DeleteObjectCommand({ Bucket: CONFIG.r2BucketName, Key: cteKey })),
+    ]);
+    return { saved: false, reason: 'DATABASE_SAVE_FAILED' };
+  }
+}
+
 async function listAllClients() {
   if (!CONFIG.clientiTableId) return [];
   const rows = await fetchAllBaserowRows(
@@ -2225,6 +2555,49 @@ async function listAllClients() {
     'lista clienti switch'
   );
   return rows.map(normalizeClient).filter(Boolean);
+}
+
+function parseJsonField(value) {
+  if (!value) return null;
+  try {
+    return typeof value === 'string' ? JSON.parse(value) : value;
+  } catch {
+    return null;
+  }
+}
+
+async function createClientFromBillAnalysis(invoice, agentId) {
+  const clean = (value) => cleanText(value).trim();
+  const name = clean(invoice.customerName) || clean(invoice.supplier) || 'Cliente da ricontattare';
+  const piva = clean(invoice.vatNumber) || clean(invoice.taxId);
+  const email = clean(invoice.email).toLowerCase();
+  const phone = clean(invoice.phone);
+  const address = clean(invoice.address);
+  const existing = (await listAllClients()).find((row) => {
+    const same = (left, right) => Boolean(left && right && String(left).toLowerCase() === String(right).toLowerCase());
+    return (piva && same(row.piva, piva)) || (email && same(row.email, email)) || (phone && same(row.cellulare, phone));
+  });
+  const payload = {
+    'Ragione Sociale': name,
+    ...(piva ? { piva } : {}),
+    ...(email ? { email } : {}),
+    ...(phone ? { cellulare: phone } : {}),
+    ...(address ? { indirizzo_fatturazione: address } : {}),
+    agente: [agentId],
+  };
+  const saved = existing
+    ? await updateBaserowClient(existing.id, payload)
+    : await baserowFetch(`/api/database/rows/table/${CONFIG.clientiTableId}/?user_field_names=true`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  return {
+    id: Number(saved.id),
+    created: !existing,
+    ragioneSociale: saved['Ragione Sociale'] || name,
+    piva: saved.piva || piva,
+    email: saved.email || email,
+  };
 }
 
 async function findClientByPiva(piva) {
