@@ -398,7 +398,11 @@ app.post('/api/bill-analyses/:id/create-client', requireAuth, async (req, res) =
     await ensureBillAnalysisAccess(analysis, req.session.agentId);
     assertCanWrite(await getCurrentAgent(req.session.agentId));
     const extracted = parseJsonField(analysis.dati_estratti)?.invoice || {};
-    const client = await createClientFromBillAnalysis(extracted, Number(req.session.agentId));
+    const client = await createClientFromBillAnalysis(
+      extracted,
+      Number(req.session.agentId),
+      Number(req.params.id)
+    );
     await updateBaserowBillAnalysis(req.params.id, {
       cliente: [client.id],
       stato: 'Da ricontattare',
@@ -2580,7 +2584,7 @@ function parseJsonField(value) {
   }
 }
 
-async function createClientFromBillAnalysis(invoice, agentId) {
+async function createClientFromBillAnalysis(invoice, agentId, analysisId) {
   const clean = (value) => cleanText(value).trim();
   const name = clean(invoice.customerName) || clean(invoice.supplier) || 'Cliente da ricontattare';
   const piva = clean(invoice.vatNumber) || clean(invoice.taxId);
@@ -2591,6 +2595,9 @@ async function createClientFromBillAnalysis(invoice, agentId) {
     const same = (left, right) => Boolean(left && right && String(left).toLowerCase() === String(right).toLowerCase());
     return (piva && same(row.piva, piva)) || (email && same(row.email, email)) || (phone && same(row.cellulare, phone));
   });
+  const existingRow = existing ? await getBaserowClient(existing.id) : null;
+  const previousAnalysisIds = linkedRowIds(existingRow?.['Analisi bollette']);
+  const analysisLinks = [...new Set([...previousAnalysisIds, Number(analysisId)])].filter(Boolean);
   const payload = {
     'Ragione Sociale': name,
     ...(piva ? { piva } : {}),
@@ -2598,6 +2605,7 @@ async function createClientFromBillAnalysis(invoice, agentId) {
     ...(phone ? { cellulare: phone } : {}),
     ...(address ? { indirizzo_fatturazione: address } : {}),
     agente: [agentId],
+    ...(analysisLinks.length ? { 'Analisi bollette': analysisLinks } : {}),
   };
   const saved = existing
     ? await updateBaserowClient(existing.id, payload)

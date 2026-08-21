@@ -105,6 +105,7 @@ Lo script stampa l'ID da inserire in `BASEROW_TABLE_ANALISI_BOLLETTE_ID`. Il JWT
 - [x] endpoint storico delle analisi;
 - [x] endpoint per collegare/creare un cliente con conferma agente;
 - [x] comandi dal risultato per creare/aggiornare il cliente;
+- [x] collegamento dell'analisi al cliente tramite il campo Baserow `Analisi bollette`;
 - [x] apertura del nuovo contratto con precompilazione tramite sessione del browser;
 - [ ] interfaccia completa dello storico nel CRM;
 - [ ] eliminazione e retention dei documenti.
