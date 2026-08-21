@@ -270,7 +270,7 @@ const pages = {
 const statusColors = {
   Bozza: '#64748b',
   OK: '#15803d',
-  Caricato: '#b7791f',
+  Caricato: '#f26522',
   Inviato: '#2563eb',
   'K.O.': '#c2410c',
   'Switch - Out': '#dc2626',
@@ -398,7 +398,26 @@ const formatDate = new Intl.DateTimeFormat('it-IT', {
 });
 const formatMonth = new Intl.DateTimeFormat('it-IT', { month: 'long', year: 'numeric' });
 
-document.getElementById('agent-name').textContent = agent.nome;
+function syncAgentIdentity() {
+  const name = agent?.nome || 'Agente collegato';
+  const role = userRoleLabel(agent?.ruolo || 'agente');
+  document.getElementById('agent-name').textContent = name;
+  const sidebarName = document.getElementById('sidebar-agent-name');
+  const sidebarRole = document.getElementById('sidebar-agent-role');
+  if (sidebarName) sidebarName.textContent = name;
+  if (sidebarRole) sidebarRole.textContent = role;
+  const avatar = document.querySelector('.sidebar-avatar');
+  if (avatar) {
+    avatar.textContent = name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0].toUpperCase())
+      .join('');
+  }
+}
+
+syncAgentIdentity();
 document.getElementById('current-period').textContent = currentPeriodLabel();
 setConnectionStatus('loading', 'Connessione...');
 setAppLoading(true);
@@ -411,6 +430,23 @@ document.querySelectorAll('.nav-item').forEach((button) => {
 
 document.querySelectorAll('[data-go-page]').forEach((button) => {
   button.addEventListener('click', () => setActivePage(button.dataset.goPage));
+});
+
+document.getElementById('dashboard-activities')?.addEventListener('click', (event) => {
+  const action = event.target.closest('[data-activity-page]');
+  if (action) setActivePage(action.dataset.activityPage);
+});
+
+document.getElementById('global-search-input')?.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return;
+  const query = event.currentTarget.value.trim();
+  if (!query) return;
+  const contractsSearch = document.getElementById('search-input');
+  if (contractsSearch) {
+    contractsSearch.value = query;
+    contractsSearch.dispatchEvent(new window.Event('input', { bubbles: true }));
+  }
+  setActivePage('contracts');
 });
 
 document.getElementById('tipo-fornitura').addEventListener('change', updateConditionalFields);
@@ -955,13 +991,13 @@ function renderDashboard() {
   dashboardSummary.targetPercent = percent(dashboardSummary.targetUnits, agent.targetMensile);
   renderMetrics('dashboard-metrics', [
     {
-      label: 'Contatori inseriti',
+      label: 'Contatti inseriti',
       value: dashboardSummary.monthlyUnits,
       accent: 'blue',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>',
     },
     {
-      label: 'Contatori OK',
+      label: 'Contatti OK',
       value: dashboardSummary.okUnits,
       accent: 'green',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>',
@@ -979,28 +1015,16 @@ function renderDashboard() {
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>',
     },
     {
-      label: 'CB potenziale',
+      label: 'CB potenziali',
       value: formatCurrency(dashboardSummary.cbPotenziale),
       accent: 'amber',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
-    },
-    {
-      label: 'Target mensile',
-      value: agent.targetMensile,
-      accent: 'blue',
-      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
     },
     {
       label: 'Manca al target',
       value: dashboardSummary.mancanti,
       accent: dashboardSummary.mancanti === 0 ? 'green' : 'amber',
       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>',
-    },
-    {
-      label: 'In attesa (Caricati + Inviati)',
-      value: dashboardSummary.caricatiUnits + dashboardSummary.inviatiUnits,
-      accent: 'blue',
-      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
     },
   ]);
 
@@ -1013,6 +1037,22 @@ function renderDashboard() {
     dashboardSummary.mancanti === 0
       ? 'Target mensile Prospect raggiunto. Ora ogni contratto alza la CB.'
       : `Ti mancano ${dashboardSummary.mancanti} contatori Prospect OK per chiudere il target.`;
+  document.getElementById('dashboard-activities').innerHTML = `
+    <button class="activity-item" type="button" data-activity-page="contracts">
+      <span class="activity-icon activity-icon-orange">↗</span>
+      <span class="activity-copy"><small>In attesa (Caricati e Inviati)</small><strong>${dashboardSummary.caricatiUnits + dashboardSummary.inviatiUnits}</strong></span>
+      <span class="activity-arrow" aria-hidden="true">›</span>
+    </button>
+    <button class="activity-item" type="button" data-activity-page="contracts">
+      <span class="activity-icon activity-icon-amber">ϟ</span>
+      <span class="activity-copy"><small>Manca al target</small><strong>${dashboardSummary.mancanti}</strong></span>
+      <span class="activity-arrow" aria-hidden="true">›</span>
+    </button>
+    <button class="activity-item" type="button" data-activity-page="cb">
+      <span class="activity-icon activity-icon-blue">◎</span>
+      <span class="activity-copy"><small>Target mensile</small><strong>${agent.targetMensile}</strong></span>
+      <span class="activity-arrow" aria-hidden="true">›</span>
+    </button>`;
   renderLineChart();
   renderBarChart();
 }
@@ -1071,8 +1111,8 @@ function renderLineChart() {
     <svg viewBox="0 0 650 230" role="img" aria-label="Andamento cumulato contratti del mese">
       <line x1="30" y1="200" x2="625" y2="200" stroke="#dce3ea" />
       <line x1="30" y1="20" x2="30" y2="200" stroke="#dce3ea" />
-      <path d="${path}" fill="none" stroke="#2563eb" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
-      ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="5" fill="#0f766e" />`).join('')}
+      <path d="${path}" fill="none" stroke="#f26522" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+      ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="5" fill="#f26522" />`).join('')}
     </svg>
   `;
 }
@@ -1137,19 +1177,7 @@ function renderContractsTable() {
     .toLowerCase();
 
   const filtered = sourceContracts.filter((contract) => {
-    const matchesSearch = [
-      contract.ragioneSociale,
-      contract.cellulare,
-      contract.email,
-      contract.piva,
-      contract.codiceCrm,
-      contract.idContratto,
-      contract.pod,
-      contract.pdr,
-    ]
-      .join(' ')
-      .toLowerCase()
-      .includes(search);
+    const matchesSearch = matchesSmartSearch(contractSearchValues(contract), search);
     const matchesMonth = month === 'all' || contractMonthRef(contract) === month;
     const matchesStatus = status === 'all' || contractHasStatus(contract, status);
     const matchesCategory =
@@ -1436,19 +1464,7 @@ function renderCbPage() {
     return matchesCategory && matchesOperation && matchesSupplier;
   });
   const searchedMonthly = filteredMonthly.filter((contract) =>
-    [
-      contract.ragioneSociale,
-      contract.cellulare,
-      contract.email,
-      contract.piva,
-      contract.codiceCrm,
-      contract.idContratto,
-      contract.pod,
-      contract.pdr,
-    ]
-      .join(' ')
-      .toLowerCase()
-      .includes(search)
+    matchesSmartSearch(contractSearchValues(contract), search)
   );
   syncMultiSelectValues('cb-category-filter', cbCategoryFilters);
   syncMultiSelectValues('cb-operation-filter', cbOperationFilters);
@@ -3908,7 +3924,7 @@ async function handleLogin(event) {
     await loadCurrentCompetence({ silent: true });
     await loadCompetitionCutoffs({ silent: true });
     await loadAndRenderContracts({ silent: true, force: true });
-    document.getElementById('agent-name').textContent = agent.nome;
+    syncAgentIdentity();
     setConnectionStatus('online', 'Database connesso');
     setAuthLocked(false);
     initGoogleMapsAutocomplete();
@@ -4299,6 +4315,41 @@ function matchesSmartSearch(values, query) {
   return terms.every((term) => haystack.includes(term));
 }
 
+function contractSearchValues(contract) {
+  const supplyValues = Array.isArray(contract?.forniture)
+    ? contract.forniture.flatMap((supply) => [
+        supply?.pod,
+        supply?.pdr,
+        supply?.nome,
+        supply?.intestatario,
+        supply?.indirizzoFornitura,
+      ])
+    : [];
+  return [
+    contract?.ragioneSociale,
+    contract?.cellulare,
+    contract?.email,
+    contract?.piva,
+    contract?.pec,
+    contract?.codiceCrm,
+    contract?.idContratto,
+    contract?.pod,
+    contract?.pdr,
+    contract?.indirizzoFatturazione,
+    contract?.indirizzoFornitura,
+    contract?.fornitore,
+    contract?.exFornitore,
+    contract?.nomeOfferta,
+    contract?.tipoCliente,
+    contract?.categoriaCliente,
+    contract?.tipoFornitura,
+    contract?.tipoOperazione,
+    contract?.statoContratto,
+    contract?.agenteNome,
+    ...supplyValues,
+  ];
+}
+
 function sanitizeUrl(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -4361,7 +4412,7 @@ async function initApp() {
         await loadCurrentCompetence({ silent: true });
         await loadCompetitionCutoffs({ silent: true });
         await loadAndRenderContracts({ silent: true, force: true });
-        document.getElementById('agent-name').textContent = agent.nome;
+        syncAgentIdentity();
         setConnectionStatus('online', 'Database connesso');
         setAuthLocked(false);
         initGoogleMapsAutocomplete();
