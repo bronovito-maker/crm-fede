@@ -3629,6 +3629,16 @@ td[data-label='Cliente'] strong {
     font-size: 1.15rem;
   }
 
+  .header-action-icon {
+    width: 19px;
+    height: 19px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+  }
+
   .header-icon-button:hover {
     border-color: #e8ebee;
     background: #fff;
