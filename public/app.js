@@ -3969,6 +3969,7 @@ const communicationState = {
   activePanel: 'notifications',
   pollTimer: null,
   unavailable: false,
+  notificationsInitialized: false,
 };
 
 function communicationElement(id) {
@@ -4030,6 +4031,53 @@ function updateCommunicationBadges() {
   });
 }
 
+function openCommunicationNotification(item) {
+  if (!item) return;
+  if (item.link?.startsWith('messages')) {
+    const drawer = communicationElement('communication-drawer');
+    if (drawer) drawer.hidden = false;
+    communicationElement('notifications-button')?.setAttribute('aria-expanded', 'false');
+    communicationElement('messages-button')?.setAttribute('aria-expanded', 'true');
+    const linkedAgentId = Number(item.link.split(':')[1]) || 0;
+    if (linkedAgentId) communicationState.selectedRecipientId = String(linkedAgentId);
+    else {
+      const targetMessage = communicationState.allMessages.find(
+        (message) => message.testo && message.testo === item.testo
+      );
+      if (targetMessage) communicationState.selectedRecipientId = String(targetMessage.mittenteId);
+    }
+    setCommunicationPanel('messages');
+    renderConversations();
+    loadMessages();
+  } else if (item.link) {
+    setActivePage(item.link);
+  }
+}
+
+function showCommunicationToast(item) {
+  const container = communicationElement('communication-toast-container');
+  if (!container || !item) return;
+  const toast = document.createElement('button');
+  toast.type = 'button';
+  toast.className = 'communication-toast';
+  toast.innerHTML = `<span class="communication-toast-icon">${item.tipo === 'messaggio' ? '✉' : '!'}</span>
+    <span class="communication-toast-copy"><strong>${escapeHtml(item.titolo || 'Nuova notifica')}</strong><small>${escapeHtml(item.testo || '')}</small></span>
+    <span class="communication-toast-close" aria-hidden="true">×</span>`;
+  const close = () => {
+    toast.classList.add('is-closing');
+    window.setTimeout(() => toast.remove(), 180);
+  };
+  toast.addEventListener('click', async () => {
+    await fetchJson(`/api/notifications/${item.id}/read`, { method: 'PATCH' }).catch(() => {});
+    item.letta = true;
+    renderNotifications();
+    openCommunicationNotification(item);
+    close();
+  });
+  container.appendChild(toast);
+  window.setTimeout(close, 5000);
+}
+
 function renderNotifications() {
   const list = communicationElement('notifications-list');
   const status = communicationElement('notifications-status');
@@ -4068,24 +4116,7 @@ function renderNotifications() {
         item.letta = true;
         renderNotifications();
       }
-      if (item?.link?.startsWith('messages')) {
-        const linkedAgentId = Number(item.link.split(':')[1]) || 0;
-        if (linkedAgentId) communicationState.selectedRecipientId = String(linkedAgentId);
-        else {
-          const unread = communicationState.allMessages.find(
-            (message) => !message.letta && Number(message.destinatarioId) === Number(agent?.id)
-          );
-          const matchingMessage = communicationState.allMessages.find(
-            (message) => message.testo && message.testo === item.testo
-          );
-          const targetMessage = unread || matchingMessage;
-          if (targetMessage) communicationState.selectedRecipientId = String(targetMessage.mittenteId);
-        }
-        setCommunicationPanel('messages');
-        renderConversations();
-        loadMessages();
-      }
-      else if (item?.link) setActivePage(item.link);
+      openCommunicationNotification(item);
     });
   });
   updateCommunicationBadges();
@@ -4184,7 +4215,15 @@ async function loadCommunicationData() {
   if (!agent?.id || typeof fetchJson !== 'function') return;
   try {
     const response = await fetchJson('/api/notifications');
-    communicationState.notifications = Array.isArray(response?.items) ? response.items : [];
+    const nextNotifications = Array.isArray(response?.items) ? response.items : [];
+    if (communicationState.notificationsInitialized) {
+      const previousIds = new Set(communicationState.notifications.map((item) => item.id));
+      nextNotifications
+        .filter((item) => !previousIds.has(item.id) && !item.letta)
+        .forEach(showCommunicationToast);
+    }
+    communicationState.notifications = nextNotifications;
+    communicationState.notificationsInitialized = true;
     communicationState.unavailable = false;
     renderNotifications();
   } catch (error) {

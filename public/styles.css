@@ -3666,6 +3666,85 @@ td[data-label='Cliente'] strong {
     background: #5b6ee1;
   }
 
+  .communication-toast-container {
+    position: fixed;
+    z-index: 60;
+    right: 24px;
+    bottom: 24px;
+    display: grid;
+    gap: 10px;
+    width: min(360px, calc(100vw - 32px));
+    pointer-events: none;
+  }
+
+  .communication-toast {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ffd2bd;
+    border-radius: 12px;
+    color: #332c28;
+    background: #fff;
+    box-shadow: 0 12px 30px rgba(40, 30, 24, 0.2);
+    cursor: pointer;
+    pointer-events: auto;
+    text-align: left;
+    animation: communication-toast-in 180ms ease-out;
+  }
+
+  .communication-toast.is-closing {
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 180ms ease, transform 180ms ease;
+  }
+
+  .communication-toast-icon {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    color: #fff;
+    background: var(--brand-orange);
+    font-weight: 800;
+  }
+
+  .communication-toast-copy {
+    display: grid;
+    min-width: 0;
+    gap: 3px;
+  }
+
+  .communication-toast-copy strong,
+  .communication-toast-copy small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .communication-toast-copy strong {
+    font-size: 0.78rem;
+  }
+
+  .communication-toast-copy small {
+    color: #887970;
+    font-size: 0.72rem;
+  }
+
+  .communication-toast-close {
+    margin-left: auto;
+    color: #a3948b;
+    font-size: 1.2rem;
+  }
+
+  @keyframes communication-toast-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
   .communication-drawer {
     position: fixed;
     z-index: 30;
