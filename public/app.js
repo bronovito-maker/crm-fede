@@ -958,8 +958,10 @@ function renderMetrics(containerId, metrics) {
       (metric) => `
         <article class="metric-card${metric.accent ? ` accent-${metric.accent}` : ''}">
           ${metric.icon ? `<span class="metric-icon">${metric.icon}</span>` : ''}
-          <span>${escapeHtml(metric.label)}</span>
-          <strong>${escapeHtml(metric.value)}</strong>
+          <div class="metric-content">
+            <span>${escapeHtml(metric.label)}</span>
+            <strong>${escapeHtml(metric.value)}</strong>
+          </div>
         </article>
       `
     )
