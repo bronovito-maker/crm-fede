@@ -4034,14 +4034,19 @@ function renderNotifications() {
   const list = communicationElement('notifications-list');
   const status = communicationElement('notifications-status');
   if (!list) return;
-  const items = communicationState.notifications;
-  if (status) status.textContent = items.length ? `${items.filter((item) => !item.letta).length} non lette` : 'Nessuna notifica';
+  const items = [...communicationState.notifications].sort((a, b) => {
+    if (Boolean(a.letta) !== Boolean(b.letta)) return Number(Boolean(a.letta)) - Number(Boolean(b.letta));
+    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+  });
+  const unreadItems = items.filter((item) => !item.letta);
+  const readItems = items.filter((item) => item.letta);
+  if (status) status.textContent = items.length ? `${unreadItems.length} non lette · ${readItems.length} lette` : 'Nessuna notifica';
   if (!items.length) {
     list.innerHTML = '<div class="communication-empty">Non ci sono notifiche.</div>';
     updateCommunicationBadges();
     return;
   }
-  list.innerHTML = items
+  const renderNotificationItems = (group) => group
     .map(
       (item) => `<button class="communication-item ${item.letta ? '' : 'is-unread'}" type="button" data-notification-id="${item.id}">
         <span class="communication-item-title">${escapeHtml(item.titolo || 'Notifica')}</span>
@@ -4050,6 +4055,10 @@ function renderNotifications() {
       </button>`
     )
     .join('');
+  list.innerHTML = [
+    unreadItems.length ? `<div class="notification-group-title"><span>Non lette</span><b>${unreadItems.length}</b></div>${renderNotificationItems(unreadItems)}` : '',
+    readItems.length ? `<div class="notification-group-title notification-group-title-read"><span>Già lette</span><b>${readItems.length}</b></div>${renderNotificationItems(readItems)}` : '',
+  ].join('');
   list.querySelectorAll('[data-notification-id]').forEach((button) => {
     button.addEventListener('click', async () => {
       const id = Number(button.dataset.notificationId);

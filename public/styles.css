@@ -3886,6 +3886,40 @@ td[data-label='Cliente'] strong {
     margin-top: 12px;
   }
 
+  .notification-group-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 8px;
+    padding: 3px 2px;
+    color: var(--brand-orange);
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .notification-group-title b {
+    display: grid;
+    place-items: center;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 99px;
+    color: #fff;
+    background: var(--brand-orange);
+    font-size: 0.62rem;
+  }
+
+  .notification-group-title-read {
+    margin-top: 18px;
+    color: #978980;
+  }
+
+  .notification-group-title-read b {
+    color: #786b63;
+    background: #eee5df;
+  }
+
   .communication-item {
     width: 100%;
     padding: 11px 12px;
