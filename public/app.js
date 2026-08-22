@@ -4066,7 +4066,11 @@ function renderNotifications() {
           const unread = communicationState.allMessages.find(
             (message) => !message.letta && Number(message.destinatarioId) === Number(agent?.id)
           );
-          if (unread) communicationState.selectedRecipientId = String(unread.mittenteId);
+          const matchingMessage = communicationState.allMessages.find(
+            (message) => message.testo && message.testo === item.testo
+          );
+          const targetMessage = unread || matchingMessage;
+          if (targetMessage) communicationState.selectedRecipientId = String(targetMessage.mittenteId);
         }
         setCommunicationPanel('messages');
         renderConversations();
@@ -4103,6 +4107,7 @@ function renderConversations() {
     })
     .sort((a, b) => {
       if (b.unread !== a.unread) return b.unread - a.unread;
+      if (Boolean(b.last) !== Boolean(a.last)) return Number(Boolean(b.last)) - Number(Boolean(a.last));
       return new Date(b.last?.createdAt || 0) - new Date(a.last?.createdAt || 0);
     })
     .map(({ recipient, recipientId, last, unread }) => `<button class="conversation-item ${String(recipientId) === String(communicationState.selectedRecipientId) ? 'is-active' : ''}" type="button" data-recipient-id="${recipientId}">

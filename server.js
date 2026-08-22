@@ -2683,7 +2683,7 @@ function normalizeNotification(row) {
     testo: cleanText(row.testo),
     letta: Boolean(row.letta),
     link: cleanText(row.link),
-    createdAt: row.created_on || row.created_at || null,
+    createdAt: row.created_on || row.created_at || generatedTimestamp(row.nome),
   };
 }
 
@@ -2747,8 +2747,15 @@ function normalizeMessage(row, agentId) {
     destinatarioNome: row.destinatario?.[0]?.value || '',
     testo: cleanText(row.testo),
     letta: Boolean(row.letta) || senderId === Number(agentId),
-    createdAt: row.created_on || row.created_at || null,
+    createdAt: row.created_on || row.created_at || generatedTimestamp(row.nome),
   };
+}
+
+function generatedTimestamp(value) {
+  const match = String(value || '').match(/-(\d{13})$/);
+  if (!match) return null;
+  const timestamp = Number(match[1]);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
 }
 
 async function listMessages(agentId, withAgentId = '') {
@@ -2772,7 +2779,9 @@ async function listMessages(agentId, withAgentId = '') {
 
 async function createMessage(senderId, recipientId, text) {
   ensureCommunicationTables();
-  const recipient = (await listAgents()).find((item) => Number(item.id) === Number(recipientId) && item.attivo);
+  const agents = await listAgents();
+  const sender = agents.find((item) => Number(item.id) === Number(senderId));
+  const recipient = agents.find((item) => Number(item.id) === Number(recipientId) && item.attivo);
   if (!recipient) throw publicError(404, 'MESSAGE_RECIPIENT_NOT_FOUND', 'Destinatario non trovato.');
   const conversation = [Number(senderId), Number(recipientId)].sort((a, b) => a - b).join('-');
   const row = await baserowFetch(
@@ -2792,7 +2801,7 @@ async function createMessage(senderId, recipientId, text) {
   await createNotification({
     destinatarioId: recipientId,
     tipo: 'messaggio',
-    titolo: 'Nuovo messaggio',
+    titolo: `Nuovo messaggio da ${sender?.nome || 'un agente'}`,
     testo: text.slice(0, 140),
     link: `messages:${senderId}`,
   });
