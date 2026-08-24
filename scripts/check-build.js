@@ -4,6 +4,8 @@ const path = require('path');
 
 const filesToCheck = [
   'server.js',
+  'preventivatore-analyzer.js',
+  'preventivatore-rules.js',
   'switch-opportunities.js',
   'public/app.js',
   'public/config.js',

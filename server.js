@@ -10,7 +10,12 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
 const Database = require('better-sqlite3');
-const { DeleteObjectCommand, GetObjectCommand, S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  S3Client,
+  PutObjectCommand,
+} = require('@aws-sdk/client-s3');
 const sharp = require('sharp');
 const { buildSwitchOpportunities } = require('./switch-opportunities');
 const { analyzeDocuments } = require('./preventivatore-analyzer');
@@ -214,12 +219,15 @@ const preventivatoreMaxChunks = 72;
 const preventivatoreUploadId = /^[a-f0-9-]{36}$/i;
 const preventivatoreAnalysisFileKinds = new Set(['bolletta', 'cte']);
 
-setInterval(() => {
-  const cutoff = Date.now() - 30 * 60 * 1000;
-  for (const [uploadId, uploadState] of preventivatoreUploads) {
-    if (uploadState.createdAt < cutoff) preventivatoreUploads.delete(uploadId);
-  }
-}, 5 * 60 * 1000).unref();
+setInterval(
+  () => {
+    const cutoff = Date.now() - 30 * 60 * 1000;
+    for (const [uploadId, uploadState] of preventivatoreUploads) {
+      if (uploadState.createdAt < cutoff) preventivatoreUploads.delete(uploadId);
+    }
+  },
+  5 * 60 * 1000
+).unref();
 
 app.use(
   helmet({
@@ -277,7 +285,14 @@ app.post(
       res.status(400).json({ message: 'Caricamento non valido.' });
       return;
     }
-    if (!Number.isInteger(index) || !Number.isInteger(total) || index < 0 || total < 1 || total > preventivatoreMaxChunks || index >= total) {
+    if (
+      !Number.isInteger(index) ||
+      !Number.isInteger(total) ||
+      index < 0 ||
+      total < 1 ||
+      total > preventivatoreMaxChunks ||
+      index >= total
+    ) {
       res.status(400).json({ message: 'Caricamento non valido.' });
       return;
     }
@@ -300,8 +315,10 @@ app.post(
     };
     state.totals[kind] = total;
     state.documents[kind].set(index, chunk);
-    const size = [...state.documents.cte.values(), ...state.documents.invoice.values()]
-      .reduce((sum, part) => sum + part.length, 0);
+    const size = [...state.documents.cte.values(), ...state.documents.invoice.values()].reduce(
+      (sum, part) => sum + part.length,
+      0
+    );
     if (size > preventivatoreMaxFileSize * 2) {
       preventivatoreUploads.delete(uploadId);
       res.status(413).json({ message: 'I PDF superano la dimensione massima consentita.' });
@@ -330,13 +347,18 @@ app.post('/api/analyze', preventivatorePublicLimiter, attachSession, async (req,
   }
   const cteChunks = Number(req.body?.cteChunks);
   const invoiceChunks = Number(req.body?.invoiceChunks);
-  const isComplete = (kind, total) => Number.isInteger(total) && total > 0 && total <= preventivatoreMaxChunks && state.documents[kind].size === total;
+  const isComplete = (kind, total) =>
+    Number.isInteger(total) &&
+    total > 0 &&
+    total <= preventivatoreMaxChunks &&
+    state.documents[kind].size === total;
   if (!isComplete('cte', cteChunks) || !isComplete('invoice', invoiceChunks)) {
     preventivatoreUploads.delete(uploadId);
     res.status(400).json({ message: 'Il caricamento dei PDF non è completo. Riprova.' });
     return;
   }
-  const join = (kind, total) => Buffer.concat(Array.from({ length: total }, (_, index) => state.documents[kind].get(index)));
+  const join = (kind, total) =>
+    Buffer.concat(Array.from({ length: total }, (_, index) => state.documents[kind].get(index)));
   const cte = join('cte', cteChunks);
   const invoice = join('invoice', invoiceChunks);
   preventivatoreUploads.delete(uploadId);
@@ -346,24 +368,46 @@ app.post('/api/analyze', preventivatorePublicLimiter, attachSession, async (req,
   }
   try {
     const result = await analyzeDocuments(CONFIG.openaiApiKey, cte, invoice);
-    const persistence = agentId
-      ? await persistBillAnalysis({
-        agentId,
-        cte,
-        invoice,
-        result,
-        cteFileName: 'cte.pdf',
-        invoiceFileName: 'bolletta.pdf',
-      })
-      : { saved: false, reason: 'PUBLIC_ANALYSIS_NOT_SAVED' };
+    if (
+      result.comparison &&
+      !result.comparison.ok &&
+      result.comparison.code !== 'CUSTOMER_TYPE_UNKNOWN'
+    ) {
+      res.status(422).json({
+        error: result.comparison.code,
+        message: result.comparison.message,
+        title: result.comparison.title,
+      });
+      return;
+    }
+    const persistence =
+      agentId && result.comparison?.ok
+        ? await persistBillAnalysis({
+            agentId,
+            cte,
+            invoice,
+            result,
+            cteFileName: 'cte.pdf',
+            invoiceFileName: 'bolletta.pdf',
+          })
+        : {
+            saved: false,
+            reason:
+              result.comparison?.code === 'CUSTOMER_TYPE_UNKNOWN'
+                ? 'CUSTOMER_TYPE_CONFIRMATION_REQUIRED'
+                : agentId
+                  ? 'ANALYSIS_BLOCKED'
+                  : 'PUBLIC_ANALYSIS_NOT_SAVED',
+          };
     res.json({ ...result, persistence });
   } catch (error) {
     console.error('[preventivatore] analisi fallita', error);
-    const message = error.message === 'OPENAI_NOT_CONFIGURED'
-      ? 'Il servizio di analisi non è ancora configurato.'
-      : error.message?.startsWith('OPENAI_429')
-        ? 'Il servizio è momentaneamente occupato. Attendi un minuto e riprova.'
-        : 'Non riesco a leggere i documenti. Riprova.';
+    const message =
+      error.message === 'OPENAI_NOT_CONFIGURED'
+        ? 'Il servizio di analisi non è ancora configurato.'
+        : error.message?.startsWith('OPENAI_429')
+          ? 'Il servizio è momentaneamente occupato. Attendi un minuto e riprova.'
+          : 'Non riesco a leggere i documenti. Riprova.';
     res.status(error.message === 'OPENAI_NOT_CONFIGURED' ? 503 : 502).json({ message });
   }
 });
@@ -371,10 +415,17 @@ app.post('/api/analyze', preventivatorePublicLimiter, attachSession, async (req,
 app.get('/api/bill-analyses', requireAuth, async (req, res) => {
   try {
     const agent = await getCurrentAgent(req.session.agentId);
-    const rows = await listBillAnalyses(canViewAdminData(agent) ? null : Number(req.session.agentId));
+    const rows = await listBillAnalyses(
+      canViewAdminData(agent) ? null : Number(req.session.agentId)
+    );
     res.json(rows.map(normalizeBillAnalysis));
   } catch (error) {
-    handleApiError(res, error, 'BILL_ANALYSES_LOAD_FAILED', 'Impossibile caricare lo storico delle analisi.');
+    handleApiError(
+      res,
+      error,
+      'BILL_ANALYSES_LOAD_FAILED',
+      'Impossibile caricare lo storico delle analisi.'
+    );
   }
 });
 
@@ -385,7 +436,9 @@ app.patch('/api/bill-analyses/:id', requireAuth, async (req, res) => {
     assertCanWrite(await getCurrentAgent(req.session.agentId));
     const allowed = new Set(['stato', 'note', 'prossima_data_ricontatto']);
     const payload = Object.fromEntries(
-      Object.entries(req.body || {}).filter(([key, value]) => allowed.has(key) && typeof value === 'string')
+      Object.entries(req.body || {}).filter(
+        ([key, value]) => allowed.has(key) && typeof value === 'string'
+      )
     );
     const updated = await updateBaserowBillAnalysis(req.params.id, payload);
     res.json(normalizeBillAnalysis(updated));
@@ -411,7 +464,12 @@ app.post('/api/bill-analyses/:id/create-client', requireAuth, async (req, res) =
     });
     res.json({ client, analysisId: Number(req.params.id) });
   } catch (error) {
-    handleApiError(res, error, 'BILL_ANALYSIS_CLIENT_FAILED', 'Impossibile creare il cliente dal documento.');
+    handleApiError(
+      res,
+      error,
+      'BILL_ANALYSIS_CLIENT_FAILED',
+      'Impossibile creare il cliente dal documento.'
+    );
   }
 });
 
@@ -428,7 +486,9 @@ app.get('/api/bill-analyses/:id/file/:kind', requireAuth, async (req, res) => {
       res.status(404).json({ message: 'Documento non disponibile.' });
       return;
     }
-    const object = await r2Client.send(new GetObjectCommand({ Bucket: CONFIG.r2BucketName, Key: key }));
+    const object = await r2Client.send(
+      new GetObjectCommand({ Bucket: CONFIG.r2BucketName, Key: key })
+    );
     const bytes = await object.Body.transformToByteArray();
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${req.params.kind}.pdf"`);
@@ -472,7 +532,12 @@ app.get('/api/message-recipients', apiReadLimiter, requireAuth, async (req, res)
     );
     res.json(agents);
   } catch (error) {
-    handleApiError(res, error, 'MESSAGE_RECIPIENTS_LOAD_FAILED', 'Impossibile caricare gli agenti.');
+    handleApiError(
+      res,
+      error,
+      'MESSAGE_RECIPIENTS_LOAD_FAILED',
+      'Impossibile caricare gli agenti.'
+    );
   }
 });
 
@@ -2534,10 +2599,13 @@ async function listBillAnalyses(agentId = null) {
     size: '200',
   });
   if (agentId) {
-    params.set('filters', JSON.stringify({
-      filter_type: 'AND',
-      filters: [{ field: 'agente', type: 'link_row_has', value: String(agentId) }],
-    }));
+    params.set(
+      'filters',
+      JSON.stringify({
+        filter_type: 'AND',
+        filters: [{ field: 'agente', type: 'link_row_has', value: String(agentId) }],
+      })
+    );
   }
   return fetchAllBaserowRows(CONFIG.analisiBolletteTableId, params, 'storico analisi bollette');
 }
@@ -2596,10 +2664,19 @@ async function ensureBillAnalysisAccess(row, agentId) {
 }
 
 function hasR2Storage() {
-  return Boolean(CONFIG.r2BucketName && CONFIG.r2Endpoint && CONFIG.r2AccessKeyId && CONFIG.r2SecretAccessKey);
+  return Boolean(
+    CONFIG.r2BucketName && CONFIG.r2Endpoint && CONFIG.r2AccessKeyId && CONFIG.r2SecretAccessKey
+  );
 }
 
-async function persistBillAnalysis({ agentId, cte, invoice, result, cteFileName, invoiceFileName }) {
+async function persistBillAnalysis({
+  agentId,
+  cte,
+  invoice,
+  result,
+  cteFileName,
+  invoiceFileName,
+}) {
   if (!CONFIG.analisiBolletteTableId) {
     return { saved: false, reason: 'TABLE_NOT_CONFIGURED' };
   }
@@ -2612,18 +2689,22 @@ async function persistBillAnalysis({ agentId, cte, invoice, result, cteFileName,
   const bollettaKey = `${baseKey}/bolletta.pdf`;
   const cteKey = `${baseKey}/cte.pdf`;
   await Promise.all([
-    r2Client.send(new PutObjectCommand({
-      Bucket: CONFIG.r2BucketName,
-      Key: bollettaKey,
-      Body: invoice,
-      ContentType: 'application/pdf',
-    })),
-    r2Client.send(new PutObjectCommand({
-      Bucket: CONFIG.r2BucketName,
-      Key: cteKey,
-      Body: cte,
-      ContentType: 'application/pdf',
-    })),
+    r2Client.send(
+      new PutObjectCommand({
+        Bucket: CONFIG.r2BucketName,
+        Key: bollettaKey,
+        Body: invoice,
+        ContentType: 'application/pdf',
+      })
+    ),
+    r2Client.send(
+      new PutObjectCommand({
+        Bucket: CONFIG.r2BucketName,
+        Key: cteKey,
+        Body: cte,
+        ContentType: 'application/pdf',
+      })
+    ),
   ]);
 
   try {
@@ -2637,6 +2718,7 @@ async function persistBillAnalysis({ agentId, cte, invoice, result, cteFileName,
       file_cte_nome: cteFileName,
       dati_estratti: JSON.stringify(result),
       confronto: JSON.stringify({
+        ...(result.comparison || {}),
         fornitore: result.invoice?.supplier || '',
         commodity: result.invoice?.commodity || '',
         consumo: result.invoice?.consumption ?? null,
@@ -2782,7 +2864,8 @@ async function createMessage(senderId, recipientId, text) {
   const agents = await listAgents();
   const sender = agents.find((item) => Number(item.id) === Number(senderId));
   const recipient = agents.find((item) => Number(item.id) === Number(recipientId) && item.attivo);
-  if (!recipient) throw publicError(404, 'MESSAGE_RECIPIENT_NOT_FOUND', 'Destinatario non trovato.');
+  if (!recipient)
+    throw publicError(404, 'MESSAGE_RECIPIENT_NOT_FOUND', 'Destinatario non trovato.');
   const conversation = [Number(senderId), Number(recipientId)].sort((a, b) => a - b).join('-');
   const row = await baserowFetch(
     `/api/database/rows/table/${CONFIG.messaggiTableId}/?user_field_names=true`,
@@ -2835,8 +2918,13 @@ async function createClientFromBillAnalysis(invoice, agentId, analysisId) {
   const phone = clean(invoice.phone);
   const address = clean(invoice.address);
   const existing = (await listAllClients()).find((row) => {
-    const same = (left, right) => Boolean(left && right && String(left).toLowerCase() === String(right).toLowerCase());
-    return (piva && same(row.piva, piva)) || (email && same(row.email, email)) || (phone && same(row.cellulare, phone));
+    const same = (left, right) =>
+      Boolean(left && right && String(left).toLowerCase() === String(right).toLowerCase());
+    return (
+      (piva && same(row.piva, piva)) ||
+      (email && same(row.email, email)) ||
+      (phone && same(row.cellulare, phone))
+    );
   });
   const existingRow = existing ? await getBaserowClient(existing.id) : null;
   const previousAnalysisIds = linkedRowIds(existingRow?.['Analisi bollette']);
@@ -2852,10 +2940,13 @@ async function createClientFromBillAnalysis(invoice, agentId, analysisId) {
   };
   const saved = existing
     ? await updateBaserowClient(existing.id, payload)
-    : await baserowFetch(`/api/database/rows/table/${CONFIG.clientiTableId}/?user_field_names=true`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+    : await baserowFetch(
+        `/api/database/rows/table/${CONFIG.clientiTableId}/?user_field_names=true`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }
+      );
   return {
     id: Number(saved.id),
     created: !existing,
