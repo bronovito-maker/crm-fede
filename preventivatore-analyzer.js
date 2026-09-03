@@ -147,6 +147,8 @@ const ANALYSIS_SCHEMA = {
         customerType: { type: 'string' },
         priceType: { type: 'string' },
         complexity: { type: 'string' },
+        initialFixedMonths: { type: ['number', 'null'] },
+        initialFixedUnitPrice: { type: ['number', 'null'] },
         fixedUnitPrice: { type: ['number', 'null'] },
         hasMonorariaOption: { type: 'boolean' },
         monorariaUnitPrice: { type: ['number', 'null'] },
@@ -164,6 +166,8 @@ const ANALYSIS_SCHEMA = {
         'customerType',
         'priceType',
         'complexity',
+        'initialFixedMonths',
+        'initialFixedUnitPrice',
         'fixedUnitPrice',
         'hasMonorariaOption',
         'monorariaUnitPrice',
@@ -188,7 +192,7 @@ la vendita della materia e la quota fissa del venditore: escludi rete, trasporto
 imposte, IVA e altre partite.
 
 Restituisci JSON conforme allo schema. Per invoice commodity usa luce, gas o unknown. Per cte priceType
-usa fisso, variabile, ibrido o unknown; complexity usa semplice, fasce, soglie o mista. Se una CTE offre sia fasce sia un'opzione monoraria esplicita, imposta hasMonorariaOption=true e monorariaUnitPrice al valore F0/monorario; non considerarla un'offerta a fasce non accettabile. Non confondere mai annualFixedFee, espresso in €/POD/anno o €/PDR/anno, con fixedUnitPrice o monorariaUnitPrice, espressi in €/kWh o €/Smc. Determina customerType
+usa fisso, variabile, ibrido o unknown; complexity usa semplice, fasce, soglie o mista. Se una CTE prevede un periodo iniziale interamente fisso seguito da un periodo variabile, usa priceType=ibrido e valorizza initialFixedMonths e initialFixedUnitPrice. Se una CTE offre sia fasce sia un'opzione monoraria esplicita, imposta hasMonorariaOption=true e monorariaUnitPrice al valore F0/monorario; non considerarla un'offerta a fasce non accettabile. Non confondere mai annualFixedFee, espresso in €/POD/anno o €/PDR/anno, con fixedUnitPrice, initialFixedUnitPrice o monorariaUnitPrice, espressi in €/kWh o €/Smc. Determina customerType
 da destinazione/tipologia del contatore: altri usi, usi diversi e usi non domestici sono business; domestico
 residente/non residente e clienti non domestici sono domestico. Se non è chiaro usa unknown.
 Segnala ricalcoli, storni, consumo zero, periodi incompleti, scontrino mancante/incompleto e prezzi non

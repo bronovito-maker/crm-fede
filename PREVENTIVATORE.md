@@ -53,7 +53,7 @@ Il sistema interpreta il contenuto dei PDF, non il nome dei file. Prima del calc
 - commodity coerente tra CTE e fattura: POD/kWh/energia elettrica per luce, PDR/Smc/gas naturale/PSV per gas;
 - destinazione del contatore: `altri usi` e `usi diversi` sono Business; `domestico residente`, `domestico non residente` e `clienti non domestici` sono Domestico;
 - destinazione compatibile tra fattura e CTE;
-- CTE interamente fissa o interamente variabile. Le offerte ibride, a soglie o a scaglioni vengono bloccate;
+- CTE interamente fissa o interamente variabile. Una CTE con fase iniziale fissa seguita da fase variabile viene calcolata se il periodo della fattura rientra interamente nella fase iniziale fissa; il risultato viene etichettato con il periodo di validità. Le offerte a soglie o a scaglioni vengono bloccate;
 - periodo, consumo e scontrino della vendita ricostruibili. Ricalcoli, storni, consumo zero, periodi incompleti o prezzi non ricostruibili bloccano il confronto;
 - quota fissa limitata alla vendita: rete, trasporto, contatore, oneri, imposte e IVA sono esclusi.
 
@@ -136,7 +136,8 @@ Lo script stampa l'ID da inserire in `BASEROW_TABLE_ANALISI_BOLLETTE_ID`. Il JWT
 - [x] comandi dal risultato per creare/aggiornare il cliente;
 - [x] collegamento dell'analisi al cliente tramite il campo Baserow `Analisi bollette`;
 - [x] apertura del nuovo contratto con precompilazione tramite sessione del browser;
-- [x] blocchi backend per commodity, destinazione, anomalie, offerte ibride e dati insufficienti;
+- [x] blocchi backend per commodity, destinazione, anomalie, offerte a soglie/scaglioni e dati insufficienti;
+- [x] confronto delle CTE con fase iniziale fissa quando la fattura rientra nel periodo iniziale;
 - [x] calcolo limitato al periodo della fattura con dettaglio PUN/PSV e formula;
 - [ ] collegamento automatico a una fonte/API ufficiale aggiornata per i nuovi valori mensili PUN/PSV;
 - [ ] interfaccia completa dello storico nel CRM;

@@ -28,6 +28,8 @@ function base(overrides = {}) {
       customerType: 'domestico',
       priceType: 'fisso',
       complexity: 'semplice',
+      initialFixedMonths: null,
+      initialFixedUnitPrice: null,
       fixedUnitPrice: 0.103,
       hasMonorariaOption: false,
       monorariaUnitPrice: null,
@@ -47,6 +49,23 @@ test('blocca CTE luce e fattura gas', () => {
 test('blocca offerta ibrida', () => {
   const result = calculateComparison(base({ cte: { priceType: 'ibrido', complexity: 'soglie' } }));
   assert.equal(result.code, 'HYBRID_OFFER');
+});
+
+test('calcola una CTE fissa nei primi mesi di una formula ibrida', () => {
+  const result = calculateComparison(
+    base({
+      cte: {
+        priceType: 'ibrido',
+        complexity: 'semplice',
+        initialFixedMonths: 24,
+        initialFixedUnitPrice: 0.699,
+        annualFixedFee: 144,
+      },
+    })
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.offerPrice, 0.699);
+  assert.equal(result.offerFixed, 12);
 });
 
 test('calcola il confronto sulla sola fattura', () => {

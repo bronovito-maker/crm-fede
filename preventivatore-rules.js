@@ -78,14 +78,26 @@ function calculateComparison(data) {
     );
   }
 
-  if (cte.priceType === 'ibrido' || ['soglie', 'mista'].includes(text(cte.complexity))) {
+  const months = Array.isArray(invoice.referenceMonths)
+    ? [...new Set(invoice.referenceMonths.filter((month) => /^\d{4}-\d{2}$/.test(month)))]
+    : [];
+  const billingMonths = Number(invoice.billingMonths);
+  const initialFixed =
+    cte.priceType === 'ibrido' &&
+    finitePositive(cte.initialFixedMonths) &&
+    finitePositive(cte.initialFixedUnitPrice) &&
+    cte.initialFixedMonths >= billingMonths;
+  if (
+    ['soglie', 'mista'].includes(text(cte.complexity)) ||
+    (cte.priceType === 'ibrido' && !initialFixed)
+  ) {
     return block(
       'HYBRID_OFFER',
-      'Offerta ibrida non supportata',
-      'La CTE applica prezzi fissi e variabili in base a soglie o scaglioni.'
+      'Offerta ibrida non utilizzabile per questo periodo',
+      'La fase fissa della CTE non copre interamente il periodo della fattura.'
     );
   }
-  if (!['fisso', 'variabile'].includes(text(cte.priceType))) {
+  if (!['fisso', 'variabile', 'ibrido'].includes(text(cte.priceType))) {
     return block(
       'PRICE_TYPE_UNKNOWN',
       'Tipo di prezzo non riconosciuto',
@@ -93,10 +105,6 @@ function calculateComparison(data) {
     );
   }
 
-  const months = Array.isArray(invoice.referenceMonths)
-    ? [...new Set(invoice.referenceMonths.filter((month) => /^\d{4}-\d{2}$/.test(month)))]
-    : [];
-  const billingMonths = Number(invoice.billingMonths);
   if (!finitePositive(invoice.consumption)) {
     return block(
       'CONSUMPTION_INVALID',
@@ -152,14 +160,15 @@ function calculateComparison(data) {
       ? cte.monorariaUnitPrice
       : cte.fixedUnitPrice;
 
-  if (cte.priceType === 'fisso') {
-    if (!finitePositive(fixedUnitPrice))
+  if (cte.priceType === 'fisso' || initialFixed) {
+    const periodFixedPrice = initialFixed ? cte.initialFixedUnitPrice : fixedUnitPrice;
+    if (!finitePositive(periodFixedPrice))
       return block(
         'CTE_PRICE_MISSING',
         'Prezzo CTE non trovato',
         'Il prezzo fisso non è leggibile con sicurezza.'
       );
-    offerPrice = fixedUnitPrice;
+    offerPrice = periodFixedPrice;
   } else {
     const expectedIndex = commodity === 'luce' ? 'PUN' : 'PSV';
     if (text(cte.referenceIndex) !== expectedIndex.toLowerCase()) {

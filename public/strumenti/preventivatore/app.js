@@ -180,10 +180,19 @@
         'I documenti non corrispondono',
         `La CTE riguarda ${cte.commodity}, mentre la fattura riguarda ${inv.commodity}.`
       );
-    if (cte.priceType === 'ibrido' || ['soglie', 'mista'].includes(cte.complexity))
+    const initialFixed =
+      cte.priceType === 'ibrido' &&
+      finite(cte.initialFixedMonths, 0.01) &&
+      finite(cte.initialFixedUnitPrice, 0.000001) &&
+      finite(inv.billingMonths, 0.01) &&
+      cte.initialFixedMonths >= inv.billingMonths;
+    if (
+      (cte.priceType === 'ibrido' && !initialFixed) ||
+      ['soglie', 'mista'].includes(cte.complexity)
+    )
       return renderBlock(
-        'Offerta ibrida non accettata',
-        'La CTE combina prezzo fisso e variabile o usa soglie. Questo tipo di offerta viene rifiutato.'
+        'Offerta ibrida non utilizzabile per questo periodo',
+        'La fase fissa della CTE non copre interamente il periodo della fattura.'
       );
     if (cte.complexity === 'fasce' && !cte.hasMonorariaOption)
       return renderBlock(
@@ -232,9 +241,10 @@
     let offerPrice,
       indexAverage = null,
       calculation = '';
-    if (cte.priceType === 'fisso') {
-      const fixedUnitPrice =
-        cte.hasMonorariaOption && finite(cte.monorariaUnitPrice)
+    if (cte.priceType === 'fisso' || initialFixed) {
+      const fixedUnitPrice = initialFixed
+        ? cte.initialFixedUnitPrice
+        : cte.hasMonorariaOption && finite(cte.monorariaUnitPrice)
           ? cte.monorariaUnitPrice
           : finite(cte.fixedUnitPrice) && cte.fixedUnitPrice < 10
             ? cte.fixedUnitPrice
@@ -252,7 +262,9 @@
           : 'Prezzo fisso luce con aggiunta del 10% per perdite di rete.';
       } else {
         offerPrice = fixedUnitPrice;
-        calculation = 'Prezzo fisso gas: nessuna perdita di rete.';
+        calculation = initialFixed
+          ? `Prezzo fisso gas valido per i primi ${cte.initialFixedMonths} mesi; dopo il periodo iniziale la CTE diventa variabile.`
+          : 'Prezzo fisso gas: nessuna perdita di rete.';
       }
     } else if (cte.priceType === 'variabile') {
       const expected = cte.commodity === 'luce' ? 'PUN' : 'PSV';
