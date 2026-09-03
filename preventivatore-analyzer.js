@@ -280,6 +280,10 @@ async function requestModel(apiKey, cteDocument, invoiceDocument) {
     });
     const payload = await response.json().catch(() => ({}));
     if (response.ok) return JSON.parse(payload.output_text || outputText(payload) || '{}');
+    const apiCode = payload.error?.code || payload.error?.type;
+    if (apiCode === 'insufficient_quota' || apiCode === 'credit_balance_exhausted') {
+      throw new Error('OPENAI_QUOTA_EXHAUSTED');
+    }
     lastStatus = response.status;
     if (![408, 429, 500, 502, 503, 504].includes(response.status)) break;
     if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 900));

@@ -401,14 +401,19 @@ app.post('/api/analyze', preventivatorePublicLimiter, attachSession, async (req,
           };
     res.json({ ...result, persistence });
   } catch (error) {
-    console.error('[preventivatore] analisi fallita', error);
+    console.error('[preventivatore] analisi fallita', error.message);
     const message =
       error.message === 'OPENAI_NOT_CONFIGURED'
         ? 'Il servizio di analisi non è ancora configurato.'
-        : error.message?.startsWith('OPENAI_429')
-          ? 'Il servizio è momentaneamente occupato. Attendi un minuto e riprova.'
-          : 'Non riesco a leggere i documenti. Riprova.';
-    res.status(error.message === 'OPENAI_NOT_CONFIGURED' ? 503 : 502).json({ message });
+        : error.message === 'OPENAI_QUOTA_EXHAUSTED'
+          ? 'Il credito dell’API di analisi è esaurito. Ricarica il credito OpenAI e riprova.'
+          : error.message?.startsWith('OPENAI_429')
+            ? 'Il servizio è momentaneamente occupato. Attendi un minuto e riprova.'
+            : 'Non riesco a leggere i documenti. Riprova.';
+    const status = ['OPENAI_NOT_CONFIGURED', 'OPENAI_QUOTA_EXHAUSTED'].includes(error.message)
+      ? 503
+      : 502;
+    res.status(status).json({ message });
   }
 });
 
